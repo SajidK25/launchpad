@@ -1,0 +1,13 @@
+.git
+.mypy_cache
+.pytest_cache
+.ruff_cache
+__pycache__/
+*.py[cod]
+.env
+.env.*
+*.secret
+.launchpad-secret-marker
+node_modules/
+dist/
+coverage/

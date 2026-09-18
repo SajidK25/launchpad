@@ -1,0 +1,16 @@
+services:
+  python-checks:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    working_dir: /workspace
+    environment:
+      MYPY_CACHE_DIR: /tmp/mypy-cache
+      PYTEST_ADDOPTS: -p no:cacheprovider
+      RUFF_CACHE_DIR: /tmp/ruff-cache
+    volumes:
+      - type: bind
+        source: .
+        target: /workspace
+        read_only: true
+    command: ["python", "--version"]
