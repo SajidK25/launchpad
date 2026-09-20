@@ -82,7 +82,7 @@ Create the container-only Python execution baseline for every later task. Provid
 
 ## Task T2: Isolate development and integration infrastructure
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high

@@ -27,7 +27,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/api"]
+testpaths = ["apps/api", "tests"]
 addopts = "-ra"
 
 [tool.ruff]
@@ -43,3 +43,7 @@ python_version = "3.12"
 files = ["apps/api"]
 strict = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["asyncpg", "boto3", "botocore.*"]
+ignore_missing_imports = true
