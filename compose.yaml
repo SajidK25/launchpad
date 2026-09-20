@@ -48,6 +48,23 @@ services:
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
 
+  prepare:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    environment:
+      LAUNCHPAD_DATABASE_URL: postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development
+      LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
+      LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_runtime_password
+      LAUNCHPAD_BOOTSTRAP_STORAGE_ACCESS_KEY_ID: launchpad_development_minio
+      LAUNCHPAD_BOOTSTRAP_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_password
+    depends_on:
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "app.bootstrap"]
+
 volumes:
   development_minio_data:
   development_postgres_data:

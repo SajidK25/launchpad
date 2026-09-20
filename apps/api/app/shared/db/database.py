@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
@@ -75,6 +76,22 @@ class Database:
     ) -> None:
         """Acquire the session lock, apply migrations, and verify the expected head."""
 
+        async def no_follow_up() -> None:
+            return None
+
+        await self.prepare_with(
+            no_follow_up, lock_timeout_seconds, expected_revision, script_location
+        )
+
+    async def prepare_with(
+        self,
+        follow_up: Callable[[], Awaitable[None]],
+        lock_timeout_seconds: float = 5.0,
+        expected_revision: str = FOUNDATION_REVISION,
+        script_location: Path | None = None,
+    ) -> None:
+        """Hold the preparation lock through migrations and the supplied infrastructure phase."""
+
         async with self.engine.connect() as connection:
             await _acquire_preparation_lock(connection, lock_timeout_seconds)
             try:
@@ -87,6 +104,7 @@ class Database:
                     raise MigrationCompatibilityError(
                         f"Database revision is {actual}; expected {expected_revision}."
                     )
+                await follow_up()
             finally:
                 await _release_preparation_lock(connection)
                 await connection.commit()

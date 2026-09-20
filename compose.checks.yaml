@@ -85,6 +85,34 @@ services:
         condition: service_healthy
     command: ["python", "-m", "pytest"]
 
+  prepare:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    working_dir: /workspace
+    environment:
+      LAUNCHPAD_DATABASE_URL: postgresql://launchpad_check:launchpad_check_password@postgres:5432/launchpad_check
+      LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_check_runtime
+      LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_check_runtime_password
+      LAUNCHPAD_BOOTSTRAP_STORAGE_ACCESS_KEY_ID: launchpad_check_minio
+      LAUNCHPAD_BOOTSTRAP_STORAGE_SECRET_ACCESS_KEY: launchpad_check_minio_password
+    depends_on:
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "app.bootstrap"]
+
+  gated-consumer:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    working_dir: /workspace
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    command: ["python", "-c", "print('prepared-consumer')"]
+
 volumes:
   check_minio_data:
   check_postgres_data:

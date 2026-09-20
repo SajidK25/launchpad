@@ -363,7 +363,7 @@ This task has no brownfield runtime caller. Its preservation, privacy, failure a
 
 ## Task T6: Orchestrate preparation and gated startup
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high
