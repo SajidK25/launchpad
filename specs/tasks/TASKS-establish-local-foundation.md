@@ -709,7 +709,7 @@ This task has no brownfield runtime caller. Its preservation, privacy, failure a
 
 ## Task T11: Present an accessible connectivity page
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
