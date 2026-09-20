@@ -65,6 +65,17 @@ services:
         condition: service_healthy
     command: ["python", "-m", "app.bootstrap"]
 
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8000:8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
 volumes:
   development_minio_data:
   development_postgres_data:

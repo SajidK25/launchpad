@@ -433,7 +433,7 @@ This task has no brownfield runtime caller. Its preservation, privacy, failure a
 
 ## Task T7: Implement bounded readiness and safe health contracts
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high

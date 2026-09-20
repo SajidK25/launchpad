@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import (
     AnyHttpUrl,
+    AnyUrl,
     BaseModel,
     ConfigDict,
     PostgresDsn,
@@ -31,6 +32,8 @@ class Settings(BaseModel):
         "postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development"
     )
     storage_endpoint_url: AnyHttpUrl = AnyHttpUrl("http://minio:9000")
+    redis_url: AnyUrl = AnyUrl("redis://redis:6379/0")
+    storage_bucket: str = "launchpad-private"
     storage_access_key_id: SecretStr | None = None
     storage_secret_access_key: SecretStr | None = None
     bootstrap_storage_access_key_id: SecretStr | None = None
