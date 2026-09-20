@@ -640,7 +640,7 @@ Provide a containerized strict-TypeScript frontend build and reproducible OpenAP
 
 ## Task T10: Implement typed browser connectivity state
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
