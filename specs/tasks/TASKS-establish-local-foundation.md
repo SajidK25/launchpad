@@ -509,7 +509,7 @@ This task has no brownfield runtime caller. Its preservation, privacy, failure a
 
 ## Task T8: Run independently healthy worker and scheduler processes
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high

@@ -76,6 +76,42 @@ services:
       - "127.0.0.1:8000:8000"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+    command: ["python", "apps/worker/worker.py"]
+    healthcheck:
+      test: ["CMD", "python", "apps/worker/worker.py", "--health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+    command: ["python", "apps/worker/scheduler.py"]
+    healthcheck:
+      test: ["CMD", "python", "apps/worker/scheduler.py", "--health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
 volumes:
   development_minio_data:
   development_postgres_data:
