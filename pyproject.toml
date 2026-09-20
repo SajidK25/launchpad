@@ -13,6 +13,7 @@ dependencies = [
     "boto3==1.43.97",
     "dramatiq==2.2.1",
     "fastapi==0.141.1",
+    "minio==7.2.20",
     "pydantic-settings==2.15.0",
     "redis==8.1.0",
     "SQLAlchemy==2.0.54",

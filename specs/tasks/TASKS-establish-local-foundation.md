@@ -293,7 +293,7 @@ This task has no brownfield runtime caller. Its preservation, privacy, failure a
 
 ## Task T5: Prepare private MinIO storage and bounded access
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high

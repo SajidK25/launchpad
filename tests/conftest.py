@@ -6,6 +6,7 @@ import asyncio
 import os
 from collections.abc import Generator
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 import asyncpg
 import boto3
@@ -24,6 +25,17 @@ class IntegrationSettings:
     s3_access_key_id: str = field(repr=False)
     s3_secret_access_key: str = field(repr=False)
     environment_name: str
+
+
+@dataclass(frozen=True)
+class StorageCredentials:
+    """Separate disposable MinIO bootstrap and runtime identities."""
+
+    endpoint_url: str
+    bootstrap_access_key_id: str = field(repr=False)
+    bootstrap_secret_access_key: str = field(repr=False)
+    runtime_access_key_id: str = field(repr=False)
+    runtime_secret_access_key: str = field(repr=False)
 
 
 def integration_settings() -> IntegrationSettings:
@@ -85,6 +97,36 @@ def s3_client(integration_settings_fixture: IntegrationSettings) -> BaseClient:
         aws_secret_access_key=integration_settings_fixture.s3_secret_access_key,
         region_name="us-east-1",
     )
+
+
+@pytest.fixture
+def storage_credentials(integration_settings_fixture: IntegrationSettings) -> StorageCredentials:
+    """Return a dedicated least-privilege runtime identity for storage scenarios."""
+
+    return StorageCredentials(
+        endpoint_url=integration_settings_fixture.s3_endpoint_url,
+        bootstrap_access_key_id=integration_settings_fixture.s3_access_key_id,
+        bootstrap_secret_access_key=integration_settings_fixture.s3_secret_access_key,
+        runtime_access_key_id="launchpad_t5_runtime",
+        runtime_secret_access_key="launchpad_t5_runtime_password",
+    )
+
+
+@pytest.fixture
+def storage_bucket(s3_client: BaseClient) -> Generator[str, None, None]:
+    """Yield a unique disposable bucket and remove only its test objects afterward."""
+
+    bucket_name = f"t5-{uuid4().hex}"
+    try:
+        yield bucket_name
+    finally:
+        try:
+            objects = s3_client.list_objects_v2(Bucket=bucket_name).get("Contents", [])
+            for object_info in objects:
+                s3_client.delete_object(Bucket=bucket_name, Key=object_info["Key"])
+            s3_client.delete_bucket(Bucket=bucket_name)
+        except s3_client.exceptions.NoSuchBucket:
+            pass
 
 
 @pytest.fixture
