@@ -122,6 +122,26 @@ services:
         condition: service_completed_successfully
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
+  web-checks:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      target: tooling
+    working_dir: /workspace
+    volumes:
+      - type: bind
+        source: ./apps/web
+        target: /workspace/apps/web
+        read_only: true
+      - type: bind
+        source: ./packages/contracts
+        target: /workspace/packages/contracts
+      - type: bind
+        source: ./scripts/quality
+        target: /workspace/scripts/quality
+        read_only: true
+    command: ["npm", "--version"]
+
   worker:
     build:
       context: .

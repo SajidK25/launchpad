@@ -1,0 +1,19 @@
+{
+  "name": "@launchpad/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "lint": "eslint src --max-warnings=0",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@launchpad/contracts": "0.1.0",
+    "@tanstack/react-query": "5.85.3",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "tailwindcss": "4.1.13"
+  }
+}

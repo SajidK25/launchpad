@@ -579,7 +579,7 @@ This task has no brownfield runtime caller. Its preservation, privacy, failure a
 
 ## Task T9: Build the web toolchain and generated REST contracts
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** high
