@@ -28,6 +28,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["apps/api", "tests"]
+pythonpath = ["apps/api"]
 addopts = "-ra"
 
 [tool.ruff]

@@ -152,7 +152,7 @@ This task has no brownfield runtime caller. Its preservation, privacy, failure a
 
 ## Task T3: Validate configuration and sanitize structured diagnostics
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
