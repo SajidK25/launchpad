@@ -128,3 +128,16 @@ def test_separate_network_cannot_reach_a_supplied_development_database() -> None
 
     with pytest.raises((OSError, asyncpg.PostgresError, TimeoutError)):
         asyncio.run(asyncpg.connect(development_url, timeout=1))
+
+
+def test_quality_compose_uses_isolated_check_credentials_and_named_volumes() -> None:
+    """Keep concurrent quality projects away from development identities and storage."""
+
+    compose = Path("compose.checks.yaml").read_text()
+
+    assert "launchpad_check_password" in compose
+    assert "launchpad_check_minio_password" in compose
+    assert "check_postgres_data" in compose
+    assert "check_redis_data" in compose
+    assert "check_minio_data" in compose
+    assert "launchpad_development" not in compose

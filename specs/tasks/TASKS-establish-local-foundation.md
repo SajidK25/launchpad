@@ -770,7 +770,7 @@ Present the approved loading, Connected and Unavailable states using the existin
 
 ## Task T12: Consolidate quality gates and GitHub Actions
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high

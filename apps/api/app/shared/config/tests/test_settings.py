@@ -47,6 +47,24 @@ def test_runtime_credentials_never_fall_back_to_bootstrap_credentials() -> None:
     assert "T3_BOOTSTRAP_SECRET" not in str(error.value)
 
 
+def test_isolated_check_environment_uses_its_explicit_credentials() -> None:
+    """The quality Compose project must not inherit development defaults."""
+
+    settings = load_settings(
+        {
+            "LAUNCHPAD_ENVIRONMENT": "check",
+            "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "check-runtime",
+            "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "check-runtime-secret",
+            "LAUNCHPAD_BOOTSTRAP_STORAGE_ACCESS_KEY_ID": "check-bootstrap",
+            "LAUNCHPAD_BOOTSTRAP_STORAGE_SECRET_ACCESS_KEY": "check-bootstrap-secret",
+        }
+    )
+
+    assert settings.environment == "check"
+    assert settings.storage_access_key_id is not None
+    assert settings.storage_access_key_id.get_secret_value() == "check-runtime"
+
+
 def test_invalid_database_url_names_the_variable_without_echoing_it() -> None:
     """Malformed configuration must be actionable without leaking its supplied value."""
 

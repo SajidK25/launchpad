@@ -12,10 +12,12 @@
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspace=@launchpad/web",
     "test": "npm run test --workspace=@launchpad/web",
+    "test:browser": "playwright test -c tests/browser/playwright.config.ts",
     "typecheck": "npm run typecheck --workspace=@launchpad/web"
   },
   "devDependencies": {
     "@eslint/js": "9.33.0",
+    "@playwright/test": "1.55.0",
     "@types/react": "19.1.12",
     "@types/react-dom": "19.1.9",
     "@types/node": "24.3.0",

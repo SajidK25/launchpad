@@ -1,0 +1,17 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the shared quality gate
+        env:
+          COMPOSE_PROJECT_NAME: launchpad-ci
+        run: sh scripts/quality/run.sh

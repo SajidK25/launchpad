@@ -27,7 +27,7 @@ class Settings(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    environment: Literal["development", "test", "production"] = "development"
+    environment: Literal["development", "test", "check", "production"] = "development"
     database_url: PostgresDsn = PostgresDsn(
         "postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development"
     )
