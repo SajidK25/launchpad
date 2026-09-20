@@ -222,7 +222,7 @@ This task has no brownfield runtime caller. Its preservation, privacy, failure a
 
 ## Task T4: Establish migrations and serialized database preparation
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high

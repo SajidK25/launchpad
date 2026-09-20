@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Generator
 from dataclasses import dataclass, field
 
+import asyncpg
 import boto3
 import pytest
 from botocore.client import BaseClient
@@ -83,3 +85,18 @@ def s3_client(integration_settings_fixture: IntegrationSettings) -> BaseClient:
         aws_secret_access_key=integration_settings_fixture.s3_secret_access_key,
         region_name="us-east-1",
     )
+
+
+@pytest.fixture
+def reset_database(integration_settings_fixture: IntegrationSettings) -> None:
+    """Reset only the disposable check schema before a migration scenario."""
+
+    async def reset() -> None:
+        connection = await asyncpg.connect(integration_settings_fixture.database_url, timeout=2)
+        try:
+            await connection.execute("DROP SCHEMA public CASCADE")
+            await connection.execute("CREATE SCHEMA public")
+        finally:
+            await connection.close()
+
+    asyncio.run(reset())
