@@ -847,7 +847,7 @@ This task has no brownfield runtime caller. Its preservation, privacy, failure a
 
 ## Task T13: Document and verify the complete development workflow
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** medium
