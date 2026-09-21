@@ -41,7 +41,7 @@ compose run --rm --no-deps quality fs --scanners secret --exit-code 1 /workspace
 # Docker socket. The host orchestrator owns the short-lived archive instead.
 archive="$(mktemp)"
 trap 'rm -f "$archive"' EXIT
-image_id="$(compose images -q web)"
+image_id="$(docker image inspect --format '{{.ID}}' "${project}-web" 2>/dev/null || true)"
 if [ -z "$image_id" ]; then
     printf '[security] web image is unavailable; refusing a skipped pass\n' >&2
     exit 2
