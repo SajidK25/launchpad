@@ -52,6 +52,6 @@ def test_local_and_ci_share_the_same_quality_orchestrator() -> None:
 def test_security_scan_uses_the_built_project_image_without_a_running_web_container() -> None:
     scanner = (ROOT / "scripts/quality/security.sh").read_text()
 
-    assert 'docker image inspect --format' in scanner
+    assert "docker image inspect --format" in scanner
     assert '"${project}-web"' in scanner
     assert "compose images -q web" not in scanner
