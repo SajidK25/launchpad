@@ -361,7 +361,7 @@ Replace the heartbeat-only background loop with real, durable outbox dispatch wh
 
 ## Task T6: Register one private account and verify its email
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
@@ -409,6 +409,11 @@ Build the transactional registration and email-verification domain behavior befo
 
 - Do not implement staff status, Google sign-in, product ownership, or profile publication.
 - Do not put raw tokens into account tables, logs, or unencrypted outbox fields.
+
+### Verification Evidence
+
+- Focused T6 integration coverage passed for atomic account/profile/challenge/outbox creation, generic duplicate registration, malformed-input rejection, concurrent canonical-address races, and latest-link/one-use verification semantics.
+- Full isolated `COMPOSE_PROJECT_NAME=launchpad-t6-registration sh scripts/quality/run.sh` passed: Ruff, mypy (52 files), pytest (69), web tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). Disposable T6 and focused integration projects/volumes were removed afterward.
 
 ### Files Expected
 
