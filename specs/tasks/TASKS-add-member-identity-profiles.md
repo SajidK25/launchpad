@@ -436,7 +436,7 @@ Build the transactional registration and email-verification domain behavior befo
 
 ## Task T7: Enforce revocable sessions and abuse controls
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical
@@ -500,6 +500,11 @@ Implement sign-in, sign-out, session resolution, verification-aware member acces
 
 - `apps/api/app/modules/health/probes.py` — Redis health is an existing separate concern.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH — protected inputs.
+
+### Verification Evidence
+
+- Focused T7 session and rate-limit tests passed (5 tests): restricted unverified sign-in, generic credential failures, expiry/sign-out revocation, independent address/source buckets, and Redis fail-closed behavior. Shared security tests also cover exact trusted-Origin and session-bound CSRF rejection.
+- Full isolated `COMPOSE_PROJECT_NAME=launchpad-t7-sessions sh scripts/quality/run.sh` passed: Ruff, mypy (57 files), pytest (75), web format/lint/types/tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). Disposable T7 services and volumes were isolated under the project name.
 
 ---
 

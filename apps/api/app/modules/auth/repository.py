@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import select
 from uuid6 import uuid7
 
-from app.modules.auth.models import Account, EmailVerification
+from app.modules.auth.models import Account, EmailVerification, Session
 
 
 class AuthRepository:
@@ -114,6 +114,60 @@ class AuthRepository:
             account.updated_at = current
         await session.flush()
         return account
+
+    async def create_session(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: UUID,
+        secret_digest: bytes,
+        session_epoch: int,
+        now: datetime,
+        idle_expires_at: datetime,
+        absolute_expires_at: datetime,
+    ) -> Session:
+        record = Session(
+            id=uuid7(),
+            account_id=account_id,
+            secret_digest=secret_digest,
+            session_epoch=session_epoch,
+            created_at=_utc(now),
+            last_seen_at=_utc(now),
+            idle_expires_at=_utc(idle_expires_at),
+            absolute_expires_at=_utc(absolute_expires_at),
+        )
+        session.add(record)
+        await session.flush()
+        return record
+
+    async def find_session(
+        self, session: AsyncSession, secret_digest: bytes, *, lock: bool = False
+    ) -> tuple[Session, Account] | None:
+        query = (
+            select(Session, Account)
+            .join(Account, Account.id == Session.account_id)
+            .where(Session.secret_digest == secret_digest)
+        )
+        if lock:
+            query = query.with_for_update()
+        row = (await session.execute(query)).first()
+        if row is None:
+            return None
+        return cast(tuple[Session, Account], tuple(row))
+
+    async def revoke_session(
+        self, session: AsyncSession, secret_digest: bytes, *, now: datetime
+    ) -> bool:
+        record = await session.scalar(
+            select(Session)
+            .where(Session.secret_digest == secret_digest, Session.revoked_at.is_(None))
+            .with_for_update()
+        )
+        if record is None:
+            return False
+        record.revoked_at = _utc(now)
+        await session.flush()
+        return True
 
 
 def _utc(value: datetime) -> datetime:

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import pytest
-from app.shared.security.csrf import generate_csrf_token, verify_csrf_token
+from app.shared.security.csrf import (
+    RequestSecurityError,
+    generate_csrf_token,
+    require_csrf,
+    verify_csrf_token,
+)
 from app.shared.security.email import canonicalize_email
 from app.shared.security.passwords import PasswordPolicyError, hash_password
 from app.shared.security.tokens import digest_token, generate_token, token_matches
@@ -33,6 +38,29 @@ def test_csrf_token_is_bound_to_its_digest() -> None:
     assert verify_csrf_token(token, digest)
     assert not verify_csrf_token(token + "tampered", digest)
     assert not verify_csrf_token(token, digest_token(generate_token()))
+
+
+def test_unsafe_request_requires_trusted_origin_and_session_csrf() -> None:
+    token, digest = generate_csrf_token()
+    require_csrf(
+        origin="https://launchpad.example",
+        trusted_origin="https://launchpad.example",
+        token=token,
+        expected_digest=digest,
+    )
+    cases = (("https://evil.example", token), ("https://launchpad.example", token + "x"))
+    for origin, submitted in cases:
+        try:
+            require_csrf(
+                origin=origin,
+                trusted_origin="https://launchpad.example",
+                token=submitted,
+                expected_digest=digest,
+            )
+        except RequestSecurityError:
+            pass
+        else:
+            raise AssertionError("unsafe request should be rejected")
 
 
 def test_invalid_inputs_do_not_echo_secret_values() -> None:

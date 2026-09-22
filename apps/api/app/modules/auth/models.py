@@ -28,6 +28,25 @@ class Account(AuthBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class Session(AuthBase):
+    """Opaque browser session whose secret is stored only as a digest."""
+
+    __tablename__ = "sessions"
+    __table_args__ = (Index("ix_sessions_account_id", "account_id"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("accounts.id"), nullable=False
+    )
+    secret_digest: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, unique=True)
+    session_epoch: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class EmailVerification(AuthBase):
     """Digest-only, latest-link-wins verification challenge."""
 
