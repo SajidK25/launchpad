@@ -65,3 +65,20 @@ class EmailVerification(AuthBase):
 
 
 VerificationChallenge = EmailVerification
+
+
+class PasswordReset(AuthBase):
+    """Digest-only, latest-link-wins password recovery challenge."""
+
+    __tablename__ = "password_resets"
+    __table_args__ = (Index("ix_password_resets_account_id", "account_id"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("accounts.id"), nullable=False
+    )
+    token_digest: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, unique=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

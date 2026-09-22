@@ -40,6 +40,22 @@ def _event(
     )
 
 
+def test_password_reset_notice_uses_encrypted_outbox_payload() -> None:
+    codec = EmailPayloadCodec({"v1": b"p" * 32}, "v1")
+    event = _event(
+        codec,
+        event_type="auth.password_reset_completed.v1",
+        payload={
+            "recipient": "member@example.com",
+            "subject": "Your Launchpad password was changed",
+            "body": "Sign in again on your devices.",
+        },
+    )
+    assert event.event_type == "auth.password_reset_completed.v1"
+    assert event.encrypted_payload != b"Sign in again on your devices."
+    assert codec.decode(event.key_id, event.encrypted_payload)["recipient"] == "member@example.com"
+
+
 def test_outbox_insert_is_atomic_with_the_calling_transaction(
     integration_settings_fixture: IntegrationSettings,
     reset_database: None,

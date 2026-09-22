@@ -510,7 +510,7 @@ Implement sign-in, sign-out, session resolution, verification-aware member acces
 
 ## Task T8: Recover passwords without preserving old access
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical
@@ -573,6 +573,11 @@ Implement generic reset requests and one-use recovery for verified and unverifie
 
 - `apps/api/app/shared/security/passwords.py` — reuse T3 policy without weakening it.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH — protected inputs.
+
+### Verification Evidence
+
+- Focused T8 recovery tests passed: generic known/unknown reset requests, valid reset hash replacement with all-device revocation, invalid-password non-consumption, and encrypted password-change notice coverage.
+- Full isolated `COMPOSE_PROJECT_NAME=launchpad-t8-recovery sh scripts/quality/run.sh` passed: Ruff, mypy (58 files), pytest (80), web format/lint/types/tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). Real PostgreSQL integration confirmed reset challenge consumption, unverified-state preservation, new-password authentication state, and revocation of pre-reset sessions.
 
 ---
 

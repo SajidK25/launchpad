@@ -143,3 +143,109 @@ class VerificationService:
 
     async def consume(self, session: AsyncSession, *, token: str) -> VerificationResult:
         return await self.registration.verify(session, token=token)
+
+
+RESET_TTL = CHALLENGE_TTL
+
+
+@dataclass(frozen=True, slots=True)
+class PasswordResetResult:
+    """Safe recovery result that never discloses whether an address exists."""
+
+    accepted: bool = True
+    reset: bool = False
+
+
+class PasswordResetService:
+    """Issue and consume one-use recovery links without authenticating the member."""
+
+    def __init__(
+        self,
+        *,
+        repository: AuthRepository | None = None,
+        outbox_repository: OutboxRepository | None = None,
+        payload_codec: EmailPayloadCodec,
+        mail_web_origin: str,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.repository = repository or AuthRepository()
+        self.outbox_repository = outbox_repository or OutboxRepository()
+        self.payload_codec = payload_codec
+        self.mail_web_origin = mail_web_origin.rstrip("/")
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def request(self, session: AsyncSession, *, email: str) -> PasswordResetResult:
+        identity = canonicalize_email(email)
+        account = await self.repository.find_account_by_email_key(session, identity.key, lock=True)
+        if account is None:
+            # Keep unknown-address work comparable without retaining the result.
+            hash_password("recovery timing padding")
+            return PasswordResetResult()
+        now = _utc(self.clock())
+        raw_token = generate_token()
+        expires_at = now + RESET_TTL
+        await self.repository.issue_password_reset(
+            session,
+            account_id=account.id,
+            token_digest=digest_token(raw_token),
+            issued_at=now,
+            expires_at=expires_at,
+        )
+        key_id, encrypted_payload = self.payload_codec.encode(
+            {
+                "recipient": account.email_display,
+                "subject": "Reset your Launchpad password",
+                "body": f"{self.mail_web_origin}/reset-password?token={raw_token}",
+                "expires_at": expires_at.isoformat(),
+            }
+        )
+        await self.outbox_repository.add(
+            session,
+            OutboxEvent(
+                event_type="auth.password_reset_requested.v1",
+                aggregate_id=account.id,
+                key_id=key_id,
+                encrypted_payload=encrypted_payload,
+                available_at=now,
+            ),
+        )
+        return PasswordResetResult()
+
+    async def reset(
+        self, session: AsyncSession, *, token: str, new_password: str
+    ) -> PasswordResetResult:
+        password_hash = hash_password(new_password)
+        now = _utc(self.clock())
+        consumed = await self.repository.consume_password_reset(
+            session, digest_token(token), now=now
+        )
+        if consumed is None:
+            return PasswordResetResult(reset=False)
+        _, account = consumed
+        account.password_hash = password_hash
+        account.session_epoch += 1
+        account.updated_at = now
+        await self.repository.revoke_all_sessions(session, account.id, now=now)
+        key_id, encrypted_payload = self.payload_codec.encode(
+            {
+                "recipient": account.email_display,
+                "subject": "Your Launchpad password was changed",
+                "body": "Your password was changed. Sign in again on your devices.",
+                "changed_at": now.isoformat(),
+            }
+        )
+        await self.outbox_repository.add(
+            session,
+            OutboxEvent(
+                event_type="auth.password_reset_completed.v1",
+                aggregate_id=account.id,
+                key_id=key_id,
+                encrypted_payload=encrypted_payload,
+                available_at=now,
+            ),
+        )
+        return PasswordResetResult(reset=True)
+
+
+def _utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import select
 from uuid6 import uuid7
 
-from app.modules.auth.models import Account, EmailVerification, Session
+from app.modules.auth.models import Account, EmailVerification, PasswordReset, Session
 
 
 class AuthRepository:
@@ -168,6 +168,69 @@ class AuthRepository:
         record.revoked_at = _utc(now)
         await session.flush()
         return True
+
+    async def issue_password_reset(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: UUID,
+        token_digest: bytes,
+        issued_at: datetime,
+        expires_at: datetime,
+    ) -> PasswordReset:
+        await session.execute(
+            update(PasswordReset)
+            .where(
+                PasswordReset.account_id == account_id,
+                PasswordReset.consumed_at.is_(None),
+                PasswordReset.superseded_at.is_(None),
+            )
+            .values(superseded_at=_utc(issued_at))
+        )
+        challenge = PasswordReset(
+            id=uuid7(),
+            account_id=account_id,
+            token_digest=token_digest,
+            issued_at=_utc(issued_at),
+            expires_at=_utc(expires_at),
+        )
+        session.add(challenge)
+        await session.flush()
+        return challenge
+
+    async def consume_password_reset(
+        self, session: AsyncSession, token_digest: bytes, *, now: datetime
+    ) -> tuple[PasswordReset, Account] | None:
+        current = _utc(now)
+        challenge = await session.scalar(
+            select(PasswordReset)
+            .where(
+                PasswordReset.token_digest == token_digest,
+                PasswordReset.consumed_at.is_(None),
+                PasswordReset.superseded_at.is_(None),
+            )
+            .with_for_update()
+        )
+        if challenge is None or challenge.expires_at <= current:
+            return None
+        account = await session.scalar(
+            select(Account).where(Account.id == challenge.account_id).with_for_update()
+        )
+        if account is None:
+            return None
+        challenge.consumed_at = current
+        await session.flush()
+        return challenge, account
+
+    async def revoke_all_sessions(
+        self, session: AsyncSession, account_id: UUID, *, now: datetime
+    ) -> None:
+        await session.execute(
+            update(Session)
+            .where(Session.account_id == account_id, Session.revoked_at.is_(None))
+            .values(revoked_at=_utc(now))
+        )
+        await session.flush()
 
 
 def _utc(value: datetime) -> datetime:

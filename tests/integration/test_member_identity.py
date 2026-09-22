@@ -7,12 +7,14 @@ from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from app.modules.auth.models import Account, EmailVerification
-from app.modules.auth.service import RegistrationService
+from app.modules.auth.models import Account, EmailVerification, Session
+from app.modules.auth.service import PasswordResetService, RegistrationService
+from app.modules.auth.sessions import SessionService, UnauthenticatedError
 from app.modules.users.models import Profile
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.models import OutboxMessage
+from app.shared.security.passwords import verify_password
 from conftest import IntegrationSettings
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -200,6 +202,66 @@ def test_verification_is_one_use_and_resend_supersedes_previous_link(
             async with sessions() as session:
                 account = await session.get(Account, account_id)
                 assert account is not None and account.verified_at is not None
+        finally:
+            await database.close()
+
+    asyncio.run(verify())
+
+
+def test_password_reset_changes_hash_and_ends_all_sessions(
+    integration_settings_fixture: IntegrationSettings,
+    reset_database: None,
+) -> None:
+    async def verify() -> None:
+        database = await _database(integration_settings_fixture)
+        codec = EmailPayloadCodec({"v1": b"r" * 32}, "v1")
+        try:
+            sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+            registration = _service(codec)
+            recovery = PasswordResetService(
+                payload_codec=codec,
+                mail_web_origin="https://launchpad.example",
+                clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            async with sessions.begin() as session:
+                await registration.register(
+                    session, email="member@example.com", password="old password!"
+                )
+            async with sessions.begin() as session:
+                await recovery.request(session, email="member@example.com")
+            async with sessions() as session:
+                account = await session.scalar(select(Account))
+                events = list(
+                    (await session.scalars(select(OutboxMessage).order_by(OutboxMessage.id))).all()
+                )
+                assert account is not None and len(events) == 2
+                payload = codec.decode(events[-1].key_id, events[-1].encrypted_payload or b"")
+                reset_token = parse_qs(urlparse(str(payload["body"])).query)["token"][0]
+                account_id = account.id
+            async with sessions.begin() as session:
+                first = await SessionService(
+                    clock=lambda: datetime(2026, 1, 1, tzinfo=UTC)
+                ).sign_in(session, email="member@example.com", password="old password!")
+            async with sessions.begin() as session:
+                result = await recovery.reset(
+                    session, token=reset_token, new_password="new password!"
+                )
+                assert result.reset
+            async with sessions() as session:
+                account = await session.get(Account, account_id)
+                assert account is not None and account.verified_at is None
+                assert verify_password("new password!", account.password_hash)
+                assert (
+                    await session.scalar(
+                        select(Session.revoked_at).where(Session.account_id == account_id)
+                    )
+                    is not None
+                )
+            async with sessions.begin() as session:
+                with pytest.raises(UnauthenticatedError):
+                    await SessionService(clock=lambda: datetime(2026, 1, 1, tzinfo=UTC)).resolve(
+                        session, session_secret=first.session_secret
+                    )
         finally:
             await database.close()
 
