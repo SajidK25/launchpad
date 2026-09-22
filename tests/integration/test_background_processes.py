@@ -56,3 +56,13 @@ def test_compose_gates_background_processes_on_preparation() -> None:
 def test_background_entry_points_do_not_register_product_work() -> None:
     for entry_point in (Path("apps/worker/worker.py"), Path("apps/worker/scheduler.py")):
         assert "@dramatiq.actor" not in entry_point.read_text()
+
+
+def test_background_entry_points_use_durable_outbox_dispatch() -> None:
+    worker = Path("apps/worker/worker.py").read_text()
+    scheduler = Path("apps/worker/scheduler.py").read_text()
+
+    assert "dispatch_due" in worker
+    assert "OutboxRepository" in worker
+    assert "OutboxMessage" in scheduler
+    assert "launchpad:outbox:due" in scheduler

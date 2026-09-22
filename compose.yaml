@@ -106,6 +106,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      PYTHONPATH: /workspace/apps/api
       LAUNCHPAD_DATABASE_URL: postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development
       LAUNCHPAD_REDIS_URL: redis://redis:6379/0
       LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
@@ -135,6 +136,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      PYTHONPATH: /workspace/apps/api
       LAUNCHPAD_DATABASE_URL: postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development
       LAUNCHPAD_REDIS_URL: redis://redis:6379/0
       LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime

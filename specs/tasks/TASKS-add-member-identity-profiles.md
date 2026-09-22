@@ -285,7 +285,7 @@ Create the durable event boundary that account and profile services will insert 
 
 ## Task T5: Dispatch outbox email through the worker
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high
@@ -332,6 +332,12 @@ Replace the heartbeat-only background loop with real, durable outbox dispatch wh
 
 - Do not put account/profile state in Redis or add product jobs/schedules.
 - Do not change the existing API readiness contract to include worker health.
+
+### Verification Evidence
+
+- Existing worker/scheduler progress and preparation-gate regression tests passed unchanged; new assertions confirm the entry points use durable outbox dispatch and scheduler due-work hints.
+- Mailpit integration covered stable delivery IDs, expired challenge suppression, privacy-notice delivery, SMTP failure/recovery, and PostgreSQL retryability.
+- Full isolated `COMPOSE_PROJECT_NAME=launchpad-t5-dispatch sh scripts/quality/run.sh` passed: Ruff, mypy (43 files), pytest (61), web tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). Disposable T5 and focused integration projects/volumes were removed afterward.
 
 ### Files Expected
 
