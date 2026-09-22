@@ -213,7 +213,7 @@ Provide small typed primitives that auth and users services can use without dupl
 
 ## Task T4: Persist encrypted transactional email events
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
@@ -260,6 +260,11 @@ Create the durable event boundary that account and profile services will insert 
 
 - Do not send SMTP here or add a generic notification inbox/preferences system.
 - Do not store raw challenge tokens, full links, or mail payloads as readable database fields.
+
+### Verification Evidence
+
+- Codec tests passed for authenticated encryption, plaintext exclusion, unknown-key rejection, and tamper detection; integration tests passed for transaction rollback, one-winner concurrent claims, lease recovery, ciphertext clearing, and retained delivery metadata.
+- Full isolated `COMPOSE_PROJECT_NAME=launchpad-t4-outbox sh scripts/quality/run.sh` passed: Ruff, mypy (41 files), pytest (57), web tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). The disposable T4 and focused integration projects and volumes were removed afterward.
 
 ### Files Expected
 
