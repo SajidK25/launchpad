@@ -1,0 +1,5 @@
+# Versioned local seed of the most frequently compromised passwords.
+12345678
+password
+password123
+qwerty123

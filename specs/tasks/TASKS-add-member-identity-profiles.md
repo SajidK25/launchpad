@@ -142,7 +142,7 @@ Provide the pinned libraries and validated local/check configuration required by
 
 ## Task T3: Implement credential and request-security primitives
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
@@ -188,6 +188,12 @@ Provide small typed primitives that auth and users services can use without dupl
 
 - Do not create accounts, sessions, routes, or an online breach-query dependency.
 - Do not add MFA or mandatory password character-composition rules.
+
+### Verification Evidence
+
+- TDD RED confirmed the focused security tests failed at collection while the T3 modules were absent; GREEN then passed all 11 focused tests after the primitives were implemented.
+- New security modules passed Ruff formatting/lint and strict mypy checks.
+- Full isolated `COMPOSE_PROJECT_NAME=launchpad-t3-security sh scripts/quality/run.sh` passed: Ruff, mypy (34 files), pytest (53), web tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). The disposable T3 project and its three check volumes were removed afterward.
 
 ### Files Expected
 
