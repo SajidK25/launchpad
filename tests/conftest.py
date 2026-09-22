@@ -24,6 +24,9 @@ class IntegrationSettings:
     s3_endpoint_url: str = field(repr=False)
     s3_access_key_id: str = field(repr=False)
     s3_secret_access_key: str = field(repr=False)
+    mailpit_api_url: str
+    smtp_host: str
+    smtp_port: int
     environment_name: str
 
 
@@ -38,6 +41,15 @@ class StorageCredentials:
     runtime_secret_access_key: str = field(repr=False)
 
 
+@dataclass(frozen=True)
+class MailSettings:
+    """Check-only SMTP sink and inspection endpoint."""
+
+    smtp_host: str
+    smtp_port: int
+    api_url: str
+
+
 def integration_settings() -> IntegrationSettings:
     """Return required settings and fail clearly when the integration service is misconfigured."""
 
@@ -47,6 +59,9 @@ def integration_settings() -> IntegrationSettings:
         "S3_ENDPOINT_URL",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "MAILPIT_API_URL",
+        "LAUNCHPAD_SMTP_HOST",
+        "LAUNCHPAD_SMTP_PORT",
         "LAUNCHPAD_ENVIRONMENT",
     )
     values = {name: os.environ.get(name, "") for name in required_names}
@@ -60,6 +75,9 @@ def integration_settings() -> IntegrationSettings:
         s3_endpoint_url=values["S3_ENDPOINT_URL"],
         s3_access_key_id=values["AWS_ACCESS_KEY_ID"],
         s3_secret_access_key=values["AWS_SECRET_ACCESS_KEY"],
+        mailpit_api_url=values["MAILPIT_API_URL"],
+        smtp_host=values["LAUNCHPAD_SMTP_HOST"],
+        smtp_port=int(values["LAUNCHPAD_SMTP_PORT"]),
         environment_name=values["LAUNCHPAD_ENVIRONMENT"],
     )
 
@@ -109,6 +127,17 @@ def storage_credentials(integration_settings_fixture: IntegrationSettings) -> St
         bootstrap_secret_access_key=integration_settings_fixture.s3_secret_access_key,
         runtime_access_key_id="launchpad_t5_runtime",
         runtime_secret_access_key="launchpad_t5_runtime_password",
+    )
+
+
+@pytest.fixture
+def mail_settings(integration_settings_fixture: IntegrationSettings) -> MailSettings:
+    """Return only the disposable Mailpit identity declared by the check project."""
+
+    return MailSettings(
+        smtp_host=integration_settings_fixture.smtp_host,
+        smtp_port=integration_settings_fixture.smtp_port,
+        api_url=integration_settings_fixture.mailpit_api_url,
     )
 
 

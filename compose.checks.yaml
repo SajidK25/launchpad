@@ -1,3 +1,19 @@
+x-check-runtime: &check_runtime
+  LAUNCHPAD_ENVIRONMENT: check
+  LAUNCHPAD_DATABASE_URL: postgresql://launchpad_check:launchpad_check_password@postgres:5432/launchpad_check
+  LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+  LAUNCHPAD_STORAGE_ENDPOINT_URL: http://minio:9000
+  LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_check_runtime
+  LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_check_runtime_password
+  LAUNCHPAD_MAIL_WEB_ORIGIN: http://web:8080
+  LAUNCHPAD_MAIL_SENDER: noreply@example.com
+  LAUNCHPAD_SMTP_HOST: mailpit
+  LAUNCHPAD_SMTP_PORT: "1025"
+  LAUNCHPAD_SMTP_USE_TLS: "false"
+  LAUNCHPAD_OUTBOX_KEY_ID: check-v1
+  LAUNCHPAD_OUTBOX_KEY: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE=
+  LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL: http://minio:9000
+
 services:
   postgres:
     image: postgres@sha256:f02121de6f74d30d8a94cd1d9584125e2178d7e6c377d8130112d4e52d867995
@@ -39,6 +55,9 @@ services:
       timeout: 3s
       retries: 20
 
+  mailpit:
+    image: axllent/mailpit@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
+
   python-checks:
     build:
       context: .
@@ -61,18 +80,14 @@ services:
       dockerfile: infra/docker/python.Dockerfile
     working_dir: /workspace
     environment:
+      <<: *check_runtime
       AWS_ACCESS_KEY_ID: launchpad_check_minio
       AWS_EC2_METADATA_DISABLED: "true"
       AWS_SECRET_ACCESS_KEY: launchpad_check_minio_password
       DATABASE_URL: postgresql://launchpad_check:launchpad_check_password@postgres:5432/launchpad_check
-      LAUNCHPAD_ENVIRONMENT: check
-      LAUNCHPAD_DATABASE_URL: postgresql://launchpad_check:launchpad_check_password@postgres:5432/launchpad_check
-      LAUNCHPAD_REDIS_URL: redis://redis:6379/0
-      LAUNCHPAD_STORAGE_ENDPOINT_URL: http://minio:9000
-      LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_check_runtime
-      LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_check_runtime_password
       LAUNCHPAD_BOOTSTRAP_STORAGE_ACCESS_KEY_ID: launchpad_check_minio
       LAUNCHPAD_BOOTSTRAP_STORAGE_SECRET_ACCESS_KEY: launchpad_check_minio_password
+      MAILPIT_API_URL: http://mailpit:8025
       MYPY_CACHE_DIR: /tmp/mypy-cache
       PYTEST_ADDOPTS: -p no:cacheprovider
       REDIS_URL: redis://redis:6379/0
@@ -84,6 +99,8 @@ services:
         target: /workspace
         read_only: true
     depends_on:
+      mailpit:
+        condition: service_started
       minio:
         condition: service_healthy
       postgres:
@@ -98,9 +115,7 @@ services:
       dockerfile: infra/docker/python.Dockerfile
     working_dir: /workspace
     environment:
-      LAUNCHPAD_DATABASE_URL: postgresql://launchpad_check:launchpad_check_password@postgres:5432/launchpad_check
-      LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_check_runtime
-      LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_check_runtime_password
+      <<: *check_runtime
       LAUNCHPAD_BOOTSTRAP_STORAGE_ACCESS_KEY_ID: launchpad_check_minio
       LAUNCHPAD_BOOTSTRAP_STORAGE_SECRET_ACCESS_KEY: launchpad_check_minio_password
     depends_on:
@@ -134,14 +149,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      LAUNCHPAD_DATABASE_URL: postgresql://launchpad_check:launchpad_check_password@postgres:5432/launchpad_check
+      <<: *check_runtime
       LAUNCHPAD_ENVIRONMENT: test
-      LAUNCHPAD_REDIS_URL: redis://redis:6379/0
-      LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_check_runtime
-      LAUNCHPAD_STORAGE_ENDPOINT_URL: http://minio:9000
-      LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_check_runtime_password
-      LAUNCHPAD_BOOTSTRAP_STORAGE_ACCESS_KEY_ID: launchpad_check_minio
-      LAUNCHPAD_BOOTSTRAP_STORAGE_SECRET_ACCESS_KEY: launchpad_check_minio_password
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
   web:
@@ -207,7 +216,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+      <<: *check_runtime
     command: ["python", "apps/worker/worker.py"]
     healthcheck:
       test: ["CMD", "python", "apps/worker/worker.py", "--health"]
@@ -225,7 +234,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+      <<: *check_runtime
     command: ["python", "apps/worker/scheduler.py"]
     healthcheck:
       test: ["CMD", "python", "apps/worker/scheduler.py", "--health"]

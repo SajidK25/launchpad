@@ -72,6 +72,19 @@ services:
     depends_on:
       prepare:
         condition: service_completed_successfully
+    environment:
+      LAUNCHPAD_DATABASE_URL: postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development
+      LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+      LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
+      LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_runtime_password
+      LAUNCHPAD_MAIL_WEB_ORIGIN: http://localhost:8080
+      LAUNCHPAD_MAIL_SENDER: noreply@example.com
+      LAUNCHPAD_SMTP_HOST: mailpit
+      LAUNCHPAD_SMTP_PORT: "1025"
+      LAUNCHPAD_SMTP_USE_TLS: "false"
+      LAUNCHPAD_OUTBOX_KEY_ID: development-v1
+      LAUNCHPAD_OUTBOX_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL: http://localhost:9000
     ports:
       - "127.0.0.1:8000:8000"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -93,7 +106,18 @@ services:
       redis:
         condition: service_healthy
     environment:
+      LAUNCHPAD_DATABASE_URL: postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development
       LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+      LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
+      LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_runtime_password
+      LAUNCHPAD_MAIL_WEB_ORIGIN: http://localhost:8080
+      LAUNCHPAD_MAIL_SENDER: noreply@example.com
+      LAUNCHPAD_SMTP_HOST: mailpit
+      LAUNCHPAD_SMTP_PORT: "1025"
+      LAUNCHPAD_SMTP_USE_TLS: "false"
+      LAUNCHPAD_OUTBOX_KEY_ID: development-v1
+      LAUNCHPAD_OUTBOX_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL: http://localhost:9000
     command: ["python", "apps/worker/worker.py"]
     healthcheck:
       test: ["CMD", "python", "apps/worker/worker.py", "--health"]
@@ -111,7 +135,18 @@ services:
       redis:
         condition: service_healthy
     environment:
+      LAUNCHPAD_DATABASE_URL: postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development
       LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+      LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
+      LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_runtime_password
+      LAUNCHPAD_MAIL_WEB_ORIGIN: http://localhost:8080
+      LAUNCHPAD_MAIL_SENDER: noreply@example.com
+      LAUNCHPAD_SMTP_HOST: mailpit
+      LAUNCHPAD_SMTP_PORT: "1025"
+      LAUNCHPAD_SMTP_USE_TLS: "false"
+      LAUNCHPAD_OUTBOX_KEY_ID: development-v1
+      LAUNCHPAD_OUTBOX_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL: http://localhost:9000
     command: ["python", "apps/worker/scheduler.py"]
     healthcheck:
       test: ["CMD", "python", "apps/worker/scheduler.py", "--health"]

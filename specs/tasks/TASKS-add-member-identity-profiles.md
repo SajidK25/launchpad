@@ -80,7 +80,7 @@ Create the forward-only PostgreSQL schema for accounts, sessions, challenges, pr
 
 ## Task T2: Configure isolated identity, mail, and upload prerequisites
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** high
@@ -95,11 +95,11 @@ Provide the pinned libraries and validated local/check configuration required by
 
 ### Verification Checklist
 
-- [ ] **Locked image** — build `python-checks` twice with `docker compose -f compose.checks.yaml build python-checks`; expected: required pinned libraries install from an unchanged lock without host Python.
-- [ ] **Safe settings failures** — run configuration checks with missing/malformed nonlocal mail origin, sender, encryption key, or browser upload endpoint; expected: nonzero failure names the field, never its value (N1).
-- [ ] **Local/check separation** — render both Compose definitions and exercise check fixtures; expected: distinct PostgreSQL/MinIO credentials and volumes, check-only mail, loopback development ports, and no development-volume mount (N3).
-- [ ] **Secret exclusion** — inspect built images and browser assets with disposable secret markers; expected: markers and mail/encryption/storage keys are absent while application package files remain (N1).
-- [ ] **Startup regression** — run unchanged startup/isolation checks; expected: API/worker/scheduler still wait for preparation, and removal of a check project leaves development data intact (N3).
+- [x] **Locked image** — build `python-checks` twice with `docker compose -f compose.checks.yaml build python-checks`; expected: required pinned libraries install from an unchanged lock without host Python.
+- [x] **Safe settings failures** — run configuration checks with missing/malformed nonlocal mail origin, sender, encryption key, or browser upload endpoint; expected: nonzero failure names the field, never its value (N1).
+- [x] **Local/check separation** — render both Compose definitions and exercise check fixtures; expected: distinct PostgreSQL/MinIO credentials and volumes, check-only mail, loopback development ports, and no development-volume mount (N3).
+- [x] **Secret exclusion** — inspect built images and browser assets with disposable secret markers; expected: markers and mail/encryption/storage keys are absent while application package files remain (N1).
+- [x] **Startup regression** — run unchanged startup/isolation checks; expected: API/worker/scheduler still wait for preparation, and removal of a check project leaves development data intact (N3).
 
 ### Implementation Notes
 
@@ -129,6 +129,14 @@ Provide the pinned libraries and validated local/check configuration required by
 
 - `infra/docker/web.conf`, `infra/docker/web.Dockerfile`, `infra/docker/browser.Dockerfile` — proxy and build-output regression guards.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH — protected inputs.
+
+### Verification Evidence
+
+- Two isolated `python-checks` builds succeeded with unchanged `requirements.lock` SHA-256 `e2ae50b70be8a974a6bc5e348a93fa64835aa59a8f9264590bbd4ff33daac455`; `python -m pip check` reported no broken requirements.
+- A production-settings matrix rejected eight missing/malformed/insecure cases by field name without printing the supplied sentinel. A distinct 32-byte key and HTTPS origins passed; the disposable local key was rejected in production.
+- Both Compose files rendered with distinct check/development users and volumes. Check Mailpit accepted an SMTP connection and returned HTTP 200 from its API; development published ports were loopback-only, check Mailpit published none, and API runtime environments contained no bootstrap storage key.
+- Built web assets contained no disposable sentinel, outbox key, or storage credential; web image environment had no `LAUNCHPAD_` values. The Python image retained application code without embedding runtime environment keys.
+- Full isolated `COMPOSE_PROJECT_NAME=launchpad-t2-config sh scripts/quality/run.sh` passed: Ruff, mypy (27 files), pytest (42), web tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). The exact `launchpad-t2-config` project and its three check volumes were removed; other Launchpad volumes remained.
 
 ---
 
