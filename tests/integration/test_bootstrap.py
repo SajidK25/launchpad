@@ -6,7 +6,7 @@ import asyncio
 
 from _pytest.monkeypatch import MonkeyPatch
 from app.bootstrap import prepare
-from app.shared.db.database import FOUNDATION_REVISION, Database
+from app.shared.db.database import Database, migration_head
 from conftest import IntegrationSettings
 
 
@@ -36,7 +36,7 @@ def test_bootstrap_prepares_database_and_private_storage(
     async def verify() -> None:
         database = Database.connect(integration_settings_fixture.database_url)
         try:
-            assert await database.current_revision() == FOUNDATION_REVISION
+            assert await database.current_revision() == migration_head()
         finally:
             await database.close()
 

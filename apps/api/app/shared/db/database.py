@@ -11,11 +11,11 @@ from typing import cast
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-FOUNDATION_REVISION = "0001_foundation"
 PREPARATION_LOCK_KEY = 8_741_430_129
 
 
@@ -58,20 +58,21 @@ class Database:
         async with self.engine.connect() as connection:
             return await _current_revision(connection)
 
-    async def ensure_compatible(self, expected_revision: str = FOUNDATION_REVISION) -> None:
+    async def ensure_compatible(self, expected_revision: str | None = None) -> None:
         """Reject missing, older, or newer schema state without mutating the database."""
 
+        expected = expected_revision or migration_head()
         revision = await self.current_revision()
-        if revision != expected_revision:
+        if revision != expected:
             actual = revision or "missing"
             raise MigrationCompatibilityError(
-                f"Database revision is {actual}; expected {expected_revision}."
+                f"Database revision is {actual}; expected {expected}."
             )
 
     async def prepare(
         self,
         lock_timeout_seconds: float = 5.0,
-        expected_revision: str = FOUNDATION_REVISION,
+        expected_revision: str | None = None,
         script_location: Path | None = None,
     ) -> None:
         """Acquire the session lock, apply migrations, and verify the expected head."""
@@ -87,11 +88,12 @@ class Database:
         self,
         follow_up: Callable[[], Awaitable[None]],
         lock_timeout_seconds: float = 5.0,
-        expected_revision: str = FOUNDATION_REVISION,
+        expected_revision: str | None = None,
         script_location: Path | None = None,
     ) -> None:
         """Hold the preparation lock through migrations and the supplied infrastructure phase."""
 
+        expected = expected_revision or migration_head(script_location)
         async with self.engine.connect() as connection:
             await _acquire_preparation_lock(connection, lock_timeout_seconds)
             try:
@@ -99,10 +101,10 @@ class Database:
                 await connection.run_sync(_upgrade_to_head, script_location)
                 await connection.commit()
                 revision = await _current_revision(connection)
-                if revision != expected_revision:
+                if revision != expected:
                     actual = revision or "missing"
                     raise MigrationCompatibilityError(
-                        f"Database revision is {actual}; expected {expected_revision}."
+                        f"Database revision is {actual}; expected {expected}."
                     )
                 await follow_up()
             finally:
@@ -147,12 +149,28 @@ async def _release_preparation_lock(connection: AsyncConnection) -> None:
         pass
 
 
-def _upgrade_to_head(connection: Connection, script_location: Path | None = None) -> None:
-    """Run Alembic using the connection that owns the preparation lock."""
+def _alembic_config(script_location: Path | None = None) -> Config:
+    """Point Alembic at the packaged migration scripts or an isolated test script."""
 
     api_root = Path(__file__).resolve().parents[3]
     config = Config(str(api_root / "alembic.ini"))
     config.set_main_option("script_location", str(script_location or api_root / "alembic"))
+    return config
+
+
+def migration_head(script_location: Path | None = None) -> str:
+    """Resolve the single revision this application version expects."""
+
+    head = ScriptDirectory.from_config(_alembic_config(script_location)).get_current_head()
+    if head is None:
+        raise MigrationCompatibilityError("No application migration head is available.")
+    return head
+
+
+def _upgrade_to_head(connection: Connection, script_location: Path | None = None) -> None:
+    """Run Alembic using the connection that owns the preparation lock."""
+
+    config = _alembic_config(script_location)
     config.attributes["connection"] = connection
     command.upgrade(config, "head")
 

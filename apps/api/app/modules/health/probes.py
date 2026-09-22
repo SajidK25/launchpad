@@ -3,7 +3,7 @@ import asyncio
 from redis import Redis
 
 from app.modules.health.service import Probe, ProbeResult
-from app.shared.db.database import FOUNDATION_REVISION, Database
+from app.shared.db.database import Database
 from app.shared.storage.client import StorageClient
 
 
@@ -14,7 +14,8 @@ async def unavailable() -> ProbeResult:
 def database_probe(database: Database) -> Probe:
     async def check() -> ProbeResult:
         try:
-            return ProbeResult(await database.current_revision() == FOUNDATION_REVISION)
+            await database.ensure_compatible()
+            return ProbeResult(True)
         except Exception:
             return ProbeResult(False)
 
