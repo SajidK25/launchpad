@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from app.modules.auth.models import Account, EmailVerification, Session
+from app.modules.auth.models import Account, EmailVerification, PasswordReset, Session
 from app.modules.auth.service import PasswordResetService, RegistrationService
 from app.modules.auth.sessions import SessionService, UnauthenticatedError
 from app.modules.users.models import Profile
@@ -292,6 +292,59 @@ def test_password_reset_changes_hash_and_ends_all_sessions(
                     await SessionService(clock=lambda: datetime(2026, 1, 1, tzinfo=UTC)).resolve(
                         session, session_secret=second.session_secret
                     )
+        finally:
+            await database.close()
+
+    asyncio.run(verify())
+
+
+def test_password_reset_notice_failure_rolls_back_account_and_challenge(
+    integration_settings_fixture: IntegrationSettings,
+    reset_database: None,
+) -> None:
+    async def verify() -> None:
+        database = await _database(integration_settings_fixture)
+        codec = EmailPayloadCodec({"v1": b"s" * 32}, "v1")
+
+        class FailingOutbox:
+            async def add(self, session: object, event: object) -> None:
+                raise RuntimeError("notice unavailable")
+
+        try:
+            sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+            recovery = PasswordResetService(
+                payload_codec=codec,
+                outbox_repository=FailingOutbox(),  # type: ignore[arg-type]
+                mail_web_origin="https://launchpad.example",
+                clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            async with sessions.begin() as session:
+                await _service(codec).register(
+                    session, email="member@example.com", password="old password!"
+                )
+            async with sessions.begin() as session:
+                await PasswordResetService(
+                    payload_codec=codec,
+                    mail_web_origin="https://launchpad.example",
+                    clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+                ).request(session, email="member@example.com")
+            async with sessions() as session:
+                event = await session.scalar(
+                    select(OutboxMessage).order_by(OutboxMessage.id.desc())
+                )
+                assert event is not None
+                payload = codec.decode(event.key_id, event.encrypted_payload or b"")
+                token = parse_qs(urlparse(str(payload["body"])).query)["token"][0]
+            with pytest.raises(RuntimeError):
+                async with sessions.begin() as session:
+                    await recovery.reset(session, token=token, new_password="new password!")
+            async with sessions() as session:
+                account = await session.scalar(select(Account))
+                challenge = await session.scalar(select(PasswordReset))
+                assert account is not None and challenge is not None
+                assert verify_password("old password!", account.password_hash)
+                assert account.session_epoch == 0
+                assert challenge.consumed_at is None
         finally:
             await database.close()
 
