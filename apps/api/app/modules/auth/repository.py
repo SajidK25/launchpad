@@ -203,20 +203,25 @@ class AuthRepository:
     ) -> tuple[PasswordReset, Account] | None:
         current = _utc(now)
         challenge = await session.scalar(
+            select(PasswordReset).where(PasswordReset.token_digest == token_digest)
+        )
+        if challenge is None:
+            return None
+        account = await session.scalar(
+            select(Account).where(Account.id == challenge.account_id).with_for_update()
+        )
+        if account is None:
+            return None
+        challenge = await session.scalar(
             select(PasswordReset)
             .where(
-                PasswordReset.token_digest == token_digest,
+                PasswordReset.id == challenge.id,
                 PasswordReset.consumed_at.is_(None),
                 PasswordReset.superseded_at.is_(None),
             )
             .with_for_update()
         )
         if challenge is None or challenge.expires_at <= current:
-            return None
-        account = await session.scalar(
-            select(Account).where(Account.id == challenge.account_id).with_for_update()
-        )
-        if account is None:
             return None
         challenge.consumed_at = current
         await session.flush()

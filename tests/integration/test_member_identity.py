@@ -230,11 +230,24 @@ def test_password_reset_changes_hash_and_ends_all_sessions(
             async with sessions.begin() as session:
                 await recovery.request(session, email="member@example.com")
             async with sessions() as session:
+                first_reset_event = await session.scalar(
+                    select(OutboxMessage).order_by(OutboxMessage.id.desc())
+                )
+                assert first_reset_event is not None
+                first_reset_payload = codec.decode(
+                    first_reset_event.key_id, first_reset_event.encrypted_payload or b""
+                )
+                first_reset_token = parse_qs(urlparse(str(first_reset_payload["body"])).query)[
+                    "token"
+                ][0]
+            async with sessions.begin() as session:
+                await recovery.request(session, email="MEMBER@example.com")
+            async with sessions() as session:
                 account = await session.scalar(select(Account))
                 events = list(
                     (await session.scalars(select(OutboxMessage).order_by(OutboxMessage.id))).all()
                 )
-                assert account is not None and len(events) == 2
+                assert account is not None and len(events) == 3
                 payload = codec.decode(events[-1].key_id, events[-1].encrypted_payload or b"")
                 reset_token = parse_qs(urlparse(str(payload["body"])).query)["token"][0]
                 account_id = account.id
@@ -243,10 +256,23 @@ def test_password_reset_changes_hash_and_ends_all_sessions(
                     clock=lambda: datetime(2026, 1, 1, tzinfo=UTC)
                 ).sign_in(session, email="member@example.com", password="old password!")
             async with sessions.begin() as session:
+                second = await SessionService(
+                    clock=lambda: datetime(2026, 1, 1, tzinfo=UTC)
+                ).sign_in(session, email="member@example.com", password="old password!")
+            async with sessions.begin() as session:
+                stale = await recovery.reset(
+                    session, token=first_reset_token, new_password="new password!"
+                )
+                assert stale.reset is False
+            async with sessions.begin() as session:
                 result = await recovery.reset(
                     session, token=reset_token, new_password="new password!"
                 )
                 assert result.reset
+            async with sessions.begin() as session:
+                assert (
+                    await recovery.reset(session, token=reset_token, new_password="third password!")
+                ).reset is False
             async with sessions() as session:
                 account = await session.get(Account, account_id)
                 assert account is not None and account.verified_at is None
@@ -261,6 +287,10 @@ def test_password_reset_changes_hash_and_ends_all_sessions(
                 with pytest.raises(UnauthenticatedError):
                     await SessionService(clock=lambda: datetime(2026, 1, 1, tzinfo=UTC)).resolve(
                         session, session_secret=first.session_secret
+                    )
+                with pytest.raises(UnauthenticatedError):
+                    await SessionService(clock=lambda: datetime(2026, 1, 1, tzinfo=UTC)).resolve(
+                        session, session_secret=second.session_secret
                     )
         finally:
             await database.close()

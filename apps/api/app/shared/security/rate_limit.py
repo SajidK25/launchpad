@@ -49,5 +49,6 @@ class RateLimiter:
     def _increment(self, key: str) -> int:
         value = int(self.client.incr(key))
         if value == 1:
-            self.client.expire(key, self.window_seconds)
+            if not self.client.expire(key, self.window_seconds):
+                raise RateLimitUnavailable("rate limit expiry unavailable")
         return value

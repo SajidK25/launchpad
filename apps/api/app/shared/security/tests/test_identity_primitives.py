@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from app.shared.security.csrf import (
     RequestSecurityError,
+    derive_csrf_token,
     generate_csrf_token,
     require_csrf,
     verify_csrf_token,
@@ -61,6 +62,12 @@ def test_unsafe_request_requires_trusted_origin_and_session_csrf() -> None:
             pass
         else:
             raise AssertionError("unsafe request should be rejected")
+
+
+def test_derived_csrf_token_is_stable_and_session_bound() -> None:
+    first = derive_csrf_token("session-one")
+    assert first == derive_csrf_token("session-one")
+    assert first != derive_csrf_token("session-two")
 
 
 def test_invalid_inputs_do_not_echo_secret_values() -> None:

@@ -495,6 +495,7 @@ Implement sign-in, sign-out, session resolution, verification-aware member acces
 
 - `apps/api/app/modules/auth/repository.py`, `service.py` — persist/revoke sessions and expose named member access.
 - `tests/integration/test_member_identity.py` — real database/Redis session assertions.
+- `apps/api/app/modules/auth/models.py`, `apps/api/app/shared/security/csrf.py` — authoritative session binding and deterministic CSRF derivation.
 
 **Must NOT modify:**
 
@@ -503,8 +504,8 @@ Implement sign-in, sign-out, session resolution, verification-aware member acces
 
 ### Verification Evidence
 
-- Focused T7 session and rate-limit tests passed (5 tests): restricted unverified sign-in, generic credential failures, expiry/sign-out revocation, independent address/source buckets, and Redis fail-closed behavior. Shared security tests also cover exact trusted-Origin and session-bound CSRF rejection.
-- Full isolated `COMPOSE_PROJECT_NAME=launchpad-t7-sessions sh scripts/quality/run.sh` passed: Ruff, mypy (57 files), pytest (75), web format/lint/types/tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). Disposable T7 services and volumes were isolated under the project name.
+- Focused T7 session and rate-limit tests passed, including action-level limiter invocation, expiry-failure fail-closed behavior, coalesced session activity, deterministic session-bound CSRF, restricted unverified sign-in, generic credential failures, and revocation.
+- Full isolated `COMPOSE_PROJECT_NAME=launchpad-hardening sh scripts/quality/run.sh` passed: Ruff, mypy (58 files), pytest (83), web format/lint/types/tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1).
 
 ---
 
@@ -568,6 +569,7 @@ Implement generic reset requests and one-use recovery for verified and unverifie
 
 - `apps/api/app/modules/auth/repository.py`, `service.py`, `sessions.py` — challenge, hash, epoch, and all-device revocation.
 - `tests/integration/test_member_identity.py`, `tests/integration/test_identity_mail.py` — real transaction and notice assertions.
+- `apps/api/app/modules/auth/models.py` — password-reset challenge mapping.
 
 **Must NOT modify:**
 
@@ -577,7 +579,7 @@ Implement generic reset requests and one-use recovery for verified and unverifie
 ### Verification Evidence
 
 - Focused T8 recovery tests passed: generic known/unknown reset requests, valid reset hash replacement with all-device revocation, invalid-password non-consumption, and encrypted password-change notice coverage.
-- Full isolated `COMPOSE_PROJECT_NAME=launchpad-t8-recovery sh scripts/quality/run.sh` passed: Ruff, mypy (58 files), pytest (80), web format/lint/types/tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). Real PostgreSQL integration confirmed reset challenge consumption, unverified-state preservation, new-password authentication state, and revocation of pre-reset sessions.
+- Full isolated `COMPOSE_PROJECT_NAME=launchpad-hardening sh scripts/quality/run.sh` passed: Ruff, mypy (58 files), pytest (83), web format/lint/types/tests (11), contracts, builds, security (0 vulnerabilities), and browser connectivity (1). Real PostgreSQL integration confirmed reset supersession, one-use consumption, unverified-state preservation, new-password authentication state, and revocation of pre-reset sessions.
 
 ---
 

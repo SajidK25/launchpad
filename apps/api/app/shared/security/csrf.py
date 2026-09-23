@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 from urllib.parse import urlsplit
 
 from app.shared.security.tokens import digest_token, generate_token, token_matches
@@ -22,6 +25,15 @@ def verify_csrf_token(token: str, expected_digest: bytes) -> bool:
     """Verify a CSRF token against the digest bound to its session."""
 
     return token_matches(token, expected_digest)
+
+
+def derive_csrf_token(session_secret: str) -> str:
+    """Derive a stable, session-bound CSRF token without storing another secret."""
+
+    digest = hmac.new(
+        b"launchpad-session-csrf-v1", session_secret.encode("ascii"), hashlib.sha256
+    ).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
 def validate_origin(origin: str | None, trusted_origin: str) -> None:

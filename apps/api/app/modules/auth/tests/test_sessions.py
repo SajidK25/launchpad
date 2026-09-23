@@ -75,6 +75,7 @@ def test_expired_session_is_rejected_and_sign_out_revokes() -> None:
             id=uuid4(),
             revoked_at=None,
             session_epoch=0,
+            last_seen_at=now,
             idle_expires_at=now + timedelta(hours=1),
             absolute_expires_at=now + timedelta(days=1),
         )
@@ -91,5 +92,34 @@ def test_expired_session_is_rejected_and_sign_out_revokes() -> None:
         record.idle_expires_at = now - timedelta(seconds=1)
         with pytest.raises(UnauthenticatedError):
             await service.resolve(db_session, session_secret="secret")
+
+    asyncio.run(run())
+
+
+def test_sign_in_checks_address_and_source_rate_limits() -> None:
+    async def run() -> None:
+        account = Account(
+            id=uuid4(),
+            email_display="member@example.com",
+            email_key="member@example.com",
+            password_hash=hash_password("a secure password!"),
+            session_epoch=0,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        limiter: Any = SimpleNamespace(check=AsyncMock())
+        repository: Any = SimpleNamespace(
+            find_account_by_email_key=AsyncMock(return_value=account),
+            create_session=AsyncMock(return_value=Session(id=uuid4())),
+        )
+        service = SessionService(repository=repository, rate_limiter=limiter)
+        db_session: Any = SimpleNamespace()
+        await service.sign_in(
+            db_session,
+            email="MEMBER@example.com",
+            password="a secure password!",
+            source_key="ip",
+        )
+        limiter.check.assert_awaited_once_with(address_key="member@example.com", source_key="ip")
 
     asyncio.run(run())

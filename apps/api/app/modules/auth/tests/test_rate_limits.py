@@ -39,3 +39,15 @@ def test_redis_failure_fails_closed() -> None:
             await RateLimiter(FakeRedis(fail=True)).check(address_key="a", source_key="one")
 
     asyncio.run(run())
+
+
+def test_expiry_failure_fails_closed() -> None:
+    class ExpiryFailureRedis(FakeRedis):
+        def expire(self, key: str, seconds: int) -> bool:
+            return False
+
+    async def run() -> None:
+        with pytest.raises(RateLimitUnavailable):
+            await RateLimiter(ExpiryFailureRedis()).check(address_key="a", source_key="one")
+
+    asyncio.run(run())

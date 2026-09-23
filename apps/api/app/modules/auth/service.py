@@ -16,6 +16,7 @@ from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.outbox import OutboxEvent, OutboxRepository
 from app.shared.security.email import CanonicalEmail, canonicalize_email
 from app.shared.security.passwords import hash_password
+from app.shared.security.rate_limit import RateLimiter
 from app.shared.security.tokens import digest_token, generate_token
 
 CHALLENGE_TTL = timedelta(minutes=60)
@@ -46,6 +47,7 @@ class RegistrationService:
         outbox_repository: OutboxRepository | None = None,
         payload_codec: EmailPayloadCodec,
         mail_web_origin: str,
+        rate_limiter: RateLimiter | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.auth_repository = auth_repository or AuthRepository()
@@ -53,12 +55,20 @@ class RegistrationService:
         self.outbox_repository = outbox_repository or OutboxRepository()
         self.payload_codec = payload_codec
         self.mail_web_origin = mail_web_origin.rstrip("/")
+        self.rate_limiter = rate_limiter
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def register(
-        self, session: AsyncSession, *, email: str, password: str
+        self,
+        session: AsyncSession,
+        *,
+        email: str,
+        password: str,
+        source_key: str = "unknown",
     ) -> RegistrationResult:
         identity = canonicalize_email(email)
+        if self.rate_limiter is not None:
+            await self.rate_limiter.check(address_key=identity.key, source_key=source_key)
         password_hash = hash_password(password)
         now = self.clock()
         if await self.auth_repository.find_account_by_email_key(session, identity.key) is not None:
@@ -79,11 +89,13 @@ class RegistrationService:
         return RegistrationResult()
 
     async def resend_verification(
-        self, session: AsyncSession, *, account_id: UUID
+        self, session: AsyncSession, *, account_id: UUID, source_key: str = "unknown"
     ) -> RegistrationResult:
         account = await self.auth_repository.find_account_by_id(session, account_id, lock=True)
         if account is None or account.verified_at is not None:
             return RegistrationResult()
+        if self.rate_limiter is not None:
+            await self.rate_limiter.check(address_key=account.email_key, source_key=source_key)
         await self._issue_verification(
             session,
             account_id=account.id,
@@ -92,7 +104,13 @@ class RegistrationService:
         )
         return RegistrationResult()
 
-    async def verify(self, session: AsyncSession, *, token: str) -> VerificationResult:
+    async def verify(
+        self, session: AsyncSession, *, token: str, source_key: str = "unknown"
+    ) -> VerificationResult:
+        if self.rate_limiter is not None:
+            await self.rate_limiter.check(
+                address_key=f"verification:{digest_token(token).hex()}", source_key=source_key
+            )
         account = await self.auth_repository.consume_verification(
             session, digest_token(token), now=self.clock()
         )
@@ -141,8 +159,10 @@ class VerificationService:
     def __init__(self, registration: RegistrationService) -> None:
         self.registration = registration
 
-    async def consume(self, session: AsyncSession, *, token: str) -> VerificationResult:
-        return await self.registration.verify(session, token=token)
+    async def consume(
+        self, session: AsyncSession, *, token: str, source_key: str = "unknown"
+    ) -> VerificationResult:
+        return await self.registration.verify(session, token=token, source_key=source_key)
 
 
 RESET_TTL = CHALLENGE_TTL
@@ -166,16 +186,22 @@ class PasswordResetService:
         outbox_repository: OutboxRepository | None = None,
         payload_codec: EmailPayloadCodec,
         mail_web_origin: str,
+        rate_limiter: RateLimiter | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.repository = repository or AuthRepository()
         self.outbox_repository = outbox_repository or OutboxRepository()
         self.payload_codec = payload_codec
         self.mail_web_origin = mail_web_origin.rstrip("/")
+        self.rate_limiter = rate_limiter
         self.clock = clock or (lambda: datetime.now(UTC))
 
-    async def request(self, session: AsyncSession, *, email: str) -> PasswordResetResult:
+    async def request(
+        self, session: AsyncSession, *, email: str, source_key: str = "unknown"
+    ) -> PasswordResetResult:
         identity = canonicalize_email(email)
+        if self.rate_limiter is not None:
+            await self.rate_limiter.check(address_key=identity.key, source_key=source_key)
         account = await self.repository.find_account_by_email_key(session, identity.key, lock=True)
         if account is None:
             # Keep unknown-address work comparable without retaining the result.
@@ -212,9 +238,18 @@ class PasswordResetService:
         return PasswordResetResult()
 
     async def reset(
-        self, session: AsyncSession, *, token: str, new_password: str
+        self,
+        session: AsyncSession,
+        *,
+        token: str,
+        new_password: str,
+        source_key: str = "unknown",
     ) -> PasswordResetResult:
         password_hash = hash_password(new_password)
+        if self.rate_limiter is not None:
+            await self.rate_limiter.check(
+                address_key=f"reset:{digest_token(token).hex()}", source_key=source_key
+            )
         now = _utc(self.clock())
         consumed = await self.repository.consume_password_reset(
             session, digest_token(token), now=now
