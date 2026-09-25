@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 from base64 import b64decode
 from binascii import Error as Base64Error
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     AnyHttpUrl,
@@ -19,6 +20,7 @@ from pydantic import (
     SecretStr,
     TypeAdapter,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -52,12 +54,58 @@ class Settings(BaseModel):
     smtp_password: SecretStr | None = None
     outbox_key_id: str | None = None
     outbox_key: SecretStr | None = None
+    trusted_web_origins: tuple[str, ...] = ()
     public_upload_endpoint_url: AnyHttpUrl | None = None
     session_cookie_name: Literal["__Host-launchpad_session"] = "__Host-launchpad_session"
     session_cookie_secure: Literal[True] = True
     session_cookie_samesite: Literal["lax"] = "lax"
     session_idle_seconds: Literal[86400] = 86400
     session_absolute_seconds: Literal[604800] = 604800
+
+    @field_validator("trusted_web_origins", mode="before")
+    @classmethod
+    def normalize_trusted_web_origins(cls, value: object) -> tuple[str, ...]:
+        """Parse and canonicalize the explicit browser-origin allowlist."""
+
+        if isinstance(value, str):
+            entries: Sequence[object] = value.split(",")
+        elif isinstance(value, (list, tuple)):
+            entries = value
+        else:
+            raise ValueError("trusted web origins must be a comma-separated list")
+
+        normalized: list[str] = []
+        for entry in entries:
+            if not isinstance(entry, str):
+                raise ValueError("trusted web origins must be strings")
+            candidate = entry.strip()
+            if not candidate:
+                raise ValueError("trusted web origins must not contain blank entries")
+            parsed = urlsplit(candidate)
+            try:
+                port = parsed.port
+            except ValueError as error:
+                raise ValueError("trusted web origin has an invalid port") from error
+            if (
+                parsed.scheme.lower() not in {"http", "https"}
+                or parsed.hostname is None
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path not in ("", "/")
+                or parsed.query
+                or parsed.fragment
+                or (parsed.hostname and "*" in parsed.hostname)
+            ):
+                raise ValueError("trusted web origin is not an origin")
+            host = parsed.hostname.lower()
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+            canonical = f"{parsed.scheme.lower()}://{host}"
+            if port is not None:
+                canonical = f"{canonical}:{port}"
+            if canonical not in normalized:
+                normalized.append(canonical)
+        return tuple(normalized)
 
     @model_validator(mode="after")
     def apply_or_validate_storage_credentials(self) -> Settings:
@@ -159,9 +207,10 @@ def _validate_identity_settings(settings: Settings) -> None:
             ("LAUNCHPAD_SMTP_USE_TLS", settings.smtp_use_tls),
             ("LAUNCHPAD_OUTBOX_KEY_ID", settings.outbox_key_id),
             ("LAUNCHPAD_OUTBOX_KEY", settings.outbox_key),
+            ("LAUNCHPAD_TRUSTED_WEB_ORIGINS", settings.trusted_web_origins),
             ("LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL", settings.public_upload_endpoint_url),
         )
-        if value is None or value == ""
+        if value is None or value == "" or value == ()
     ]
     if missing:
         raise ConfigurationError(f"Invalid configuration: {', '.join(missing)}")
