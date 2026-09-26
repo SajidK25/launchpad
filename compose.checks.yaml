@@ -5,6 +5,7 @@ x-check-runtime: &check_runtime
   LAUNCHPAD_STORAGE_ENDPOINT_URL: http://minio:9000
   LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_check_runtime
   LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_check_runtime_password
+  LAUNCHPAD_TRUSTED_WEB_ORIGINS: http://web:8080,http://localhost:8080,http://127.0.0.1:8080
   LAUNCHPAD_MAIL_WEB_ORIGIN: http://web:8080
   LAUNCHPAD_MAIL_SENDER: noreply@example.com
   LAUNCHPAD_SMTP_HOST: mailpit
@@ -64,6 +65,7 @@ services:
       dockerfile: infra/docker/python.Dockerfile
     working_dir: /workspace
     environment:
+      LAUNCHPAD_TRUSTED_WEB_ORIGINS: http://web:8080,http://localhost:8080,http://127.0.0.1:8080
       MYPY_CACHE_DIR: /tmp/mypy-cache
       PYTEST_ADDOPTS: -p no:cacheprovider
       RUFF_CACHE_DIR: /tmp/ruff-cache

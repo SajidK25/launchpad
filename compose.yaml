@@ -56,6 +56,7 @@ services:
       LAUNCHPAD_DATABASE_URL: postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development
       LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
       LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_runtime_password
+      LAUNCHPAD_TRUSTED_WEB_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
       LAUNCHPAD_BOOTSTRAP_STORAGE_ACCESS_KEY_ID: launchpad_development_minio
       LAUNCHPAD_BOOTSTRAP_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_password
     depends_on:
@@ -77,6 +78,7 @@ services:
       LAUNCHPAD_REDIS_URL: redis://redis:6379/0
       LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
       LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_runtime_password
+      LAUNCHPAD_TRUSTED_WEB_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
       LAUNCHPAD_MAIL_WEB_ORIGIN: http://localhost:8080
       LAUNCHPAD_MAIL_SENDER: noreply@example.com
       LAUNCHPAD_SMTP_HOST: mailpit
@@ -111,6 +113,7 @@ services:
       LAUNCHPAD_REDIS_URL: redis://redis:6379/0
       LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
       LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_runtime_password
+      LAUNCHPAD_TRUSTED_WEB_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
       LAUNCHPAD_MAIL_WEB_ORIGIN: http://localhost:8080
       LAUNCHPAD_MAIL_SENDER: noreply@example.com
       LAUNCHPAD_SMTP_HOST: mailpit
@@ -141,6 +144,7 @@ services:
       LAUNCHPAD_REDIS_URL: redis://redis:6379/0
       LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
       LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_runtime_password
+      LAUNCHPAD_TRUSTED_WEB_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
       LAUNCHPAD_MAIL_WEB_ORIGIN: http://localhost:8080
       LAUNCHPAD_MAIL_SENDER: noreply@example.com
       LAUNCHPAD_SMTP_HOST: mailpit

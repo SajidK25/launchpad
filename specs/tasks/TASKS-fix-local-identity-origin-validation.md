@@ -224,7 +224,7 @@ Pass the validated trusted-origin collection into every existing auth and profil
 
 ## Task T4: Declare runtime origins and update local guidance
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** high
