@@ -6,6 +6,7 @@ from app.shared.security.csrf import (
     derive_csrf_token,
     generate_csrf_token,
     require_csrf,
+    validate_origin,
     verify_csrf_token,
 )
 from app.shared.security.email import canonicalize_email
@@ -62,6 +63,38 @@ def test_unsafe_request_requires_trusted_origin_and_session_csrf() -> None:
             pass
         else:
             raise AssertionError("unsafe request should be rejected")
+
+
+def test_origin_validation_accepts_each_configured_origin() -> None:
+    trusted_origins = ("http://localhost:8080", "http://127.0.0.1:8080")
+
+    validate_origin("http://localhost:8080", trusted_origins)
+    validate_origin("http://127.0.0.1:8080", trusted_origins)
+
+
+def test_origin_validation_accepts_explicit_internal_check_origin() -> None:
+    validate_origin("http://web:8080", ("http://web:8080",))
+
+
+def test_origin_validation_rejects_missing_origin() -> None:
+    with pytest.raises(RequestSecurityError):
+        validate_origin(None, ("http://localhost:8080",))
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://localhost:8080",
+        "http://localhost:3000",
+        "http://evil.example:8080",
+        "http://localhost:8080/path",
+        "http://localhost:8080?debug=true",
+        "http://user:pass@localhost:8080",
+    ],
+)
+def test_origin_validation_rejects_non_exact_origins(origin: str) -> None:
+    with pytest.raises(RequestSecurityError):
+        validate_origin(origin, ("http://localhost:8080",))
 
 
 def test_derived_csrf_token_is_stable_and_session_bound() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+from collections.abc import Collection
 from urllib.parse import urlsplit
 
 from app.shared.security.tokens import digest_token, generate_token, token_matches
@@ -36,23 +37,49 @@ def derive_csrf_token(session_secret: str) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
-def validate_origin(origin: str | None, trusted_origin: str) -> None:
-    """Require an exact scheme/host/port match with the configured web origin."""
+def _origin_parts(
+    value: str, *, allow_root_path: bool = False
+) -> tuple[str, str, int | None] | None:
+    """Return comparable origin parts for a URL that contains only an origin."""
+
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or (parsed.path if not allow_root_path else parsed.path not in ("", "/"))
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    return parsed.scheme.lower(), parsed.hostname.lower(), port
+
+
+def validate_origin(origin: str | None, trusted_origins: Collection[str] | str) -> None:
+    """Require an exact scheme/host/port match with a configured web origin."""
 
     if origin is None:
         raise RequestSecurityError("origin required")
-    actual = urlsplit(origin)
-    trusted = urlsplit(trusted_origin)
-    if (
-        actual.scheme.lower(),
-        actual.hostname,
-        actual.port,
-    ) != (trusted.scheme.lower(), trusted.hostname, trusted.port):
+    actual = _origin_parts(origin)
+    configured = (trusted_origins,) if isinstance(trusted_origins, str) else trusted_origins
+    if actual is None or not any(
+        actual == trusted
+        for trusted in (_origin_parts(value, allow_root_path=True) for value in configured)
+    ):
         raise RequestSecurityError("untrusted origin")
 
 
 def require_csrf(
-    *, origin: str | None, trusted_origin: str, token: str | None, expected_digest: bytes
+    *,
+    origin: str | None,
+    trusted_origin: Collection[str] | str,
+    token: str | None,
+    expected_digest: bytes,
 ) -> None:
     """Apply origin and session-bound CSRF checks before unsafe mutations."""
 

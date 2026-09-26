@@ -74,7 +74,7 @@ Add the required `LAUNCHPAD_TRUSTED_WEB_ORIGINS` setting as a normalized, immuta
 
 ## Task T2: Extend the shared exact-origin and CSRF primitive
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** s
 > **Priority:** critical
