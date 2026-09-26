@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from app.main import create_app
 from app.modules.auth.models import Account, EmailVerification, PasswordReset, Session
 from app.modules.auth.service import PasswordResetService, RegistrationService
 from app.modules.auth.sessions import AuthenticationError, SessionService, UnauthenticatedError
@@ -16,6 +17,7 @@ from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.models import OutboxMessage
 from app.shared.security.passwords import verify_password
 from conftest import IntegrationSettings
+from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -26,6 +28,49 @@ def _service(codec: EmailPayloadCodec, *, now: datetime | None = None) -> Regist
         mail_web_origin="https://launchpad.example",
         clock=lambda: now or datetime.now(UTC),
     )
+
+
+@pytest.mark.parametrize(
+    "origin_value",
+    ["http://web:8080", "http://localhost:8080", "http://127.0.0.1:8080"],
+)
+def test_auth_http_login_session_and_logout_use_one_transaction(
+    integration_settings_fixture: IntegrationSettings,
+    reset_database: None,
+    origin_value: str,
+) -> None:
+    prepared = asyncio.run(_database(integration_settings_fixture))
+    asyncio.run(prepared.close())
+    with TestClient(create_app()) as client:
+        origin = {"Origin": origin_value}
+        email_tag = origin_value.split("//", 1)[1].replace(".", "-").replace(":", "-")
+        payload = {
+            "email": f"http-member-{email_tag}@example.com",
+            "password": "a secure password!",
+        }
+
+        registration = client.post("/api/v1/auth/register", json=payload, headers=origin)
+        assert registration.status_code == 202
+
+        login = client.post("/api/v1/auth/login", json=payload, headers=origin)
+        assert login.status_code == 200
+        session_cookie = login.cookies.get("__Host-launchpad_session")
+        assert session_cookie is not None
+        csrf_token = login.json()["csrf_token"]
+
+        current = client.get(
+            "/api/v1/auth/session",
+            cookies={"__Host-launchpad_session": session_cookie},
+        )
+        assert current.status_code == 200
+        assert current.headers["cache-control"] == "no-store"
+
+        logout = client.post(
+            "/api/v1/auth/logout",
+            headers={**origin, "X-CSRF-Token": csrf_token},
+            cookies={"__Host-launchpad_session": session_cookie},
+        )
+        assert logout.status_code == 204
 
 
 async def _database(settings: IntegrationSettings) -> Database:
@@ -237,6 +282,7 @@ def test_password_reset_changes_hash_and_ends_all_sessions(
                 first_reset_payload = codec.decode(
                     first_reset_event.key_id, first_reset_event.encrypted_payload or b""
                 )
+                assert urlparse(str(first_reset_payload["body"])).path == "/reset"
                 first_reset_token = parse_qs(urlparse(str(first_reset_payload["body"])).query)[
                     "token"
                 ][0]
@@ -249,6 +295,7 @@ def test_password_reset_changes_hash_and_ends_all_sessions(
                 )
                 assert account is not None and len(events) == 3
                 payload = codec.decode(events[-1].key_id, events[-1].encrypted_payload or b"")
+                assert urlparse(str(payload["body"])).path == "/reset"
                 reset_token = parse_qs(urlparse(str(payload["body"])).query)["token"][0]
                 account_id = account.id
             async with sessions.begin() as session:

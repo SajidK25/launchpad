@@ -147,7 +147,7 @@ Extend the existing origin and CSRF primitive to accept the normalized trusted-o
 
 ## Task T3: Wire trusted origins through auth and profile routes
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** critical
