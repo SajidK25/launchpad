@@ -156,7 +156,7 @@ def test_probe_is_read_only_and_timeout_does_not_block_the_event_loop(
     """The probe uses only metadata calls and times out while other coroutines progress."""
 
     class SlowClient:
-        def head_bucket(self, *, Bucket: str) -> None:
+        def get_bucket_location(self, *, Bucket: str) -> None:
             time.sleep(0.2)
 
         def get_bucket_policy(self, *, Bucket: str) -> None:
@@ -175,7 +175,7 @@ def test_probe_is_read_only_and_timeout_does_not_block_the_event_loop(
             secret_access_key=storage_credentials.runtime_secret_access_key,
             client_factory=lambda: runtime,
         ).probe(storage_bucket)
-        assert operations == ["HeadBucket", "GetBucketPolicy"]
+        assert operations == ["GetBucketLocation", "GetBucketPolicy"]
 
         timed_out = StorageClient(
             endpoint_url=storage_credentials.endpoint_url,

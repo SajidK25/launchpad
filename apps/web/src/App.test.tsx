@@ -5,6 +5,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import { useConnectivity } from "./connectivity/useConnectivity";
+import { createIdentityClient } from "./identity/client";
+
+vi.mock("./identity/Screens", () => ({
+  IdentityRoutes: () => <div>identity routes</div>,
+}));
+vi.mock("./profiles/ProfileScreens", () => ({
+  ProfileRoutes: () => <div>profile routes</div>,
+}));
+vi.mock("./identity/client", () => ({
+  createIdentityClient: vi.fn(() => ({ getCsrfToken: () => null })),
+}));
 
 vi.mock("./connectivity/useConnectivity", () => ({
   useConnectivity: vi.fn(),
@@ -14,6 +25,7 @@ const mockedUseConnectivity = vi.mocked(useConnectivity);
 
 afterEach(() => {
   cleanup();
+  window.history.pushState({}, "", "/");
   vi.clearAllMocks();
 });
 
@@ -50,5 +62,21 @@ describe("App", () => {
     fireEvent.click(retry);
 
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the identity client stable across route rerenders", () => {
+    mockedUseConnectivity.mockReturnValue({
+      refresh: vi.fn(),
+      state: "connected",
+    });
+    window.history.pushState({}, "", "/signin");
+    const view = render(<App />);
+
+    expect(createIdentityClient).toHaveBeenCalledTimes(1);
+    window.history.pushState({}, "", "/profile");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    view.rerender(<App />);
+
+    expect(createIdentityClient).toHaveBeenCalledTimes(1);
   });
 });

@@ -104,3 +104,154 @@ h1 {
   background: #ffffff;
   color: #172033;
 }
+
+.identity-shell {
+  align-items: flex-start;
+  padding-top: clamp(3rem, 10vh, 7rem);
+}
+.identity-card {
+  background: #fff;
+  border: 1px solid #d7deea;
+  border-radius: 1rem;
+  box-shadow: 0 0.75rem 2rem rgb(23 32 51 / 10%);
+  max-width: 32rem;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  width: 100%;
+}
+.identity-card h1 {
+  margin-top: 0.25rem;
+}
+.identity-intro {
+  color: #526076;
+  margin: 1rem 0 0;
+}
+.identity-form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.form-field {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 700;
+}
+.form-field input {
+  border: 1px solid #aab5c7;
+  border-radius: 0.5rem;
+  color: #172033;
+  font: inherit;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.75rem;
+}
+.form-field input:focus-visible {
+  border-color: #2563eb;
+  outline: 3px solid rgb(37 99 235 / 25%);
+  outline-offset: 1px;
+}
+.primary-button,
+.secondary-button {
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+}
+.primary-button {
+  background: #172033;
+  border: 2px solid #172033;
+  color: #fff;
+}
+.primary-button:hover {
+  background: #fff;
+  color: #172033;
+}
+.secondary-button {
+  background: #fff;
+  border: 2px solid #172033;
+  color: #172033;
+  margin-top: 1rem;
+}
+.form-message {
+  margin: 0;
+}
+.form-error {
+  color: #9f1d1a;
+}
+.identity-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.identity-links a,
+.back-link {
+  color: #1557b0;
+  font-weight: 700;
+}
+.back-link {
+  display: inline-block;
+  margin-top: 1.5rem;
+}
+.profile-card {
+  max-width: 44rem;
+}
+.profile-card textarea {
+  border: 1px solid #aab5c7;
+  border-radius: 0.5rem;
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  resize: vertical;
+}
+.profile-card textarea:focus-visible {
+  border-color: #2563eb;
+  outline: 3px solid rgb(37 99 235 / 25%);
+  outline-offset: 1px;
+}
+.profile-checklist {
+  display: grid;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.profile-checklist li::before {
+  content: "○";
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+.profile-checklist .complete {
+  color: #0d5b35;
+}
+.profile-checklist .complete::before {
+  content: "✓";
+}
+.profile-checklist .incomplete {
+  color: #526076;
+}
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.profile-actions .secondary-button {
+  margin-top: 0;
+}
+.profile-photo {
+  border-radius: 0.75rem;
+  display: block;
+  margin-top: 1.25rem;
+  max-height: 18rem;
+  max-width: 100%;
+  object-fit: cover;
+}
+.profile-bio {
+  color: #526076;
+  font-size: 1.1rem;
+}
+.public-links {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0;
+  padding-left: 1.25rem;
+}

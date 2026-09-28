@@ -5,6 +5,6 @@
   "type": "module",
   "types": "./src/generated.ts",
   "scripts": {
-    "generate": "openapi-typescript openapi.json -o src/generated.ts && prettier --write openapi.json src/generated.ts"
+    "generate": "openapi-typescript openapi.json -o src/generated.ts && prettier --write openapi.json schema.graphql src/generated.ts src/graphql.generated.ts"
   }
 }

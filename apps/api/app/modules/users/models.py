@@ -65,7 +65,10 @@ class ProfileLink(UsersBase):
 
     __tablename__ = "profile_links"
     __table_args__ = (
-        CheckConstraint("url ~ '^https://[^/ ]+'", name="ck_profile_links_https"),
+        CheckConstraint(
+            "url ~ '^https://[^/@?#[:space:]]+(/[^?#[:space:]]*)?(\\?[^#[:space:]]*)?$'",
+            name="ck_profile_links_https",
+        ),
         CheckConstraint("position >= 0", name="ck_profile_links_position"),
         UniqueConstraint("account_id", "position", name="uq_profile_links_position"),
         Index("ix_profile_links_account_id", "account_id"),

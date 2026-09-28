@@ -1,0 +1,97 @@
+# Review Report
+
+## Metadata
+
+| Field | Value |
+|-------|-------|
+| **Review Mode** | Pipeline re-review: ARCH-add-member-identity-profiles |
+| **Target** | Current worktree against REQ, ARCH, TASKS, and prior review findings |
+| **Date** | 2026-09-25 |
+| **Tech Stack** | Python 3.12/FastAPI/SQLAlchemy/Alembic/PostgreSQL/Redis; React/TypeScript/Vite/TanStack Query; pytest/Vitest/Playwright; Docker Compose |
+| **Checks Run** | Task completion, requirement coverage, security, React, TypeScript, accessibility, async, code quality, error handling, database/migration, documentation, config/dependencies |
+| **Checks Skipped** | Express-specific; standalone performance (no high-confidence performance finding) |
+| **Files Changed** | 54 status entries; current tracked diff +2919/-73 |
+
+## Review Process
+
+- [x] Preflight checks passed
+- [x] Diff gathered
+- [x] Tech stack detected
+- [x] Context read (`AGENTS.md`, `CLAUDE.md`, REQ, ARCH, TASKS)
+- [x] Triage proposed and developer confirmed
+- [x] Fresh checks dispatched and prior findings re-checked
+- [x] Results collected and deduplicated
+- [x] Report compiled
+- [x] Verdict determined
+- [x] Report saved to `specs/reviews/`
+
+## Verdict: ❌ FAIL
+
+The previous eight findings are resolved, and the current static checks confirm the migration, response validation, accessibility, recovery route, and documentation fixes. One new high-severity runtime defect remains: the application recreates the identity client on every route render, losing the in-memory CSRF token needed for profile mutations and logout. Two medium documentation/robustness issues also remain.
+
+### Finding Counts
+
+| Category | 🔴 | 🟠 | 🟡 | 💭 | ⚠️ |
+|----------|-----|-----|-----|-----|-----|
+| Security / React | 0 | 1 | 0 | 0 | 0 |
+| Error handling | 0 | 0 | 1 | 0 | 0 |
+| Documentation / task completion | 0 | 0 | 1 | 0 | 0 |
+| **Total** | **0** | **1** | **2** | **0** | **0** |
+
+## Current Findings
+
+### 🟠 High — Identity client loses CSRF state across route renders
+
+**Location:** `apps/web/src/App.tsx:29-34`
+
+`createIdentityClient()` is called inside the route branch on every `App` render. The client stores the session-bound CSRF token in a closure. After sign-in, navigation to `/profile` or any rerender replaces the client with a fresh instance whose token is `null`; profile PATCH/publish/unpublish/photo-complete and logout requests then omit `X-CSRF-Token` and receive 403 responses.
+
+**Recommendation:** Create the identity client once with `useState`/`useMemo([])` or a stable provider/context. Add an App-level sign-in → profile edit/logout regression test.
+
+### 🟡 Medium — Storage transport failures still escape the safe bootstrap boundary
+
+**Location:** `apps/api/app/shared/storage/provision.py:42-55`
+
+The normalization boundary catches `ClientError` and `MinioAdminException`, but network/transport failures such as `BotoCoreError`/`EndpointConnectionError` can still escape `_prepare_sync()`. Bootstrap only maps `StorageProvisioningError`, so an unreachable storage dependency may emit a traceback instead of the documented bounded failure.
+
+**Recommendation:** Catch `BotoCoreError` (including transport subclasses) and normalize it to `StorageProvisioningError`; add a missing-storage connection drill.
+
+### 🟡 Medium — ADR 0002 is stale about GraphQL
+
+**Location:** `docs/adr/0002-health-contracts.md:17`
+
+The ADR says “GraphQL and WebSocket health surfaces are deferred until a feature consumes them.” GraphQL is now an active profile-read API and is covered by the contracts gate. The intended statement is only that no GraphQL health endpoint exists.
+
+**Recommendation:** Clarify ADR 0002 to distinguish the active GraphQL profile API from deferred GraphQL/WebSocket health endpoints.
+
+## Rechecked Prior Findings
+
+- ✅ Password-reset route now matches `/reset?token=...`.
+- ✅ Secure-cookie local documentation matches the supported localhost behavior.
+- ✅ GraphQL quality documentation and ADR 0004 are corrected.
+- ✅ T17 QA evidence artifact exists.
+- ✅ Storage API/admin exceptions are normalized.
+- ✅ Profile-link constraints have forward migrations and preserve query strings.
+- ✅ Profile error/status associations are present.
+- ✅ Identity/profile response shapes are validated.
+- ✅ Earlier hook-order and photo-retention findings remain fixed.
+
+## Verification
+
+- Fresh Ruff format/lint and `git diff --check` passed.
+- Prior full isolated gate passed after the fixes: 132 backend/integration tests, 37 web tests, migrations, contracts, builds, security scans, and 2 browser tests.
+- Post-migration refinement targeted suite passed: 17 migration/identity tests.
+
+## Prioritized Action Items
+
+### Must Fix (🔴 Critical / 🟠 High)
+
+1. Stabilize the identity client lifetime in `App.tsx` and add a route-transition mutation/logout regression test.
+
+### Should Address (🟡 Medium)
+
+1. Normalize `BotoCoreError`/transport failures during storage preparation.
+2. Correct ADR 0002’s GraphQL wording.
+
+---
+*Generated by Review — 2026-09-25*

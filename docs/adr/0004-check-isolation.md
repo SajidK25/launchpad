@@ -14,4 +14,4 @@ Use `compose.checks.yaml` with check-only credentials and named volumes. The sha
 
 ## Consequences
 
-Every category propagates failure, including unavailable scanners and controlled failures. GraphQL and WebSocket checks explicitly report not applicable in this foundation. A unique `COMPOSE_PROJECT_NAME` keeps check data separate from development data. This implements architecture decisions A8, A9, and A12 and requirements R6, R7, R9, and N4.
+Every category propagates failure, including unavailable scanners and controlled failures. The contracts category generates and checks the shipped REST/OpenAPI and GraphQL schema/operation artifacts. WebSocket is explicitly not applicable because this foundation has no WebSocket feature. A unique `COMPOSE_PROJECT_NAME` keeps check data separate from development data. This implements architecture decisions A8, A9, and A12 and requirements R6, R7, R9, and N4.

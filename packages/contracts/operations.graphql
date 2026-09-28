@@ -1,0 +1,21 @@
+query PublicProfile($accountId: UUID!) {
+  publicProfile(accountId: $accountId) {
+    accountId
+    displayName
+    bio
+    links
+    photoUrl
+  }
+}
+
+query ViewerProfile {
+  viewerProfile {
+    accountId
+    displayName
+    bio
+    links
+    photoUrl
+    visibility
+    version
+  }
+}

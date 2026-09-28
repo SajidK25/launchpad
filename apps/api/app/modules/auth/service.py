@@ -221,7 +221,7 @@ class PasswordResetService:
             {
                 "recipient": account.email_display,
                 "subject": "Reset your Launchpad password",
-                "body": f"{self.mail_web_origin}/reset-password?token={raw_token}",
+                "body": f"{self.mail_web_origin}/reset?token={raw_token}",
                 "expires_at": expires_at.isoformat(),
             }
         )

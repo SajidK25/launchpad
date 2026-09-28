@@ -1,0 +1,24 @@
+type PublicProfile {
+  accountId: UUID!
+  displayName: String!
+  bio: String!
+  links: [String!]!
+  photoUrl: String
+}
+
+type Query {
+  viewerProfile: ViewerProfile!
+  publicProfile(accountId: UUID!): PublicProfile
+}
+
+scalar UUID
+
+type ViewerProfile {
+  accountId: UUID!
+  displayName: String!
+  bio: String!
+  links: [String!]!
+  photoUrl: String
+  visibility: String!
+  version: Int!
+}

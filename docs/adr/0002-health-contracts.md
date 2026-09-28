@@ -14,4 +14,4 @@ The API exposes a minimal readiness response. It probes PostgreSQL, Redis, and p
 
 ## Consequences
 
-Readiness avoids credentials, stack traces, and dependency internals in public responses and logs. GraphQL and WebSocket health surfaces are deferred until a feature consumes them. This implements architecture decisions A5, A6, and A7 and requirements R4, R5, N1, and N2.
+Readiness avoids credentials, stack traces, and dependency internals in public responses and logs. The profile feature has an active GraphQL read API, but there is no separate GraphQL health endpoint; GraphQL and WebSocket health surfaces remain deferred. This implements architecture decisions A5, A6, and A7 and requirements R4, R5, N1, and N2.

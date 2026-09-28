@@ -65,12 +65,122 @@ def test_auth_http_login_session_and_logout_use_one_transaction(
         assert current.status_code == 200
         assert current.headers["cache-control"] == "no-store"
 
+        if origin_value == "http://localhost:8080":
+            verification_request = client.post(
+                "/api/v1/auth/verification-requests",
+                headers={**origin, "X-CSRF-Token": csrf_token},
+                cookies={"__Host-launchpad_session": session_cookie},
+            )
+            assert verification_request.status_code == 202
+
+            recovery_request = client.post(
+                "/api/v1/auth/password-reset-requests",
+                json={"email": payload["email"]},
+                headers=origin,
+            )
+            assert recovery_request.status_code == 202
+
+        profile_update = client.patch(
+            "/api/v1/me/profile",
+            json={"version": 0, "bio": "Private member bio"},
+            headers={**origin, "X-CSRF-Token": csrf_token},
+            cookies={"__Host-launchpad_session": session_cookie},
+        )
+        assert profile_update.status_code == 200
+        assert profile_update.json()["bio"] == "Private member bio"
+
         logout = client.post(
             "/api/v1/auth/logout",
             headers={**origin, "X-CSRF-Token": csrf_token},
             cookies={"__Host-launchpad_session": session_cookie},
         )
         assert logout.status_code == 204
+
+
+def test_rejected_http_identity_actions_leave_database_state_unchanged(
+    integration_settings_fixture: IntegrationSettings,
+    reset_database: None,
+) -> None:
+    prepared = asyncio.run(_database(integration_settings_fixture))
+    asyncio.run(prepared.close())
+    rejected = {"Origin": "http://evil.example:8080"}
+    payload = {"email": "rejected-state@example.com", "password": "a secure password!"}
+
+    with TestClient(create_app()) as client:
+        registration = client.post(
+            "/api/v1/auth/register",
+            json=payload,
+            headers=rejected,
+        )
+        assert registration.status_code == 403
+        assert registration.json() == {"detail": "request rejected"}
+
+        async def empty_counts() -> tuple[int, int, int, int, int]:
+            database = await _database(integration_settings_fixture)
+            try:
+                sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+                async with sessions() as session:
+                    return (
+                        await session.scalar(select(func.count(Account.id))) or 0,
+                        await session.scalar(select(func.count(Session.id))) or 0,
+                        await session.scalar(select(func.count(EmailVerification.id))) or 0,
+                        await session.scalar(select(func.count(Profile.account_id))) or 0,
+                        await session.scalar(select(func.count(OutboxMessage.id))) or 0,
+                    )
+            finally:
+                await database.close()
+
+        assert asyncio.run(empty_counts()) == (0, 0, 0, 0, 0)
+
+        async def create_member() -> None:
+            database = await _database(integration_settings_fixture)
+            try:
+                sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+                codec = EmailPayloadCodec({"v1": b"q" * 32}, "v1")
+                async with sessions.begin() as session:
+                    await _service(codec).register(
+                        session, email=payload["email"], password=payload["password"]
+                    )
+            finally:
+                await database.close()
+
+        asyncio.run(create_member())
+
+        before = asyncio.run(_identity_state(integration_settings_fixture))
+
+        recovery = client.post(
+            "/api/v1/auth/password-reset-requests",
+            json={"email": payload["email"]},
+            headers=rejected,
+        )
+        assert recovery.status_code == 403
+        assert recovery.json() == {"detail": "request rejected"}
+
+        profile = client.patch(
+            "/api/v1/me/profile",
+            json={"version": 0, "bio": "must not persist"},
+            headers=rejected,
+        )
+        assert profile.status_code == 403
+        assert profile.json() == {"detail": "request rejected"}
+        assert asyncio.run(_identity_state(integration_settings_fixture)) == before
+
+
+async def _identity_state(settings: IntegrationSettings) -> tuple[int, int, int, str | None, int]:
+    database = await _database(settings)
+    try:
+        sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+        async with sessions() as session:
+            profile = await session.scalar(select(Profile))
+            return (
+                await session.scalar(select(func.count(Account.id))) or 0,
+                await session.scalar(select(func.count(Session.id))) or 0,
+                await session.scalar(select(func.count(PasswordReset.id))) or 0,
+                profile.bio if profile is not None else None,
+                await session.scalar(select(func.count(OutboxMessage.id))) or 0,
+            )
+    finally:
+        await database.close()
 
 
 async def _database(settings: IntegrationSettings) -> Database:

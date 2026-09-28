@@ -31,6 +31,7 @@ class MemberContext:
     verified: bool
     session_id: UUID
     csrf_digest: bytes = b""
+    email_display: str = ""
 
     @property
     def can_publish(self) -> bool:
@@ -103,7 +104,11 @@ class SessionService:
             csrf_token=csrf,
             csrf_digest=csrf_digest,
             member=MemberContext(
-                account.id, account.verified_at is not None, record.id, csrf_digest
+                account.id,
+                account.verified_at is not None,
+                record.id,
+                csrf_digest,
+                account.email_display,
             ),
         )
 
@@ -129,6 +134,7 @@ class SessionService:
             account.verified_at is not None,
             record.id,
             digest_token(derive_csrf_token(session_secret)),
+            getattr(account, "email_display", ""),
         )
 
     async def sign_out(self, session: AsyncSession, *, session_secret: str) -> None:

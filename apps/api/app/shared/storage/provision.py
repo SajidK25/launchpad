@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 import boto3
 from botocore.client import BaseClient
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from minio.credentials.providers import StaticProvider
 from minio.error import MinioAdminException
 from minio.minioadmin import MinioAdmin
@@ -32,6 +32,7 @@ class StorageProvisioner:
     bootstrap_secret_access_key: str
     runtime_access_key_id: str
     runtime_secret_access_key: str
+    upload_origin: str | None = None
 
     async def prepare(self, bucket_name: str) -> None:
         """Prepare the named bucket without deleting objects or weakening existing policy."""
@@ -40,12 +41,18 @@ class StorageProvisioner:
 
     def _prepare_sync(self, bucket_name: str) -> None:
         """Perform local MinIO administration outside an application event loop."""
-
-        client = self._bootstrap_client()
-        if not _bucket_exists(client, bucket_name):
-            client.create_bucket(Bucket=bucket_name)
-        _assert_private_policy(client, bucket_name)
-        self._ensure_runtime_identity(bucket_name)
+        try:
+            client = self._bootstrap_client()
+            if not _bucket_exists(client, bucket_name):
+                client.create_bucket(Bucket=bucket_name)
+            _assert_private_policy(client, bucket_name)
+            if self.upload_origin is not None:
+                _configure_upload_cors(client, bucket_name, self.upload_origin)
+            self._ensure_runtime_identity(bucket_name)
+        except StorageProvisioningError:
+            raise
+        except (BotoCoreError, ClientError, MinioAdminException):
+            raise StorageProvisioningError("Storage provisioning could not be completed.") from None
 
     def _bootstrap_client(self) -> BaseClient:
         """Create the administration-plane S3 client with bootstrap credentials only."""
@@ -126,15 +133,43 @@ def _policy_allows_anonymous_access(policy: str) -> bool:
 
 
 def _runtime_policy(bucket_name: str) -> dict[str, object]:
-    """Grant only the runtime calls required for private read-only readiness checks."""
+    """Grant only bounded private staging/final object operations and probes."""
 
     return {
         "Version": "2012-10-17",
         "Statement": [
             {
                 "Effect": "Allow",
-                "Action": ["s3:GetBucketLocation", "s3:GetBucketPolicy", "s3:ListBucket"],
+                "Action": ["s3:GetBucketLocation", "s3:GetBucketPolicy"],
                 "Resource": [f"arn:aws:s3:::{bucket_name}"],
-            }
+            },
+            {
+                "Effect": "Allow",
+                "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+                "Resource": [
+                    f"arn:aws:s3:::{bucket_name}/profile-staging/*",
+                    f"arn:aws:s3:::{bucket_name}/profile-clean/*",
+                ],
+            },
         ],
     }
+
+
+def _configure_upload_cors(client: BaseClient, bucket_name: str, origin: str | None) -> None:
+    """Allow only the configured web origin to submit bounded private uploads."""
+
+    if not origin:
+        raise StorageProvisioningError("Storage upload origin is not configured.")
+    client.put_bucket_cors(
+        Bucket=bucket_name,
+        CORSConfiguration={
+            "CORSRules": [
+                {
+                    "AllowedOrigins": [origin],
+                    "AllowedMethods": ["POST"],
+                    "AllowedHeaders": ["Content-Type", "x-amz-*"],
+                    "MaxAgeSeconds": 300,
+                }
+            ]
+        },
+    )

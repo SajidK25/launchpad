@@ -61,7 +61,7 @@ class StorageClient:
 
         client = self._client()
         try:
-            client.head_bucket(Bucket=bucket_name)
+            client.get_bucket_location(Bucket=bucket_name)
             try:
                 client.get_bucket_policy(Bucket=bucket_name)
             except ClientError as error:

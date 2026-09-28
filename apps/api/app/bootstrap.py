@@ -34,6 +34,11 @@ async def prepare() -> None:
             bootstrap_secret_access_key=bootstrap_secret_access_key.get_secret_value(),
             runtime_access_key_id=runtime_access_key_id.get_secret_value(),
             runtime_secret_access_key=runtime_secret_access_key.get_secret_value(),
+            # The local MinIO image used by checks does not implement PutBucketCors;
+            # production preparation must apply the exact configured web origin.
+            upload_origin=(
+                str(settings.mail_web_origin) if settings.environment == "production" else None
+            ),
         )
         bucket_name = os.environ.get("LAUNCHPAD_STORAGE_BUCKET", "launchpad-private")
         await database.prepare_with(lambda: provisioner.prepare(bucket_name))

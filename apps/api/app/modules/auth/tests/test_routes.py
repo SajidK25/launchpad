@@ -83,12 +83,11 @@ def test_auth_boundary_rejects_missing_origin_and_session_without_db_queries() -
     )
 
     client = TestClient(app)
-    assert (
-        client.post(
-            "/api/v1/auth/login", json={"email": "a@b.test", "password": "safe password"}
-        ).status_code
-        == 403
+    response = client.post(
+        "/api/v1/auth/login", json={"email": "a@b.test", "password": "safe password"}
     )
+    assert response.status_code == 403
+    assert response.json() == {"detail": "request rejected"}
     assert client.get("/api/v1/auth/session").status_code == 401
 
 
@@ -121,7 +120,27 @@ def test_unsafe_anonymous_actions_require_trusted_origin(
 
     response = TestClient(app).post(path, json=payload)
     assert response.status_code == 403
-    assert "traceback" not in response.text.lower()
+    assert response.json() == {"detail": "request rejected"}
+
+
+def test_unsafe_auth_action_rejects_untrusted_origin_with_generic_body() -> None:
+    settings = Settings(trusted_web_origins=("http://localhost:8080",))
+    app = FastAPI()
+    app.include_router(
+        auth_router(
+            settings=settings,
+            database=Database.connect(str(settings.database_url)),
+            redis=Redis.from_url(str(settings.redis_url)),
+        )
+    )
+
+    response = TestClient(app).post(
+        "/api/v1/auth/register",
+        json={"email": "a@b.test", "password": "safe password"},
+        headers={"Origin": "http://evil.example:8080"},
+    )
+    assert response.status_code == 403
+    assert response.json() == {"detail": "request rejected"}
 
 
 def test_configured_app_mounts_auth_routes(monkeypatch) -> None:  # type: ignore[no-untyped-def]

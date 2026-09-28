@@ -54,7 +54,18 @@ def test_profile_routes_are_explicit_and_unsafe_calls_require_origin() -> None:
         json={"version": 0, "bio": "private"},
     )
     assert response.status_code == 403
-    assert "traceback" not in response.text.lower()
+    assert response.json() == {"detail": "request rejected"}
+
+
+def test_profile_mutation_rejects_untrusted_origin_with_generic_body() -> None:
+    app, _, _ = _router(("http://localhost:8080",))
+    response = TestClient(app).patch(
+        "/api/v1/me/profile",
+        json={"version": 0, "bio": "private"},
+        headers={"Origin": "http://evil.example:8080"},
+    )
+    assert response.status_code == 403
+    assert response.json() == {"detail": "request rejected"}
 
 
 def test_profile_mutation_accepts_each_configured_origin_before_authentication() -> None:

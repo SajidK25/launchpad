@@ -1,4 +1,9 @@
+import { useEffect, useState } from "react";
+
 import { useConnectivity } from "./connectivity/useConnectivity";
+import { createIdentityClient } from "./identity/client";
+import { IdentityRoutes } from "./identity/Screens";
+import { ProfileRoutes } from "./profiles/ProfileScreens";
 
 const statusCopy = {
   connected: "Connected",
@@ -13,7 +18,22 @@ const detailCopy = {
 } as const;
 
 export function App() {
-  const { refresh, state } = useConnectivity();
+  const [path, setPath] = useState(window.location.pathname);
+  const [identityClient] = useState(() => createIdentityClient());
+  const connectivity = useConnectivity();
+  useEffect(() => {
+    const update = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", update);
+    return () => window.removeEventListener("popstate", update);
+  }, []);
+
+  if (path !== "/") {
+    if (path === "/profile" || path.startsWith("/public/")) {
+      return <ProfileRoutes identityClient={identityClient} />;
+    }
+    return <IdentityRoutes client={identityClient} />;
+  }
+  const { refresh, state } = connectivity;
 
   return (
     <main className="page-shell">

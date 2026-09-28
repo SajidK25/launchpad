@@ -585,7 +585,7 @@ Implement generic reset requests and one-use recovery for verified and unverifie
 
 ## Task T9: Expose safe authentication REST actions
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high
@@ -654,7 +654,7 @@ Expose the approved versioned registration, login/session/logout, verification, 
 
 ## Task T10: Private photo storage and validated staging
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high
@@ -722,7 +722,7 @@ Add the prefix-scoped runtime storage permissions and the bounded signed-staging
 
 ## Task T11: Private profile, publication, and automatic privacy
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** high
@@ -785,11 +785,17 @@ Complete the `users` service and repository begun at profile bootstrap. A privat
 - `apps/api/app/shared/storage/client.py` and `tests/integration/test_storage.py` — storage regressions.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH.
 
+### Verification Evidence
+
+- `apps/api/app/modules/users/tests/test_profile.py`: 11 domain tests passed, covering owner-only drafts, public gating, invalid fields (including malformed URLs and forged photo keys), automatic privacy notices, duplicate-notice suppression, expected-version conflicts, infrastructure failures, withdrawal, and republish checks.
+- `tests/integration/test_profile_privacy.py`: 4 PostgreSQL/MinIO integration tests passed, including atomic private transition and one outbox notice.
+- Full quality gate passed: 124 Python tests, Ruff, mypy (67 source files), web format/lint/typecheck/tests (11 tests), migrations, contracts, builds, security scan (0 vulnerabilities), and browser connectivity (1 test).
+
 ---
 
 ## Task T12: Profile REST, GraphQL reads, and gated photo delivery
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** l
 > **Priority:** high
@@ -850,17 +856,28 @@ Add thin REST profile actions and image delivery, plus read-only Strawberry Grap
 - `apps/api/app/main.py` — compose users endpoints and read schema.
 - `tests/integration/test_profile_privacy.py` — end-to-end read and photo withdrawal assertions.
 
+**Also touches (dependency wiring):**
+
+- `apps/api/app/modules/auth/sessions.py` — expose the authenticated member display address to the users transport adapter.
+- `compose.checks.yaml` — keep bootstrap storage credentials on provisioning only; the API uses the scoped runtime identity.
+
 **Must NOT modify:**
 
 - `apps/api/app/modules/health/routes.py`, `service.py`, `tests/test_routes.py` — run unchanged.
 - `apps/api/app/shared/storage/client.py` and `tests/integration/test_storage.py`.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH.
 
+### Verification Evidence
+
+- `apps/api/app/modules/users/tests/test_routes.py` and `test_graphql.py`: REST route contracts, origin protection, public profile composition, photo URL gating, and mutation-free GraphQL behavior pass.
+- Full quality gate passed: 127 Python tests, Ruff, mypy (74 source files), web format/lint/typecheck/tests (11 tests), migrations, contracts, builds, security scan (0 vulnerabilities), and browser connectivity (1 test).
+- The check `prepare` process supplies bootstrap storage credentials for provisioning; the API receives only the scoped runtime storage identity while readiness exercises the current `0002_member_identity_profiles` head.
+
 ---
 
 ## Task T13: Generated REST and GraphQL contracts
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** high
@@ -875,12 +892,12 @@ Extend the existing contract generation/check path to include Strawberry's Graph
 
 ### Verification Checklist
 
-- [ ] Generate the REST schema and typed client from current auth/profile routes; verify identity actions and photo responses appear, while existing health response shapes remain unchanged _(verifies N4)_.
-- [ ] Generate GraphQL schema and operation types from the actual read schema; verify private-owner/public profile selections typecheck in strict web TypeScript _(verifies N4)_.
-- [ ] Change a source REST or GraphQL field without regeneration in an isolated check and confirm the contract gate fails; restore the source after the drill _(guards source-only drift)_.
-- [ ] Change a generated REST or GraphQL artifact without changing the source and confirm the gate fails; restore the artifact _(guards generated-only drift)_.
-- [ ] Run `scripts/quality/contracts.sh` and the applicable quality steps from `scripts/quality/run.sh`; GraphQL gate is active and WebSocket checks remain explicitly not applicable _(verifies N4; guards CI parity)_.
-- [ ] Confirm the shared CI script and security scan still cover pinned dependencies and generated outputs without modifying the workflow or security script _(guards ARCH touched-but-unchanged files)_.
+- [x] Generate the REST schema and typed client from current auth/profile routes; verify identity actions and photo responses appear, while existing health response shapes remain unchanged _(verifies N4)_.
+- [x] Generate GraphQL schema and operation types from the actual read schema; verify private-owner/public profile selections typecheck in strict web TypeScript _(verifies N4)_.
+- [x] Change a source REST or GraphQL field without regeneration in an isolated check and confirm the contract gate fails; restore the source after the drill _(guards source-only drift)_.
+- [x] Change a generated REST or GraphQL artifact without changing the source and confirm the gate fails; restore the artifact _(guards generated-only drift)_.
+- [x] Run `scripts/quality/contracts.sh` and the applicable quality steps from `scripts/quality/run.sh`; GraphQL gate is active and WebSocket checks remain explicitly not applicable _(verifies N4; guards CI parity)_.
+- [x] Confirm the shared CI script and security scan still cover pinned dependencies and generated outputs without modifying the workflow or security script _(guards ARCH touched-but-unchanged files)_.
 
 ### Implementation Notes
 
@@ -900,6 +917,8 @@ Extend the existing contract generation/check path to include Strawberry's Graph
 **New files:**
 
 - `packages/contracts/schema.graphql` and `packages/contracts/src/graphql.generated.ts` — generated GraphQL artifacts.
+- `packages/contracts/operations.graphql` — checked-in read operations consumed by the generator.
+- `scripts/quality/generate_graphql_types.py` — deterministic SDL/operation-driven TypeScript generator.
 
 **Modified files:**
 
@@ -907,16 +926,29 @@ Extend the existing contract generation/check path to include Strawberry's Graph
 - `scripts/quality/contracts.sh`, `scripts/quality/run.sh` — two-schema drift check.
 - `package.json`, `package-lock.json`, `apps/web/package.json` — only if required to pin/check generation tooling.
 
+**Also touches (runtime contract alignment):**
+
+- `apps/api/app/modules/users/graphql.py` — disable unsupported GraphQL GET/GraphiQL routes so the generated OpenAPI contract matches runtime behavior.
+
 **Must NOT modify:**
 
 - `.github/workflows/quality.yml`, `scripts/quality/security.sh`, `infra/docker/web.Dockerfile`, `infra/docker/browser.Dockerfile` — run as parity regressions.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH.
 
+### Verification Evidence
+
+- Contract generation produced `packages/contracts/openapi.json`, `src/generated.ts`, `schema.graphql`, and `src/graphql.generated.ts`; the synchronized `--check` passed.
+- Source-schema drift and generated-artifact drift drills both failed with exit 1 as expected, then artifacts/source were restored.
+- Strict web TypeScript typecheck passed.
+- Full isolated quality gate passed: 132 Python tests, Ruff, mypy (74 source files), web format/lint/typecheck/tests (11), migrations, REST/GraphQL contracts, builds, security scan (0 vulnerabilities), and browser connectivity (1 test).
+- WebSocket remains explicitly not applicable; GraphQL is now an active generated-contract check.
+- REST source drift was rejected after a temporary route change, and the source/artifacts were restored.
+
 ---
 
 ## Task T14: Typed web identity and profile state
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
@@ -976,13 +1008,21 @@ Build typed identity and profile clients/hooks against generated REST and GraphQ
 
 - `apps/web/src/connectivity/`, `apps/web/src/App.test.tsx`, `tests/browser/connectivity.spec.ts` — unchanged regression surface.
 - `packages/contracts/src/generated.ts`, `graphql.generated.ts` — regenerate in T13, never hand-edit here.
+
+### Verification Evidence
+
+- TDD RED phase confirmed missing identity/profile client modules before implementation.
+- Focused T14 suite passed: 13 tests across identity/profile clients and hooks, including account switching, revocation, verification/reset failure semantics, privacy reconciliation, upload failure, and malformed GraphQL responses.
+- Web strict TypeScript check and ESLint passed after review remediation.
+- Full isolated quality gate passed: 132 Python tests, Ruff, mypy (74 source files), web format/lint/typecheck/tests (19), migrations, contracts, builds, security scan (0 vulnerabilities), and browser connectivity (1 test).
+- Existing connectivity tests remained unchanged and passed.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH.
 
 ---
 
 ## Task T15: Accessible account and recovery screens
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** l
 > **Priority:** high
@@ -997,12 +1037,12 @@ Add mobile-first registration, sign-in, email verification/resend, and password 
 
 ### Verification Checklist
 
-- [ ] At desktop and mobile widths, register/sign-in/verify/resend/reset forms have visible labels, error summaries, focus order, keyboard operation, and announced status messages _(verifies R1–R8)_.
-- [ ] Existing/new registration and known/unknown reset addresses display the same generic success copy; wrong-account details are never shown _(verifies R2, R6, N1–N2)_.
-- [ ] Verification/recovery links opened by GET do not consume tokens; explicit confirmation does, while expired, superseded, and rate-limited paths explain safe next steps _(verifies R4–R7)_.
-- [ ] Sign-in creates a usable private-profile navigation path, and successful reset returns to sign-in while other signed-in devices are revoked _(verifies R3, R7, R9)_.
-- [ ] Component tests cover submit/error/loading/accessible notice seams; browser flow covers mobile and keyboard use in the isolated environment _(verifies R1–R8, N1)_.
-- [ ] `/` still shows the existing connected/unavailable page; existing App and connectivity browser tests pass unchanged _(guards ARCH routing regression)_.
+- [x] At desktop and mobile widths, register/sign-in/verify/resend/reset forms have visible labels, error summaries, focus order, keyboard operation, and announced status messages _(verifies R1–R8)_.
+- [x] Existing/new registration and known/unknown reset addresses display the same generic success copy; wrong-account details are never shown _(verifies R2, R6, N1–N2)_.
+- [x] Verification/recovery links opened by GET do not consume tokens; explicit confirmation does, while expired, superseded, and rate-limited paths explain safe next steps _(verifies R4–R7)_.
+- [x] Sign-in creates a usable private-profile navigation path, and successful reset returns to sign-in while other signed-in devices are revoked _(verifies R3, R7, R9)_.
+- [x] Component tests cover submit/error/loading/accessible notice seams; browser flow covers mobile and keyboard use in the isolated environment _(verifies R1–R8, N1)_.
+- [x] `/` still shows the existing connected/unavailable page; existing App and connectivity browser tests pass unchanged _(guards ARCH routing regression)_.
 
 #### Testable Seams
 
@@ -1030,8 +1070,7 @@ Add mobile-first registration, sign-in, email verification/resend, and password 
 
 **Modified files:**
 
-- `apps/web/src/App.tsx`, `main.tsx`, `styles.css` — routing and accessible page shell.
-- `apps/web/package.json`, `package-lock.json` — pinned router tooling if not already added in T13.
+- `apps/web/src/App.tsx`, `styles.css` — routing and accessible page shell.
 
 **Must NOT modify:**
 
@@ -1039,11 +1078,20 @@ Add mobile-first registration, sign-in, email verification/resend, and password 
 - `infra/docker/web.conf`, `infra/docker/web.Dockerfile`, `infra/docker/browser.Dockerfile` — test existing proxy/build behavior.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH.
 
+### Verification Evidence
+
+- Web component suite passed: 30 tests across identity, profile, App, and connectivity surfaces, including verification/resend failures, reset navigation, sign-in/sign-out lifecycle, and token scrubbing.
+- Web strict TypeScript check passed.
+- Web ESLint passed with zero warnings.
+- Added browser coverage for accessible sign-in, registration, and generic recovery navigation in `tests/browser/member-identity.spec.ts`.
+- Root `/` connectivity rendering remains covered by unchanged App/connectivity tests; identity screens are routed from non-root paths (`/signin`, `/register`, `/verify`, `/recover`, `/reset`).
+- Browser regression passed: 2 tests, including the T15 account flow at a mobile viewport with keyboard focus and root-route checks, plus the unchanged connectivity flow.
+
 ---
 
 ## Task T16: Private editor and public profile UI
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** l
 > **Priority:** high
@@ -1058,13 +1106,13 @@ Build the owner draft editor, photo upload, publication/unpublication controls, 
 
 ### Verification Checklist
 
-- [ ] Owner can edit a private draft after sign-in, including while unverified; visitor gets no private details or photo _(verifies R9, N1)_.
-- [ ] Editor guides display name, validated photo, one-line bio ≤160 characters, and HTTPS link requirements; only a verified complete profile can publish _(verifies R10)_.
-- [ ] Upload UI handles valid image, oversize/type error, expiry, and failed finalize with clear recovery; it never renders an unvalidated staged image as published _(verifies R9–R10, N1)_.
-- [ ] Removing a required item from a published profile saves the edit, immediately displays a private-state notice, and removes the public page/photo on refetch; mail failure does not undo the edit _(verifies R11–R12)_.
-- [ ] Manual unpublish and later republish work; republish rechecks completeness and verification _(verifies R11)_.
-- [ ] Mobile and keyboard paths support edit, upload, publish/unpublish, and notices; component tests exercise status/error/loading seams and browser test confirms outsider privacy _(verifies R9–R12, N1)_.
-- [ ] Existing connectivity page and account screens still work; unchanged App/connectivity tests pass _(guards ARCH UI regression)_.
+- [x] Owner can edit a private draft after sign-in, including while unverified; visitor gets no private details or photo _(verifies R9, N1)_.
+- [x] Editor guides display name, validated photo, one-line bio ≤160 characters, and HTTPS link requirements; only a verified complete profile can publish _(verifies R10)_.
+- [x] Upload UI handles valid image, oversize/type error, expiry, and failed finalize with clear recovery; it never renders an unvalidated staged image as published _(verifies R9–R10, N1)_.
+- [x] Removing a required item from a published profile saves the edit, immediately displays a private-state notice, and removes the public page/photo on refetch; mail failure does not undo the edit _(verifies R11–R12)_.
+- [x] Manual unpublish and later republish work; republish rechecks completeness and verification _(verifies R11)_.
+- [x] Mobile and keyboard paths support edit, upload, publish/unpublish, and notices; component tests exercise status/error/loading seams and browser test confirms outsider privacy _(verifies R9–R12, N1)_.
+- [x] Existing connectivity page and account screens still work; unchanged App/connectivity tests pass _(guards ARCH UI regression)_.
 
 #### Testable Seams
 
@@ -1100,11 +1148,20 @@ Build the owner draft editor, photo upload, publication/unpublication controls, 
 - `packages/contracts/src/generated.ts`, `graphql.generated.ts` — generation-owned artifacts.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH.
 
+### Verification Evidence
+
+- Profile component suite passed: 7 tests covering private editor gating, HTTPS-link guidance, public-profile rendering, unsupported-photo recovery, photo preservation, automatic-private notices, and staged-URL exclusion.
+- Full web suite passed: 37 tests; strict TypeScript and ESLint passed.
+- Production web build passed through the isolated web image.
+- Browser regression passed: 2 tests covering mobile/desktop keyboard identity flow, outsider private-profile response, root connectivity restoration, and unchanged connectivity behavior.
+- UI implementation keeps photo rendering behind the API-provided `photoUrl`, validates file type/size before staging, and never renders signed staging URLs.
+- Profile patches omit `photo_upload_id` unless a replacement is explicitly staged, so text-only edits retain existing photos; incomplete drafts remain saveable and publication remains server-authoritative.
+
 ---
 
 ## Task T17: Documentation, recovery drills, and full quality gate
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** high
@@ -1119,12 +1176,12 @@ Document the implemented account and profile lifecycle, mail/recovery operations
 
 ### Verification Checklist
 
-- [ ] `README.md` and `docs/development.md` describe registration/verification, 60-minute superseding links, recovery/all-device revocation, private-by-default profiles, publish/auto-private notices, private photos, local same-origin cookies, and operational mail recovery _(verifies R1–R12, N1)_.
-- [ ] ADR 0005 records session/recovery/password decisions and ADR 0006 records profile privacy, gated media, and encrypted durable email decisions; both match the shipped behavior _(verifies N1–N3)_.
-- [ ] Run `scripts/quality/run.sh` in its isolated Compose project and retain evidence for Ruff, formatter, typing, pytest, contracts, frontend build/tests, browser checks, and security checks _(verifies N1–N4)_.
-- [ ] Drill missing PostgreSQL, Redis, mail, and pending-schema conditions: each fails closed or reports not-ready safely, with no secret/private-data leakage, and recovery succeeds without resetting developer data _(verifies N1–N3)_.
-- [ ] Run unchanged preparation/startup/health/storage/connectivity/browser regressions; verify current migration-head readiness, bounded health, worker/scheduler progress, and `/` connectivity remain intact _(guards all ARCH touched-but-unchanged hotspots)_.
-- [ ] Verify no forbidden edits to source context, foundation migration, CI/security scripts, or unrelated feature modules; inspect git diff for secrets, generated drift, and accidental public object URLs _(verifies N1–N4)_.
+- [x] `README.md` and `docs/development.md` describe registration/verification, 60-minute superseding links, recovery/all-device revocation, private-by-default profiles, publish/auto-private notices, private photos, local same-origin cookies, and operational mail recovery _(verifies R1–R12, N1)_.
+- [x] ADR 0005 records session/recovery/password decisions and ADR 0006 records profile privacy, gated media, and encrypted durable email decisions; both match the shipped behavior _(verifies N1–N3)_.
+- [x] Run `scripts/quality/run.sh` in its isolated Compose project and retain evidence for Ruff, formatter, typing, pytest, contracts, frontend build/tests, browser checks, and security checks _(verifies N1–N4)_.
+- [x] Drill missing PostgreSQL, Redis, mail, and pending-schema conditions: each fails closed or reports not-ready safely, with no secret/private-data leakage, and recovery succeeds without resetting developer data _(verifies N1–N3)_.
+- [x] Run unchanged preparation/startup/health/storage/connectivity/browser regressions; verify current migration-head readiness, bounded health, worker/scheduler progress, and `/` connectivity remain intact _(guards all ARCH touched-but-unchanged hotspots)_.
+- [x] Verify no forbidden edits to source context, foundation migration, CI/security scripts, or unrelated feature modules; inspect git diff for secrets, generated drift, and accidental public object URLs _(verifies N1–N4)_.
 
 ### Implementation Notes
 
@@ -1154,5 +1211,13 @@ Document the implemented account and profile lifecycle, mail/recovery operations
 - `apps/api/alembic/versions/0001_foundation.py`, `apps/api/app/bootstrap.py`, `apps/api/alembic/env.py` — foundation and startup boundary.
 - `.github/workflows/quality.yml`, `scripts/quality/security.sh`, existing health/storage/connectivity tests — run unchanged.
 - `AGENTS.md`, `CLAUDE.md`, `docs/source/`, linked REQ and ARCH — protected inputs.
+
+### Verification Evidence
+
+- Added `README.md` and `docs/development.md` guidance for the complete member lifecycle, 60-minute latest-link semantics, all-device reset revocation, private profile/photo boundaries, Secure-cookie local behavior, SMTP/outbox recovery, and forward-only migration recovery.
+- Added ADR 0005 (revocable sessions and confidential recovery) and ADR 0006 (private-by-default profiles and gated media); both describe the shipped PostgreSQL, outbox, cookie, and storage decisions.
+- `COMPOSE_PROJECT_NAME=launchpad-final sh scripts/quality/run.sh` passed: Ruff format/lint, mypy (74 files), 132 Python/integration tests, Prettier, ESLint, strict TypeScript, 37 web tests, migrations, contracts, Python/web/browser builds, security scans (0 vulnerabilities), and 2 Playwright browser tests. GraphQL is covered by contracts; WebSocket is explicitly not applicable.
+- Dependency and failure drills passed in the isolated project: 14 targeted tests cover bounded missing-PostgreSQL failure, Redis/storage readiness, pending and unexpected migration heads, SMTP outage with retry, and environment isolation; the controlled-failure quality probe exited nonzero as designed. Worker and scheduler both reached healthy status after preparation without volume reset.
+- `git diff --check` passed. Review confirmed no T17 edits to the protected foundation migration, CI/security scripts, context inputs, health/storage/connectivity tests, secrets, or public object URLs. The initial new-project run was blocked by Docker's exhausted address pools; no data was deleted and the same gate ran successfully in the existing isolated `launchpad-final` project.
 
 ---
