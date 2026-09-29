@@ -132,7 +132,7 @@ Expose current account verification, role, and suspension through an auth-owned 
 
 ## Task T3: Provision Staff and Suspension With an Audit Trail
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** critical

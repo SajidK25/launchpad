@@ -9,9 +9,15 @@ from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
+
 from app.modules.auth.repository import AuthRepository
 from app.modules.auth.sessions import SessionService
-from app.modules.auth.staff import AuthAccessService
+from app.modules.auth.staff import (
+    AuthAccessService,
+    StaffManagementError,
+    StaffManagementService,
+)
 
 
 def test_existing_session_reflects_current_role_and_suspension() -> None:
@@ -119,5 +125,19 @@ def test_batched_founder_lookup_refreshes_cached_flags() -> None:
         await AuthRepository().find_accounts_by_ids(session, [uuid4()])
         query = session.scalars.await_args.args[0]
         assert query.get_execution_options()["populate_existing"] is True
+
+    asyncio.run(verify())
+
+
+@pytest.mark.parametrize("actor", ["", "ops\nspoof", "x" * 129])
+def test_operator_actor_must_be_a_bounded_single_identifier(actor: str) -> None:
+    async def verify() -> None:
+        with pytest.raises(StaffManagementError, match="invalid operator actor"):
+            await StaffManagementService().set_role(
+                SimpleNamespace(),  # type: ignore[arg-type]
+                target_account_id=uuid4(),
+                role="reviewer",
+                actor=actor,
+            )
 
     asyncio.run(verify())

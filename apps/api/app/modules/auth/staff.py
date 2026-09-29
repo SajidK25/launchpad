@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid6 import uuid7
 
+from app.modules.auth.models import Account, AccountAdminAction
 from app.modules.auth.repository import AuthRepository
 
 
@@ -59,3 +63,130 @@ class AuthAccessService:
             )
             for account in accounts
         }
+
+
+AccountRole = Literal["member", "reviewer", "admin"]
+
+
+class StaffManagementError(ValueError):
+    """Invalid operator action with a safe, credential-free message."""
+
+
+class StaffManagementService:
+    """Apply audited privilege changes inside one database transaction."""
+
+    def __init__(self, repository: AuthRepository | None = None) -> None:
+        self.repository = repository or AuthRepository()
+
+    async def set_role(
+        self,
+        session: AsyncSession,
+        *,
+        target_account_id: UUID,
+        role: AccountRole,
+        actor: str,
+    ) -> AccountState:
+        if role not in {"member", "reviewer", "admin"}:
+            raise StaffManagementError("invalid role")
+        operator = _operator_actor(actor)
+        async with session.begin():
+            account = await self.repository.find_account_by_id(
+                session, target_account_id, lock=True
+            )
+            if account is None:
+                raise StaffManagementError("account unavailable")
+            if role != "member" and account.verified_at is None:
+                raise StaffManagementError("staff account must be verified")
+            if account.role == role:
+                raise StaffManagementError("role unchanged")
+            before = _audit_state(account)
+            account.role = role
+            now = datetime.now(UTC)
+            account.updated_at = now
+            _add_audit(session, account, operator, "set_role", before, now)
+            await session.flush()
+            return _account_state(account)
+
+    async def set_suspension(
+        self,
+        session: AsyncSession,
+        *,
+        target_account_id: UUID,
+        suspended: bool,
+        actor: str,
+    ) -> AccountState:
+        operator = _operator_actor(actor)
+        async with session.begin():
+            account = await self.repository.find_account_by_id(
+                session, target_account_id, lock=True
+            )
+            if account is None:
+                raise StaffManagementError("account unavailable")
+            if (account.suspended_at is not None) == suspended:
+                raise StaffManagementError("suspension unchanged")
+            before = _audit_state(account)
+            now = datetime.now(UTC)
+            account.suspended_at = now if suspended else None
+            account.updated_at = now
+            _add_audit(
+                session,
+                account,
+                operator,
+                "suspend" if suspended else "resume",
+                before,
+                now,
+            )
+            await session.flush()
+            return _account_state(account)
+
+
+def _operator_actor(actor: str) -> str:
+    value = actor.strip()
+    if not value or len(value) > 128 or any(character.isspace() for character in value):
+        raise StaffManagementError("invalid operator actor")
+    return value
+
+
+def _audit_state(account: Account) -> str:
+    """Serialize only authorization fields, never identity credentials."""
+
+    return json.dumps(
+        {
+            "role": account.role,
+            "suspended_at": (
+                account.suspended_at.isoformat() if account.suspended_at is not None else None
+            ),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _add_audit(
+    session: AsyncSession,
+    account: Account,
+    actor: str,
+    action: str,
+    before: str,
+    now: datetime,
+) -> None:
+    session.add(
+        AccountAdminAction(
+            id=uuid7(),
+            actor=actor,
+            target_account_id=account.id,
+            action=action,
+            before_state=before,
+            after_state=_audit_state(account),
+            created_at=now,
+        )
+    )
+
+
+def _account_state(account: Account) -> AccountState:
+    return AccountState(
+        account_id=account.id,
+        verified=account.verified_at is not None,
+        role=account.role,
+        suspended_at=account.suspended_at,
+    )
