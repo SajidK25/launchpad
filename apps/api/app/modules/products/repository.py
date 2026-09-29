@@ -7,7 +7,13 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from app.modules.products.models import Product, Topic
+from app.modules.products.models import (
+    Product,
+    ProductAsset,
+    ProductSubmission,
+    ProductTopic,
+    Topic,
+)
 from app.modules.products.policies import ProductConflictError
 from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import canonical_topic_key, validate_topic_names
@@ -86,6 +92,147 @@ class ProductRepository:
             .where(Product.founder_id == founder_id, Product.status == "draft")
         )
         return int(count or 0)
+
+    async def count_pending(self, session: AsyncSession, *, founder_id: UUID) -> int:
+        count = await session.scalar(
+            select(func.count())
+            .select_from(ProductSubmission)
+            .join(Product, Product.id == ProductSubmission.product_id)
+            .where(Product.founder_id == founder_id, ProductSubmission.state == "pending")
+        )
+        return int(count or 0)
+
+    async def submission_gaps(self, session: AsyncSession, *, product_id: UUID) -> tuple[str, ...]:
+        """Return missing media/topic fields required for a review-ready product."""
+
+        logo_count = await session.scalar(
+            select(func.count())
+            .select_from(ProductAsset)
+            .where(
+                ProductAsset.product_id == product_id,
+                ProductAsset.kind == "logo",
+                ProductAsset.state == "clean",
+                ProductAsset.attached_at.is_not(None),
+            )
+        )
+        screenshot_count = await session.scalar(
+            select(func.count())
+            .select_from(ProductAsset)
+            .where(
+                ProductAsset.product_id == product_id,
+                ProductAsset.kind == "screenshot",
+                ProductAsset.state == "clean",
+                ProductAsset.attached_at.is_not(None),
+            )
+        )
+        topic_count = await session.scalar(
+            select(func.count())
+            .select_from(ProductTopic)
+            .where(ProductTopic.product_id == product_id)
+        )
+        missing: list[str] = []
+        if logo_count != 1:
+            missing.append("logo")
+        if not 1 <= int(screenshot_count or 0) <= 10:
+            missing.append("screenshots")
+        if not 1 <= int(topic_count or 0) <= 3:
+            missing.append("topics")
+        return tuple(missing)
+
+    async def get_owned_product(
+        self, session: AsyncSession, *, product_id: UUID, founder_id: UUID, lock: bool = False
+    ) -> Product | None:
+        statement = (
+            select(Product)
+            .where(Product.id == product_id, Product.founder_id == founder_id)
+            .execution_options(populate_existing=True)
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return cast(Product | None, await session.scalar(statement))
+
+    async def get_pending_submission(
+        self, session: AsyncSession, *, product_id: UUID, lock: bool = False
+    ) -> ProductSubmission | None:
+        statement = select(ProductSubmission).where(
+            ProductSubmission.product_id == product_id,
+            ProductSubmission.state == "pending",
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return cast(ProductSubmission | None, await session.scalar(statement))
+
+    async def create_submission(
+        self,
+        session: AsyncSession,
+        *,
+        product_id: UUID,
+        product_version: int,
+        submitted_at: datetime,
+    ) -> ProductSubmission:
+        period = ProductSubmission(
+            id=uuid7(),
+            product_id=product_id,
+            state="pending",
+            submitted_at=submitted_at,
+            closed_at=None,
+            product_version=product_version,
+        )
+        session.add(period)
+        await session.flush()
+        return period
+
+    async def set_product_state(
+        self,
+        session: AsyncSession,
+        *,
+        product: Product,
+        status: str,
+        now: datetime,
+        content: ProductContentInput | None = None,
+        website_key: str | None = None,
+    ) -> Product:
+        values: dict[str, object] = {
+            "status": status,
+            "version": Product.version + 1,
+            "updated_at": now,
+        }
+        if content is not None:
+            values.update(
+                name=content.name,
+                pitch=content.pitch,
+                description=content.description,
+                website_url=content.website_url,
+                website_key=website_key,
+            )
+        statement = (
+            update(Product)
+            .where(Product.id == product.id, Product.version == product.version)
+            .values(**values)
+            .returning(Product)
+            .execution_options(populate_existing=True)
+        )
+        saved = (await session.execute(statement)).scalar_one_or_none()
+        if saved is None:
+            raise ProductConflictError("product changed; reload and retry")
+        return saved
+
+    async def update_submission_version(
+        self, session: AsyncSession, *, submission: ProductSubmission, product_version: int
+    ) -> None:
+        submission.product_version = product_version
+        await session.flush()
+
+    async def close_submission(
+        self,
+        session: AsyncSession,
+        *,
+        submission: ProductSubmission,
+        closed_at: datetime,
+    ) -> None:
+        submission.state = "withdrawn"
+        submission.closed_at = closed_at
+        await session.flush()
 
     async def create_draft(
         self, session: AsyncSession, *, founder_id: UUID, now: datetime

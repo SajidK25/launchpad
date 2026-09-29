@@ -324,7 +324,7 @@ Implement private draft creation and versioned saving for signed-in founders, in
 
 ## Task T6: Submit, Edit, and Withdraw Submission Periods
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
