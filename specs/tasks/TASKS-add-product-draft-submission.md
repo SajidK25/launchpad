@@ -66,7 +66,7 @@ Add additive account role/suspension/audit fields and product, submission-period
 
 ## Task T2: Resolve Live Role and Suspension Through Auth
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

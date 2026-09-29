@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
@@ -28,10 +29,28 @@ class AuthRepository:
     async def find_account_by_id(
         self, session: AsyncSession, account_id: UUID, *, lock: bool = False
     ) -> Account | None:
-        query = select(Account).where(Account.id == account_id)
+        query = (
+            select(Account)
+            .where(Account.id == account_id)
+            .execution_options(populate_existing=True)
+        )
         if lock:
             query = query.with_for_update()
         return cast(Account | None, await session.scalar(query))
+
+    async def find_accounts_by_ids(
+        self, session: AsyncSession, account_ids: Sequence[UUID]
+    ) -> list[Account]:
+        """Fetch a bounded page of account rows with one indexed query."""
+
+        if not account_ids:
+            return []
+        rows = await session.scalars(
+            select(Account)
+            .where(Account.id.in_(account_ids))
+            .execution_options(populate_existing=True)
+        )
+        return list(rows)
 
     async def create_account(
         self,
@@ -147,6 +166,7 @@ class AuthRepository:
             select(Session, Account)
             .join(Account, Account.id == Session.account_id)
             .where(Session.secret_digest == secret_digest)
+            .execution_options(populate_existing=True)
         )
         if lock:
             query = query.with_for_update()

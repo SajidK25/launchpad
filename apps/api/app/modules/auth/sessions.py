@@ -32,6 +32,8 @@ class MemberContext:
     session_id: UUID
     csrf_digest: bytes = b""
     email_display: str = ""
+    role: str = "member"
+    suspended_at: datetime | None = None
 
     @property
     def can_publish(self) -> bool:
@@ -109,6 +111,8 @@ class SessionService:
                 record.id,
                 csrf_digest,
                 account.email_display,
+                account.role or "member",
+                account.suspended_at,
             ),
         )
 
@@ -135,6 +139,8 @@ class SessionService:
             record.id,
             digest_token(derive_csrf_token(session_secret)),
             getattr(account, "email_display", ""),
+            getattr(account, "role", "member"),
+            getattr(account, "suspended_at", None),
         )
 
     async def sign_out(self, session: AsyncSession, *, session_secret: str) -> None:
