@@ -8,6 +8,7 @@ from PIL import Image, PngImagePlugin
 from app.shared.storage.objects import (
     CLEAN_PREFIX,
     MAX_PHOTO_BYTES,
+    PRODUCT_CLEAN_PREFIX,
     STAGING_PREFIX,
     ObjectOperationError,
     ObjectValidationError,
@@ -149,6 +150,7 @@ async def test_signed_upload_uses_browser_reachable_public_endpoint() -> None:
 
     assert upload.upload_url == "http://localhost:9000/upload"
 
+
 @pytest.mark.anyio
 async def test_finalize_reencodes_image_and_removes_metadata() -> None:
     client = _S3(_png_with_metadata())
@@ -191,6 +193,10 @@ async def test_finalize_rejects_oversized_body_and_canonical_key_is_required() -
         await store.finalize_staging(account_id=uuid4(), upload_id=uuid4())
     with pytest.raises(ObjectValidationError):
         await store.get_private(object_key=f"{CLEAN_PREFIX}{uuid4().hex}/not-a-uuid")
+    with pytest.raises(ObjectValidationError):
+        await store.get_private(
+            object_key=f"{PRODUCT_CLEAN_PREFIX}{uuid4().hex}/{uuid4().hex}/{uuid4().hex}"
+        )
 
 
 @pytest.mark.anyio

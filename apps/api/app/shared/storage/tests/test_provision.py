@@ -31,3 +31,20 @@ def test_runtime_policy_has_no_unbounded_bucket_listing() -> None:
     assert not any(
         "s3:ListBucket" in cast(list[str], statement["Action"]) for statement in statements
     )
+
+
+def test_runtime_policy_adds_only_product_object_prefixes() -> None:
+    statements = cast(list[dict[str, object]], _runtime_policy("private")["Statement"])
+    object_statement = next(
+        statement
+        for statement in statements
+        if "s3:GetObject" in cast(list[str], statement["Action"])
+    )
+
+    assert object_statement["Resource"] == [
+        "arn:aws:s3:::private/profile-staging/*",
+        "arn:aws:s3:::private/profile-clean/*",
+        "arn:aws:s3:::private/product-staging/*",
+        "arn:aws:s3:::private/product-clean/*",
+    ]
+    assert "s3:ListBucket" not in cast(list[str], object_statement["Action"])

@@ -21,6 +21,8 @@ from PIL import Image, UnidentifiedImageError
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 STAGING_PREFIX = "profile-staging/"
 CLEAN_PREFIX = "profile-clean/"
+PRODUCT_STAGING_PREFIX = "product-staging/"
+PRODUCT_CLEAN_PREFIX = "product-clean/"
 SUPPORTED_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 _SAFE_ID = re.compile(r"^[0-9a-f]{32}$")
 ClientFactory = Callable[[], BaseClient]
@@ -102,13 +104,43 @@ class PrivateObjectStore:
     ) -> StagingUpload:
         """Issue a short-lived presigned POST for exactly one bounded staging object."""
 
+        return await self._create_staging_upload(
+            key=_staging_key(account_id, upload_id),
+            content_type=content_type,
+            size=size,
+            expires_in=expires_in,
+        )
+
+    async def create_product_staging_upload(
+        self,
+        *,
+        account_id: UUID | str,
+        product_id: UUID | str,
+        asset_id: UUID | str,
+        content_type: str,
+        size: int,
+        expires_in: int = 300,
+    ) -> StagingUpload:
+        """Issue a bounded upload restricted to one account/product/asset key."""
+
+        return await self._create_staging_upload(
+            key=_product_staging_key(account_id, product_id, asset_id),
+            content_type=content_type,
+            size=size,
+            expires_in=expires_in,
+        )
+
+    async def _create_staging_upload(
+        self, *, key: str, content_type: str, size: int, expires_in: int
+    ) -> StagingUpload:
+        """Create the common signed POST after applying the image and expiry bounds."""
+
         if content_type not in SUPPORTED_MEDIA_TYPES:
             raise ObjectValidationError("unsupported image type")
         if size <= 0 or size > self.max_photo_bytes:
             raise ObjectValidationError("image is too large")
         if expires_in < 60 or expires_in > 900:
             raise ValueError("upload expiry is outside the allowed range")
-        key = _staging_key(account_id, upload_id)
 
         def issue() -> StagingUpload:
             client = self._client()
@@ -138,8 +170,36 @@ class PrivateObjectStore:
     ) -> CleanPhoto:
         """Validate actual staged bytes, strip metadata, and promote privately."""
 
-        staging_key = _staging_key(account_id, upload_id)
-        clean_key = _clean_key(account_id, upload_id)
+        return await self._finalize_objects(
+            staging_key=_staging_key(account_id, upload_id),
+            clean_key=_clean_key(account_id, upload_id),
+            declared_content_type=declared_content_type,
+        )
+
+    async def finalize_product_staging(
+        self,
+        *,
+        account_id: UUID | str,
+        product_id: UUID | str,
+        asset_id: UUID | str,
+        declared_content_type: str | None = None,
+    ) -> CleanPhoto:
+        """Validate product staging bytes, remove metadata, and promote to a private key."""
+
+        return await self._finalize_objects(
+            staging_key=_product_staging_key(account_id, product_id, asset_id),
+            clean_key=_product_clean_key(account_id, product_id, asset_id),
+            declared_content_type=declared_content_type,
+        )
+
+    async def _finalize_objects(
+        self,
+        *,
+        staging_key: str,
+        clean_key: str,
+        declared_content_type: str | None,
+    ) -> CleanPhoto:
+        """Share byte-level validation and private promotion for both storage namespaces."""
 
         def finalize() -> CleanPhoto:
             client = self._client()
@@ -195,6 +255,46 @@ class PrivateObjectStore:
             return body, response.get("ContentType")
 
         return await asyncio.to_thread(read)
+
+    async def get_product_private(
+        self, *, account_id: UUID | str, product_id: UUID | str, object_key: str
+    ) -> tuple[bytes, str | None]:
+        """Read only a clean product key owned by the supplied account and product."""
+
+        _assert_product_key(
+            object_key, account_id=account_id, product_id=product_id, clean_only=True
+        )
+
+        def read() -> tuple[bytes, str | None]:
+            try:
+                response = self._client().get_object(Bucket=self.bucket_name, Key=object_key)
+                body = _read_response_body(response, self.max_photo_bytes + 1)
+            except ClientError as error:
+                if _is_not_found(error):
+                    raise ObjectNotFound("product object was not found") from None
+                raise ObjectOperationError("product object could not be read") from None
+            except BotoCoreError:
+                raise ObjectOperationError("product object could not be read") from None
+            if len(body) > self.max_photo_bytes:
+                raise ObjectOperationError("product object exceeds the size limit")
+            return body, response.get("ContentType")
+
+        return await asyncio.to_thread(read)
+
+    async def delete_product_private(
+        self, *, account_id: UUID | str, product_id: UUID | str, object_key: str
+    ) -> None:
+        """Delete only a product-scoped object belonging to the supplied account/product."""
+
+        _assert_product_key(object_key, account_id=account_id, product_id=product_id)
+
+        def delete() -> None:
+            try:
+                self._client().delete_object(Bucket=self.bucket_name, Key=object_key)
+            except (ClientError, BotoCoreError):
+                raise ObjectOperationError("product object could not be deleted") from None
+
+        await asyncio.to_thread(delete)
 
     async def delete_staging(self, *, account_id: UUID | str, upload_id: UUID | str) -> None:
         """Delete exactly one owner-scoped staging object."""
@@ -275,6 +375,16 @@ def _clean_key(account_id: UUID | str, upload_id: UUID | str) -> str:
     return f"{CLEAN_PREFIX}{_id(account_id)}/{_id(upload_id)}"
 
 
+def _product_staging_key(
+    account_id: UUID | str, product_id: UUID | str, asset_id: UUID | str
+) -> str:
+    return f"{PRODUCT_STAGING_PREFIX}{_id(account_id)}/{_id(product_id)}/{_id(asset_id)}"
+
+
+def _product_clean_key(account_id: UUID | str, product_id: UUID | str, asset_id: UUID | str) -> str:
+    return f"{PRODUCT_CLEAN_PREFIX}{_id(account_id)}/{_id(product_id)}/{_id(asset_id)}"
+
+
 def _assert_private_key(object_key: str) -> None:
     parts = PurePosixPath(object_key).parts
     if (
@@ -283,6 +393,28 @@ def _assert_private_key(object_key: str) -> None:
         or not all(_SAFE_ID.fullmatch(part) for part in parts[1:])
     ):
         raise ObjectValidationError("object key is outside the private profile prefixes")
+
+
+def _assert_product_key(
+    object_key: str,
+    *,
+    account_id: UUID | str,
+    product_id: UUID | str,
+    clean_only: bool = False,
+) -> None:
+    parts = PurePosixPath(object_key).parts
+    expected_account = _id(account_id)
+    expected_product = _id(product_id)
+    if (
+        len(parts) != 4
+        or PurePosixPath(object_key).as_posix() != object_key
+        or parts[0] not in {PRODUCT_STAGING_PREFIX[:-1], PRODUCT_CLEAN_PREFIX[:-1]}
+        or (clean_only and parts[0] != PRODUCT_CLEAN_PREFIX[:-1])
+        or parts[1] != expected_account
+        or parts[2] != expected_product
+        or not _SAFE_ID.fullmatch(parts[3])
+    ):
+        raise ObjectValidationError("object key is outside the owned product prefixes")
 
 
 def _is_not_found(error: ClientError) -> bool:

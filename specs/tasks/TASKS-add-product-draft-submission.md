@@ -387,7 +387,7 @@ Atomically submit only a current, complete draft from a verified unsuspended own
 
 ## Task T7: Extend Private Storage for Product Images
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** critical
@@ -405,7 +405,7 @@ Add bounded product-staging and product-clean object operations to the existing 
 #### Test File(s)
 - apps/api/app/shared/storage/tests/test_objects.py
 - apps/api/app/shared/storage/tests/test_provision.py
-- apps/api/app/modules/products/tests/test_storage.py
+- apps/api/app/modules/products/tests/test_product_storage.py
 
 #### Test Scenarios
 
@@ -436,7 +436,7 @@ Add bounded product-staging and product-clean object operations to the existing 
 ### Files Expected
 
 **New files:**
-- apps/api/app/modules/products/tests/test_storage.py (product-scoped storage tests).
+- apps/api/app/modules/products/tests/test_product_storage.py (product-scoped storage tests; renamed to avoid collision with `tests/integration/test_storage.py` in default pytest collection).
 
 **Modified files:**
 - apps/api/app/shared/storage/objects.py; provision.py (bounded product prefix/validation support).

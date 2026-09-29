@@ -149,6 +149,8 @@ def _runtime_policy(bucket_name: str) -> dict[str, object]:
                 "Resource": [
                     f"arn:aws:s3:::{bucket_name}/profile-staging/*",
                     f"arn:aws:s3:::{bucket_name}/profile-clean/*",
+                    f"arn:aws:s3:::{bucket_name}/product-staging/*",
+                    f"arn:aws:s3:::{bucket_name}/product-clean/*",
                 ],
             },
         ],
