@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, LargeBinary, Text, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, LargeBinary, Text, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -17,15 +17,41 @@ class Account(AuthBase):
     """Member identity with private-by-default verification state."""
 
     __tablename__ = "accounts"
+    __table_args__ = (
+        CheckConstraint("role IN ('member', 'reviewer', 'admin')", name="ck_accounts_role"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     email_display: Mapped[str] = mapped_column(Text, nullable=False)
     email_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    role: Mapped[str] = mapped_column(
+        Text, default="member", server_default="member", nullable=False
+    )
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     session_epoch: Mapped[int] = mapped_column(default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AccountAdminAction(AuthBase):
+    """Durable operator audit record without credential material."""
+
+    __tablename__ = "account_admin_actions"
+    __table_args__ = (
+        Index("ix_account_admin_actions_target_created", "target_account_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    actor: Mapped[str] = mapped_column(Text, nullable=False)
+    target_account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("accounts.id"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    before_state: Mapped[str] = mapped_column(Text, nullable=False)
+    after_state: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Session(AuthBase):
