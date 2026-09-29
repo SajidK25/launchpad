@@ -197,7 +197,7 @@ Provide a restricted operator command for role grants/revocations and suspension
 
 ## Task T4: Validate Product Content and Canonical Topics
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
