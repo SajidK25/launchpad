@@ -261,7 +261,7 @@ Define the optional draft input contract and strict supplied-value validation, p
 
 ## Task T5: Create and Version Private Drafts
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

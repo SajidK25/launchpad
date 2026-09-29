@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+from typing import cast
 from uuid import UUID
 
-from app.modules.products.models import Topic
+from app.modules.products.models import Product, Topic
+from app.modules.products.policies import ProductConflictError
+from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import canonical_topic_key, validate_topic_names
-from sqlalchemy import select
+from sqlalchemy import func, select, update
+from sqlalchemy import insert as sa_insert
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
@@ -69,3 +74,89 @@ class TopicRepository:
             await session.scalars(statement.order_by(Topic.name_key).limit(min(max(limit, 1), 50)))
         ).all()
         return [TopicChoice(topic_id=topic.id, display_name=topic.display_name) for topic in topics]
+
+
+class ProductRepository:
+    """Persist owner-scoped draft rows and their optimistic version."""
+
+    async def count_drafts(self, session: AsyncSession, *, founder_id: UUID) -> int:
+        count = await session.scalar(
+            select(func.count())
+            .select_from(Product)
+            .where(Product.founder_id == founder_id, Product.status == "draft")
+        )
+        return int(count or 0)
+
+    async def create_draft(
+        self, session: AsyncSession, *, founder_id: UUID, now: datetime
+    ) -> Product:
+        statement = (
+            sa_insert(Product)
+            .values(
+                id=uuid7(),
+                founder_id=founder_id,
+                status="draft",
+                version=0,
+                created_at=now,
+                updated_at=now,
+            )
+            .returning(Product)
+        )
+        result = await session.execute(statement)
+        return result.scalar_one()
+
+    async def get_draft(
+        self,
+        session: AsyncSession,
+        *,
+        product_id: UUID,
+        founder_id: UUID,
+        lock: bool = False,
+    ) -> Product | None:
+        statement = (
+            select(Product)
+            .where(
+                Product.id == product_id,
+                Product.founder_id == founder_id,
+                Product.status == "draft",
+            )
+            .execution_options(populate_existing=True)
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return cast(Product | None, await session.scalar(statement))
+
+    async def save_draft(
+        self,
+        session: AsyncSession,
+        *,
+        product: Product,
+        content: ProductContentInput,
+        website_key: str | None,
+        now: datetime,
+    ) -> Product:
+        statement = (
+            update(Product)
+            .where(
+                Product.id == product.id,
+                Product.founder_id == product.founder_id,
+                Product.status == "draft",
+                Product.version == product.version,
+            )
+            .values(
+                name=content.name,
+                pitch=content.pitch,
+                description=content.description,
+                website_url=content.website_url,
+                website_key=website_key,
+                version=Product.version + 1,
+                updated_at=now,
+            )
+            .returning(Product)
+            .execution_options(populate_existing=True)
+        )
+        result = await session.execute(statement)
+        saved = result.scalar_one_or_none()
+        if saved is None:
+            raise ProductConflictError("product changed; reload and retry")
+        return saved
