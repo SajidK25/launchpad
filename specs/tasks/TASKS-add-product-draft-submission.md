@@ -450,7 +450,7 @@ Add bounded product-staging and product-clean object operations to the existing 
 
 ## Task T8: Manage Product Asset Intents and Attachments
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

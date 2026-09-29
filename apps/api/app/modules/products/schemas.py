@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
@@ -64,3 +66,32 @@ class ProductContentInput(BaseModel):
         ):
             raise ValueError("website_url must be a valid HTTPS URL")
         return value
+
+
+class ProductAssetIntentInput(BaseModel):
+    """Bounded declaration for one private logo or screenshot upload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["logo", "screenshot"]
+    content_type: Literal["image/jpeg", "image/png", "image/webp"]
+    size: int = Field(gt=0, le=5 * 1024 * 1024, strict=True)
+
+
+class ProductAssetIntentResponse(BaseModel):
+    """Short-lived upload capability; never includes a storage object key."""
+
+    asset_id: UUID
+    upload_url: str
+    fields: dict[str, str]
+    expires_in: int
+
+
+class ProductAssetCompleteResponse(BaseModel):
+    """Safe status of an image that passed byte-level validation."""
+
+    asset_id: UUID
+    kind: Literal["logo", "screenshot"]
+    media_type: Literal["image/jpeg", "image/png", "image/webp"]
+    byte_count: int
+    state: Literal["clean", "failed"]

@@ -102,6 +102,148 @@ class ProductRepository:
         )
         return int(count or 0)
 
+    async def count_pending_assets(
+        self, session: AsyncSession, *, product_id: UUID, now: datetime
+    ) -> int:
+        count = await session.scalar(
+            select(func.count())
+            .select_from(ProductAsset)
+            .where(
+                ProductAsset.product_id == product_id,
+                ProductAsset.state == "pending",
+                ProductAsset.expires_at > now,
+            )
+        )
+        return int(count or 0)
+
+    async def create_asset(
+        self,
+        session: AsyncSession,
+        *,
+        asset_id: UUID,
+        product_id: UUID,
+        kind: str,
+        staging_key: str,
+        media_type: str,
+        byte_count: int,
+        expires_at: datetime,
+    ) -> ProductAsset:
+        asset = ProductAsset(
+            id=asset_id,
+            product_id=product_id,
+            kind=kind,
+            state="pending",
+            staging_key=staging_key,
+            clean_key=None,
+            media_type=media_type,
+            byte_count=byte_count,
+            position=None,
+            expires_at=expires_at,
+            attached_at=None,
+        )
+        session.add(asset)
+        await session.flush()
+        return asset
+
+    async def get_asset(
+        self,
+        session: AsyncSession,
+        *,
+        product_id: UUID,
+        asset_id: UUID,
+        lock: bool = False,
+    ) -> ProductAsset | None:
+        statement = select(ProductAsset).where(
+            ProductAsset.id == asset_id, ProductAsset.product_id == product_id
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return cast(ProductAsset | None, await session.scalar(statement))
+
+    async def get_assets(
+        self,
+        session: AsyncSession,
+        *,
+        product_id: UUID,
+        asset_ids: set[UUID],
+    ) -> list[ProductAsset]:
+        if not asset_ids:
+            return []
+        return list(
+            (
+                await session.scalars(
+                    select(ProductAsset)
+                    .where(ProductAsset.product_id == product_id, ProductAsset.id.in_(asset_ids))
+                    .with_for_update()
+                )
+            ).all()
+        )
+
+    async def replace_asset_attachments(
+        self,
+        session: AsyncSession,
+        *,
+        product_id: UUID,
+        selected_positions: dict[UUID, int | None],
+        now: datetime,
+    ) -> list[ProductAsset]:
+        """Replace attachment ordering and return assets detached by this change."""
+
+        current = list(
+            (
+                await session.scalars(
+                    select(ProductAsset)
+                    .where(
+                        ProductAsset.product_id == product_id, ProductAsset.attached_at.is_not(None)
+                    )
+                    .with_for_update()
+                )
+            ).all()
+        )
+        for asset in current:
+            asset.attached_at = None
+            asset.position = None
+        await session.flush()
+        detached: list[ProductAsset] = []
+        for asset in current:
+            if asset.id not in selected_positions:
+                asset.state = "detached"
+                detached.append(asset)
+        if selected_positions:
+            chosen = await self.get_assets(
+                session,
+                product_id=product_id,
+                asset_ids=set(selected_positions),
+            )
+            for asset in chosen:
+                asset.position = selected_positions[asset.id]
+                asset.attached_at = now
+        await session.flush()
+        return detached
+
+    async def mark_asset_clean(
+        self,
+        session: AsyncSession,
+        *,
+        asset: ProductAsset,
+        clean_key: str,
+        media_type: str,
+        byte_count: int,
+    ) -> ProductAsset:
+        asset.state = "clean"
+        asset.clean_key = clean_key
+        asset.media_type = media_type
+        asset.byte_count = byte_count
+        await session.flush()
+        return asset
+
+    async def mark_asset_failed(
+        self, session: AsyncSession, *, asset: ProductAsset
+    ) -> ProductAsset:
+        asset.state = "failed"
+        await session.flush()
+        return asset
+
     async def submission_gaps(self, session: AsyncSession, *, product_id: UUID) -> tuple[str, ...]:
         """Return missing media/topic fields required for a review-ready product."""
 

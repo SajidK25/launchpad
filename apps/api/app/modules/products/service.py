@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 from urllib.parse import SplitResult, urlsplit
 from uuid import UUID
 
 from app.modules.auth.staff import AccountState
-from app.modules.products.models import Product, ProductSubmission
+from app.modules.products.models import Product, ProductAsset, ProductSubmission
 from app.modules.products.policies import (
     ProductConflictError,
     ProductForbiddenError,
@@ -18,13 +18,22 @@ from app.modules.products.policies import (
     ProductNotFoundError,
     ProductQuotaError,
     require_active_founder,
+    require_draft_status,
     require_expected_version,
     require_product_owner,
 )
-from app.modules.products.schemas import ProductContentInput
+from app.modules.products.schemas import ProductAssetIntentInput, ProductContentInput
 from app.shared.events.outbox import OutboxEvent, OutboxRepository
+from app.shared.storage.objects import (
+    CleanPhoto,
+    ObjectNotFound,
+    ObjectOperationError,
+    ObjectValidationError,
+    StagingUpload,
+)
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid6 import uuid7
 
 if TYPE_CHECKING:
     from app.modules.products.repository import ProductRepository
@@ -104,10 +113,56 @@ class SubmittedProduct:
     updated_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class ProductAssetResult:
+    """Owner-safe asset lifecycle view without storage keys."""
+
+    id: UUID
+    kind: Literal["logo", "screenshot"]
+    state: str
+    media_type: Literal["image/jpeg", "image/png", "image/webp"]
+    byte_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProductAssetUpload:
+    """Intent metadata and short-lived write-only storage capability."""
+
+    asset: ProductAssetResult
+    upload: StagingUpload
+
+
+class ProductAssetStorage(Protocol):
+    """Private object-storage operations required by the product asset lifecycle."""
+
+    async def create_product_staging_upload(
+        self,
+        *,
+        account_id: UUID,
+        product_id: UUID,
+        asset_id: UUID,
+        content_type: str,
+        size: int,
+        expires_in: int = 300,
+    ) -> StagingUpload: ...
+
+    async def finalize_product_staging(
+        self,
+        *,
+        account_id: UUID,
+        product_id: UUID,
+        asset_id: UUID,
+        declared_content_type: str | None = None,
+    ) -> CleanPhoto: ...
+
+
 class ProductService:
     """Create, load, and version private drafts under live account authorization."""
 
     DRAFT_LIMIT = 10
+    PENDING_ASSET_LIMIT = 10
+    ASSET_UPLOAD_EXPIRY_SECONDS = 300
+    ASSET_CLEANUP_GRACE = timedelta(hours=24)
 
     def __init__(
         self,
@@ -254,6 +309,224 @@ class ProductService:
             await self._record_event(session, submitted, event_type="product.submitted.v1", now=now)
             return _submission_view(period)
 
+    async def create_asset_intent(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        product_id: UUID,
+        intent: ProductAssetIntentInput,
+        storage: ProductAssetStorage,
+    ) -> ProductAssetUpload:
+        """Issue and persist a bounded upload only for the active draft owner."""
+
+        account = await self.member_access.current_account(session, actor_id, lock=True)
+        require_active_founder(account)
+        async with session.begin_nested():
+            product = await self.repository.get_owned_product(
+                session, product_id=product_id, founder_id=actor_id, lock=True
+            )
+            if product is None:
+                raise ProductNotFoundError("product unavailable")
+            require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
+            require_draft_status(product.status)
+            now = self.clock()
+            pending_count = await self.repository.count_pending_assets(
+                session, product_id=product.id, now=now
+            )
+            if pending_count >= self.PENDING_ASSET_LIMIT:
+                raise ProductQuotaError("pending asset upload limit reached")
+            asset_id = uuid7()
+            expires_at = now + timedelta(seconds=self.ASSET_UPLOAD_EXPIRY_SECONDS)
+            upload = await storage.create_product_staging_upload(
+                account_id=actor_id,
+                product_id=product.id,
+                asset_id=asset_id,
+                content_type=intent.content_type,
+                size=intent.size,
+                expires_in=self.ASSET_UPLOAD_EXPIRY_SECONDS,
+            )
+            asset = await self.repository.create_asset(
+                session,
+                asset_id=asset_id,
+                product_id=product.id,
+                kind=intent.kind,
+                staging_key=upload.object_key,
+                media_type=intent.content_type,
+                byte_count=intent.size,
+                expires_at=expires_at,
+            )
+            await self._record_asset_purge(
+                session,
+                product=product,
+                actor_id=actor_id,
+                asset=asset,
+                available_at=expires_at + self.ASSET_CLEANUP_GRACE,
+            )
+            await self._record_event(
+                session, product, event_type="product.asset_changed.v1", now=now
+            )
+            return ProductAssetUpload(asset=_asset_view(asset), upload=upload)
+
+    async def complete_asset(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        product_id: UUID,
+        asset_id: UUID,
+        storage: ProductAssetStorage,
+    ) -> ProductAssetResult:
+        """Validate staged bytes and promote them without making them publicly readable."""
+
+        account = await self.member_access.current_account(session, actor_id, lock=True)
+        require_active_founder(account)
+        async with session.begin_nested():
+            product = await self.repository.get_owned_product(
+                session, product_id=product_id, founder_id=actor_id, lock=True
+            )
+            if product is None:
+                raise ProductNotFoundError("product unavailable")
+            require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
+            require_draft_status(product.status)
+            asset = await self.repository.get_asset(
+                session, product_id=product.id, asset_id=asset_id, lock=True
+            )
+            if asset is None:
+                raise ProductNotFoundError("asset unavailable")
+            if asset.state == "clean":
+                return _asset_view(asset)
+            now = self.clock()
+            if asset.state != "pending" or asset.expires_at is None or asset.expires_at <= now:
+                raise ProductConflictError("asset upload is no longer pending")
+            try:
+                clean = await storage.finalize_product_staging(
+                    account_id=actor_id,
+                    product_id=product.id,
+                    asset_id=asset.id,
+                    declared_content_type=asset.media_type,
+                )
+            except (ObjectNotFound, ObjectValidationError):
+                failed = await self.repository.mark_asset_failed(session, asset=asset)
+                await self._record_event(
+                    session, product, event_type="product.asset_changed.v1", now=now
+                )
+                return _asset_view(failed)
+            except ObjectOperationError as error:
+                raise ProductInfrastructureError("asset upload could not be completed") from error
+            clean_asset = await self.repository.mark_asset_clean(
+                session,
+                asset=asset,
+                clean_key=clean.object_key,
+                media_type=clean.media_type,
+                byte_count=clean.byte_count,
+            )
+            await self._record_event(
+                session, product, event_type="product.asset_changed.v1", now=now
+            )
+            return _asset_view(clean_asset)
+
+    async def attach_assets(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        product_id: UUID,
+        expected_version: int,
+        logo_asset_id: UUID | None,
+        screenshot_asset_ids: tuple[UUID, ...],
+    ) -> ProductDraft:
+        """Attach only clean assets owned by this draft and atomically replace ordering."""
+
+        account = await self.member_access.current_account(session, actor_id, lock=True)
+        require_active_founder(account)
+        if len(screenshot_asset_ids) > 10 or len(set(screenshot_asset_ids)) != len(
+            screenshot_asset_ids
+        ):
+            raise ProductConflictError("invalid product asset selection")
+        selected: dict[UUID, int | None] = {}
+        if logo_asset_id is not None:
+            selected[logo_asset_id] = None
+        for position, asset_id in enumerate(screenshot_asset_ids, start=1):
+            if asset_id in selected:
+                raise ProductConflictError("an asset cannot fill multiple positions")
+            selected[asset_id] = position
+        async with session.begin_nested():
+            product = await self.repository.get_owned_product(
+                session, product_id=product_id, founder_id=actor_id, lock=True
+            )
+            if product is None:
+                raise ProductNotFoundError("product unavailable")
+            require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
+            require_draft_status(product.status)
+            require_expected_version(current=product.version, expected=expected_version)
+            assets = await self.repository.get_assets(
+                session, product_id=product.id, asset_ids=set(selected)
+            )
+            if len(assets) != len(selected):
+                raise ProductNotFoundError("asset unavailable")
+            by_id = {asset.id: asset for asset in assets}
+            for selected_asset_id, selected_position in selected.items():
+                asset = by_id[selected_asset_id]
+                expected_kind = "logo" if selected_position is None else "screenshot"
+                if asset.state != "clean" or asset.kind != expected_kind:
+                    raise ProductConflictError("only clean matching assets can be attached")
+            now = self.clock()
+            detached = await self.repository.replace_asset_attachments(
+                session,
+                product_id=product.id,
+                selected_positions=selected,
+                now=now,
+            )
+            for asset in detached:
+                await self._record_asset_purge(
+                    session,
+                    product=product,
+                    actor_id=actor_id,
+                    asset=asset,
+                    available_at=now + self.ASSET_CLEANUP_GRACE,
+                )
+            saved = await self.repository.set_product_state(
+                session, product=product, status="draft", now=now
+            )
+            await self._record_event(session, saved, event_type="product.asset_changed.v1", now=now)
+            return _draft_view(saved)
+
+    async def _record_asset_purge(
+        self,
+        session: AsyncSession,
+        *,
+        product: Product,
+        actor_id: UUID,
+        asset: ProductAsset,
+        available_at: datetime,
+    ) -> None:
+        """Persist delayed cleanup for abandoned or DB-orphaned upload objects."""
+
+        clean_key = asset.staging_key.replace("product-staging/", "product-clean/", 1)
+        try:
+            key_id, encrypted_payload = self.payload_codec.encode(
+                {
+                    "account_id": actor_id,
+                    "product_id": product.id,
+                    "asset_id": asset.id,
+                    "staging_key": asset.staging_key,
+                    "clean_key": clean_key,
+                }
+            )
+            await self.outbox_repository.add(
+                session,
+                OutboxEvent(
+                    event_type="product.media_purge.v1",
+                    aggregate_id=product.id,
+                    key_id=key_id,
+                    encrypted_payload=encrypted_payload,
+                    available_at=available_at,
+                ),
+            )
+        except Exception as exc:
+            raise ProductInfrastructureError("asset cleanup could not be scheduled") from exc
+
     async def save_pending(
         self,
         session: AsyncSession,
@@ -388,6 +661,16 @@ def _draft_view(product: Product) -> ProductDraft:
         website_key=product.website_key,
         created_at=product.created_at,
         updated_at=product.updated_at,
+    )
+
+
+def _asset_view(asset: ProductAsset) -> ProductAssetResult:
+    return ProductAssetResult(
+        id=asset.id,
+        kind=cast(Literal["logo", "screenshot"], asset.kind),
+        state=asset.state,
+        media_type=cast(Literal["image/jpeg", "image/png", "image/webp"], asset.media_type),
+        byte_count=asset.byte_count,
     )
 
 
