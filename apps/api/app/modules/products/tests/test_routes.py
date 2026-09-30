@@ -45,6 +45,7 @@ def test_asset_routes_are_explicit_and_require_trusted_origin() -> None:
     paths = {route.path for route in routes.routes if isinstance(route, APIRoute)}
 
     assert paths == {
+        "/api/v1/me/products/{product_id}",
         "/api/v1/me/products/{product_id}/assets",
         "/api/v1/me/products/{product_id}/assets/{asset_id}/complete",
     }

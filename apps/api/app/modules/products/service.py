@@ -164,6 +164,14 @@ class ProductEventStorage(Protocol):
     ) -> None: ...
 
 
+class ProductDeleteStorage(Protocol):
+    """Read-only private storage probe required before irreversible metadata deletion."""
+
+    async def get_product_private(
+        self, *, account_id: UUID, product_id: UUID, object_key: str
+    ) -> tuple[bytes, str | None]: ...
+
+
 class ProductService:
     """Create, load, and version private drafts under live account authorization."""
 
@@ -231,6 +239,58 @@ class ProductService:
             raise ProductNotFoundError("product unavailable")
         require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
         return _draft_view(product)
+
+    async def delete_draft(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        product_id: UUID,
+        expected_version: int,
+        storage: ProductDeleteStorage,
+    ) -> None:
+        """Delete only an owned private draft after storage preflight and durable purge."""
+
+        account = await self.member_access.current_account(session, actor_id, lock=True)
+        require_active_founder(account)
+        async with session.begin_nested():
+            product = await self.repository.get_owned_product(
+                session, product_id=product_id, founder_id=actor_id, lock=True
+            )
+            if product is None:
+                raise ProductNotFoundError("product unavailable")
+            require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
+            require_draft_status(product.status)
+            require_expected_version(current=product.version, expected=expected_version)
+            try:
+                await storage.get_product_private(
+                    account_id=actor_id,
+                    product_id=product.id,
+                    object_key=f"product-clean/{actor_id.hex}/{product.id.hex}/{uuid7().hex}",
+                )
+            except ObjectNotFound:
+                # A missing probe key proves the private bucket responded successfully.
+                pass
+            except ObjectOperationError as error:
+                raise ProductInfrastructureError("product storage is unavailable") from error
+
+            now = self.clock()
+            assets = await self.repository.get_product_assets(
+                session, product_id=product.id, lock=True
+            )
+            for asset in assets:
+                available_at = now
+                if asset.expires_at is not None:
+                    available_at = max(available_at, asset.expires_at + self.ASSET_CLEANUP_GRACE)
+                await self._record_asset_purge(
+                    session,
+                    product=product,
+                    actor_id=actor_id,
+                    asset=asset,
+                    available_at=available_at,
+                )
+            await self._record_event(session, product, event_type="product.deleted.v1", now=now)
+            await self.repository.delete_product(session, product=product)
 
     async def save_draft(
         self,

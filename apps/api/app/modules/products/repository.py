@@ -1,4 +1,4 @@
-"""Topic and exact website-key persistence owned by the products feature."""
+"""Product-owned persistence for drafts, assets, topics, and submission periods."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.modules.products.models import (
 from app.modules.products.policies import ProductConflictError
 from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import canonical_topic_key, validate_topic_names
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy import insert as sa_insert
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,6 +84,19 @@ class TopicRepository:
 
 class ProductRepository:
     """Persist owner-scoped draft rows and their optimistic version."""
+
+    async def get_product_assets(
+        self, session: AsyncSession, *, product_id: UUID, lock: bool = False
+    ) -> list[ProductAsset]:
+        statement = select(ProductAsset).where(ProductAsset.product_id == product_id)
+        if lock:
+            statement = statement.with_for_update()
+        return list((await session.scalars(statement.order_by(ProductAsset.id))).all())
+
+    async def delete_product(self, session: AsyncSession, *, product: Product) -> None:
+        """Hard-delete the product and its cascading private associations."""
+
+        await session.execute(delete(Product).where(Product.id == product.id))
 
     async def count_drafts(self, session: AsyncSession, *, founder_id: UUID) -> int:
         count = await session.scalar(

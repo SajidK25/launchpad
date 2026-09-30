@@ -1,4 +1,4 @@
-"""Authenticated REST commands for private product asset uploads."""
+"""Authenticated REST commands for private product drafts and asset uploads."""
 
 import base64
 from collections.abc import AsyncIterator
@@ -31,7 +31,7 @@ from app.shared.storage.objects import (
     ObjectValidationError,
     PrivateObjectStore,
 )
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 def router(
     *, settings: Settings, database: Database, redis: Redis, storage: PrivateObjectStore
 ) -> APIRouter:
-    """Build owner-only asset routes with cookie auth and origin-bound CSRF checks."""
+    """Build owner-only product routes with cookie auth and origin-bound CSRF checks."""
 
     del redis  # Reserved for the product mutation rate-limit integration.
     if settings.outbox_key is None or settings.outbox_key_id is None:
@@ -116,6 +116,38 @@ def router(
         ):
             return HTTPException(status_code=503, detail="service unavailable")
         return HTTPException(status_code=400, detail="request could not be completed")
+
+    @routes.delete("/me/products/{product_id}", status_code=204)
+    async def delete_draft(
+        product_id: UUID,
+        request: Request,
+        session: DbSession,
+        expected_version: int,
+        x_csrf_token: str | None = Header(default=None),
+    ) -> Response:
+        require_origin(request)
+        async with session.begin():
+            member = await current_member(request, session)
+            require_member_csrf(request, member, x_csrf_token)
+            try:
+                await service().delete_draft(
+                    session,
+                    actor_id=member.account_id,
+                    product_id=product_id,
+                    expected_version=expected_version,
+                    storage=storage,
+                )
+            except (
+                ProductForbiddenError,
+                ProductNotFoundError,
+                ProductConflictError,
+                ProductInfrastructureError,
+                ObjectOperationError,
+                SQLAlchemyError,
+                RedisError,
+            ) as error:
+                raise map_error(error) from error
+        return Response(status_code=204)
 
     @routes.post(
         "/me/products/{product_id}/assets",

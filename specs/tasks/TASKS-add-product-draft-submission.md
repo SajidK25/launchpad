@@ -570,7 +570,7 @@ Make worker dispatch exhaustive by event type so product state events and media-
 
 ## Task T10: Delete Private Drafts With Durable Purge
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical
@@ -618,7 +618,7 @@ Allow an unsuspended owner to hard-delete only a private draft after storage ava
 - apps/api/app/modules/products/tests/test_deletion.py; tests/integration/test_product_deletion.py (verification).
 
 **Modified files:**
-- apps/api/app/modules/products/service.py; repository.py; routes.py (delete, event, cleanup boundary).
+- apps/api/app/modules/products/service.py; repository.py; routes.py (delete, event, cleanup boundary); apps/api/app/modules/products/tests/test_routes.py (route contract); packages/contracts/openapi.json and packages/contracts/src/generated.ts (generated API contract).
 
 **Must NOT modify:**
 - apps/api/app/modules/users/service.py (profile deletion is not in scope).

@@ -73,12 +73,27 @@
             "title": "Csrf Token",
             "type": "string"
           },
+          "role": {
+            "enum": ["member", "reviewer", "admin"],
+            "title": "Role",
+            "type": "string"
+          },
+          "suspended": {
+            "title": "Suspended",
+            "type": "boolean"
+          },
           "verified": {
             "title": "Verified",
             "type": "boolean"
           }
         },
-        "required": ["account_id", "verified", "csrf_token"],
+        "required": [
+          "account_id",
+          "verified",
+          "role",
+          "suspended",
+          "csrf_token"
+        ],
         "title": "LoginResponse",
         "type": "object"
       },
@@ -328,12 +343,27 @@
             "title": "Csrf Token",
             "type": "string"
           },
+          "role": {
+            "enum": ["member", "reviewer", "admin"],
+            "title": "Role",
+            "type": "string"
+          },
+          "suspended": {
+            "title": "Suspended",
+            "type": "boolean"
+          },
           "verified": {
             "title": "Verified",
             "type": "boolean"
           }
         },
-        "required": ["account_id", "verified", "csrf_token"],
+        "required": [
+          "account_id",
+          "verified",
+          "role",
+          "suspended",
+          "csrf_token"
+        ],
         "title": "SessionResponse",
         "type": "object"
       },

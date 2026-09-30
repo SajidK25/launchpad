@@ -336,6 +336,13 @@ export interface components {
       account_id: string;
       /** Csrf Token */
       csrf_token: string;
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: "member" | "reviewer" | "admin";
+      /** Suspended */
+      suspended: boolean;
       /** Verified */
       verified: boolean;
     };
@@ -432,6 +439,13 @@ export interface components {
       account_id: string;
       /** Csrf Token */
       csrf_token: string;
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: "member" | "reviewer" | "admin";
+      /** Suspended */
+      suspended: boolean;
       /** Verified */
       verified: boolean;
     };
