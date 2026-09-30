@@ -1,6 +1,7 @@
 """Submission completeness rules independent of database transports."""
 
 import pytest
+
 from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import ProductValidationError, validate_submission_content
 

@@ -4,6 +4,9 @@ import io
 from uuid import uuid4
 
 import pytest
+from botocore.exceptions import ClientError
+from PIL import Image, PngImagePlugin
+
 from app.shared.storage.objects import (
     CLEAN_PREFIX,
     MAX_PHOTO_BYTES,
@@ -13,8 +16,6 @@ from app.shared.storage.objects import (
     ObjectValidationError,
     PrivateObjectStore,
 )
-from botocore.exceptions import ClientError
-from PIL import Image, PngImagePlugin
 
 
 class _S3:

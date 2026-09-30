@@ -9,6 +9,10 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
+from sqlalchemy import delete, select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from app.modules.auth.models import Account
 from app.modules.auth.staff import AuthAccessService
 from app.modules.products.models import Product, ProductAsset
@@ -25,9 +29,6 @@ from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.models import OutboxMessage
 from app.shared.events.outbox import OutboxRepository
 from app.shared.storage.objects import CleanPhoto, ObjectValidationError, StagingUpload
-from pydantic import ValidationError
-from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 @pytest.mark.parametrize("size", [0, 5 * 1024 * 1024 + 1])

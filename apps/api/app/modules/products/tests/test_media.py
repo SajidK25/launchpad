@@ -11,6 +11,9 @@ from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import Table, delete, insert, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from app.modules.auth.models import Account
 from app.modules.auth.staff import AuthAccessService
 from app.modules.products.models import Product, ProductAsset, ProductSubmission
@@ -24,8 +27,6 @@ from app.modules.products.service import ProductService
 from app.shared.db.database import Database
 from app.shared.events.outbox import OutboxRepository
 from app.shared.storage.objects import ObjectOperationError
-from sqlalchemy import Table, delete, insert, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 ACCOUNT_TABLE = cast(Table, Account.__table__)
 PRODUCT_TABLE = cast(Table, Product.__table__)

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+
 from app.modules.auth.staff import AccountState
 from app.modules.products.policies import (
     ProductForbiddenError,

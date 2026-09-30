@@ -9,6 +9,9 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import delete, insert
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from app.modules.auth.models import Account
 from app.modules.auth.staff import AccountState, AuthAccessService
 from app.modules.products.models import Product, ProductSubmission
@@ -20,8 +23,6 @@ from app.modules.products.policies import (
 from app.modules.products.service import ProductService
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
-from sqlalchemy import delete, insert
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 class _CountingAccess(AuthAccessService):

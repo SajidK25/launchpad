@@ -830,7 +830,7 @@ Provide policy-enforced read models for a founder's private products and a staff
 
 ## Task T14: Compose Product and Profile GraphQL Reads
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** critical
@@ -880,10 +880,12 @@ Compose product owner/staff fields with the existing profile reads on one bounde
 
 **New files:**
 - apps/api/app/graphql.py; apps/api/app/modules/products/graphql.py (schema composition and product fields).
+- apps/api/app/modules/products/__init__.py (package boundary so pytest does not import product GraphQL as the third-party `graphql` package).
 - apps/api/app/modules/products/tests/test_graphql.py; tests/integration/test_graphql_composition.py (verification).
 
 **Modified files:**
 - apps/api/app/modules/users/graphql.py; routes.py (export profile fields; move GraphQL context ownership).
+- apps/api/app/modules/products/repository.py; routes.py; service.py and tests/test_assets.py, test_deletion.py, test_drafts.py, test_events.py, test_media.py, test_product_storage.py, test_queue.py, test_reads.py, test_routes.py, test_submissions.py, test_topics.py, test_validation.py (Ruff import ordering after adding the package initializer).
 
 **Must NOT modify:**
 - apps/api/app/modules/users/tests/test_graphql.py (existing regression suite is run unchanged).

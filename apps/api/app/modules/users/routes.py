@@ -1,22 +1,20 @@
 """Thin REST transport for private profile actions and gated photos."""
 
 import base64
-import json
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-from graphql import GraphQLError
 from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from uuid6 import uuid7
 
+from app.graphql import build_router, context_getter
 from app.modules.auth.sessions import MemberContext, SessionService, UnauthenticatedError
-from app.modules.users.graphql import build_router, validate_read_query
 from app.modules.users.policies import (
     ProfileConflictError,
     ProfileForbiddenError,
@@ -343,33 +341,15 @@ def router(
         image.headers["X-Content-Type-Options"] = "nosniff"
         return image
 
-    async def graphql_context(request: Request) -> dict[str, object]:
-        if request.method != "POST":
-            raise HTTPException(status_code=405, detail="POST required")
-        body = await request.body()
-        try:
-            payload = json.loads(body)
-            query = payload.get("query") if isinstance(payload, dict) else None
-            if not isinstance(query, str):
-                raise ValueError("query is required")
-            validate_read_query(query)
-        except (GraphQLError, TypeError, ValueError, json.JSONDecodeError) as error:
-            raise HTTPException(status_code=400, detail="query is not allowed") from error
-        async with session_factory() as session:
-            member: MemberContext | None = None
-            secret = request.cookies.get(settings.session_cookie_name)
-            if secret:
-                try:
-                    member = await session_service.resolve(session, session_secret=secret)
-                except UnauthenticatedError:
-                    member = None
-        return {
-            "member": member,
-            "session_factory": session_factory,
-            "service_factory": service_for,
-        }
-
-    graphql_routes = build_router(graphql_context)
+    graphql_routes = build_router(
+        context_getter(
+            settings=settings,
+            session_factory=session_factory,
+            session_service=session_service,
+            profile_service_factory=service_for,
+            payload_codec=codec,
+        )
+    )
     return routes, graphql_routes
 
 

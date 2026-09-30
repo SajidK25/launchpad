@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from app.modules.products.tests.test_routes import _app
 from fastapi.testclient import TestClient
+
+from app.modules.products.tests.test_routes import _app
 
 
 def test_delete_requires_exact_origin_and_version_before_service_access() -> None:

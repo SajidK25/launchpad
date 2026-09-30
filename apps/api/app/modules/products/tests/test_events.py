@@ -9,13 +9,14 @@ from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.modules.auth.staff import AuthAccessService
 from app.modules.products.repository import ProductRepository
 from app.modules.products.service import ProductService
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.outbox import OutboxRepository, PermanentEventError
 from app.shared.storage.objects import ObjectOperationError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class _Repository:

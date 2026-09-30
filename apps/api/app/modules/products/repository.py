@@ -7,6 +7,12 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
+from sqlalchemy import delete, func, select, tuple_, update
+from sqlalchemy import insert as sa_insert
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+from uuid6 import uuid7
+
 from app.modules.products.models import (
     Product,
     ProductAsset,
@@ -17,11 +23,6 @@ from app.modules.products.models import (
 from app.modules.products.policies import ProductConflictError
 from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import canonical_topic_key, validate_topic_names
-from sqlalchemy import delete, func, select, tuple_, update
-from sqlalchemy import insert as sa_insert
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
-from uuid6 import uuid7
 
 
 @dataclass(frozen=True, slots=True)

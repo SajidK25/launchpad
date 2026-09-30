@@ -7,6 +7,9 @@ from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import Table, delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from app.modules.auth.models import Account
 from app.modules.auth.staff import AuthAccessService
 from app.modules.products.models import Product, ProductTopic, Topic
@@ -24,8 +27,6 @@ from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.models import OutboxMessage
 from app.shared.events.outbox import OutboxEvent, OutboxRepository
-from sqlalchemy import Table, delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 class _FailAfterOutboxWrite:

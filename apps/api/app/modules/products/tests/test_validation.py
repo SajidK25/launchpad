@@ -1,9 +1,10 @@
 """Product content validation contracts."""
 
 import pytest
+from pydantic import ValidationError
+
 from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import ProductValidationError, validate_submission_content
-from pydantic import ValidationError
 
 
 def test_accepts_incomplete_draft_with_omitted_or_blank_optional_fields() -> None:

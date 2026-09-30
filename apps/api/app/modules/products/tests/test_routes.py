@@ -5,15 +5,16 @@ from __future__ import annotations
 import base64
 from types import SimpleNamespace
 
-from app.modules.products.routes import router
-from app.shared.config.settings import Settings
-from app.shared.db.database import Database
-from app.shared.storage.objects import PrivateObjectStore
 from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from redis import Redis
+
+from app.modules.products.routes import router
+from app.shared.config.settings import Settings
+from app.shared.db.database import Database
+from app.shared.storage.objects import PrivateObjectStore
 
 
 def _app(origins: tuple[str, ...] = ()) -> tuple[FastAPI, APIRouter]:

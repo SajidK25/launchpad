@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 from urllib.parse import SplitResult, urlsplit
 from uuid import UUID
 
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
+from uuid6 import uuid7
+
 from app.modules.auth.staff import AccountState
 from app.modules.products.models import Product, ProductAsset, ProductSubmission
 from app.modules.products.policies import (
@@ -35,9 +39,6 @@ from app.shared.storage.objects import (
     ObjectValidationError,
     StagingUpload,
 )
-from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
-from uuid6 import uuid7
 
 if TYPE_CHECKING:
     from app.modules.products.repository import ProductRepository, TopicChoice
