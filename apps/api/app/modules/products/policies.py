@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+from datetime import UTC, datetime
 from uuid import UUID
 
 from app.modules.auth.staff import AccountState
+
+PRODUCT_MEDIA_URL_TTL_SECONDS = 300
 
 
 class ProductError(ValueError):
@@ -29,6 +34,31 @@ class ProductQuotaError(ProductError):
 
 class ProductInfrastructureError(ProductError):
     """A dependency required to complete the product operation failed."""
+
+
+def create_product_media_signature(session_secret: str, path: str, expires_at: int) -> str:
+    """Sign a canonical media path and expiry with the opaque current session secret."""
+
+    payload = f"launchpad-product-media-v1\n{path}\n{expires_at}".encode()
+    return hmac.new(session_secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def verify_product_media_signature(
+    session_secret: str,
+    path: str,
+    expires_at: int,
+    signature: str,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Verify session binding, exact path/expiry, and the bounded validity window."""
+
+    current = now or datetime.now(UTC)
+    remaining = expires_at - current.timestamp()
+    if remaining <= 0 or remaining > PRODUCT_MEDIA_URL_TTL_SECONDS:
+        return False
+    expected = create_product_media_signature(session_secret, path, expires_at)
+    return hmac.compare_digest(expected, signature)
 
 
 def require_active_founder(account: AccountState | None) -> AccountState:

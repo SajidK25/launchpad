@@ -12,15 +12,18 @@ from uuid import UUID
 from app.modules.auth.staff import AccountState
 from app.modules.products.models import Product, ProductAsset, ProductSubmission
 from app.modules.products.policies import (
+    PRODUCT_MEDIA_URL_TTL_SECONDS,
     ProductConflictError,
     ProductForbiddenError,
     ProductInfrastructureError,
     ProductNotFoundError,
     ProductQuotaError,
+    create_product_media_signature,
     require_active_founder,
     require_draft_status,
     require_expected_version,
     require_product_owner,
+    verify_product_media_signature,
 )
 from app.modules.products.schemas import ProductAssetIntentInput, ProductContentInput
 from app.shared.events.outbox import OutboxEvent, OutboxRepository, PermanentEventError
@@ -172,12 +175,29 @@ class ProductDeleteStorage(Protocol):
     ) -> tuple[bytes, str | None]: ...
 
 
+class ProductMediaStorage(Protocol):
+    """Read clean product media through the private storage adapter."""
+
+    async def get_product_private(
+        self, *, account_id: UUID, product_id: UUID, object_key: str
+    ) -> tuple[bytes, str | None]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ProductPrivateMedia:
+    """Validated private image bytes and response media type."""
+
+    body: bytes
+    media_type: str
+
+
 class ProductService:
     """Create, load, and version private drafts under live account authorization."""
 
     DRAFT_LIMIT = 10
     PENDING_ASSET_LIMIT = 10
     ASSET_UPLOAD_EXPIRY_SECONDS = 300
+    PRODUCT_MEDIA_URL_TTL_SECONDS = PRODUCT_MEDIA_URL_TTL_SECONDS
     ASSET_CLEANUP_GRACE = timedelta(hours=24)
     PRODUCT_STATE_EVENTS = frozenset(
         {
@@ -223,6 +243,102 @@ class ProductService:
             product = await self.repository.create_draft(session, founder_id=actor_id, now=now)
             await self._record_event(session, product, event_type="product.created.v1", now=now)
             return _draft_view(product)
+
+    async def sign_private_asset_url(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        session_secret: str,
+        product_id: UUID,
+        asset_id: UUID,
+    ) -> str:
+        """Issue a short-lived URL only after checking current private-media access."""
+
+        await self._authorized_private_asset(
+            session, actor_id=actor_id, product_id=product_id, asset_id=asset_id
+        )
+        path = _product_media_path(product_id, asset_id)
+        expires_at = int(self.clock().timestamp()) + self.PRODUCT_MEDIA_URL_TTL_SECONDS
+        signature = create_product_media_signature(session_secret, path, expires_at)
+        return f"{path}?expires={expires_at}&signature={signature}"
+
+    async def read_private_asset(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        session_secret: str,
+        product_id: UUID,
+        asset_id: UUID,
+        expires_at: int,
+        signature: str,
+        storage: ProductMediaStorage,
+    ) -> ProductPrivateMedia:
+        """Revalidate the signed request and live authorization before every object read."""
+
+        path = _product_media_path(product_id, asset_id)
+        if not verify_product_media_signature(
+            session_secret,
+            path,
+            expires_at,
+            signature,
+            now=self.clock(),
+        ):
+            raise ProductNotFoundError("product media unavailable")
+        product, asset = await self._authorized_private_asset(
+            session, actor_id=actor_id, product_id=product_id, asset_id=asset_id
+        )
+        if asset.clean_key is None:
+            raise ProductNotFoundError("product media unavailable")
+        try:
+            body, _storage_media_type = await storage.get_product_private(
+                account_id=product.founder_id,
+                product_id=product.id,
+                object_key=asset.clean_key,
+            )
+        except ObjectOperationError as error:
+            raise ProductInfrastructureError("product media is unavailable") from error
+        return ProductPrivateMedia(body=body, media_type=asset.media_type)
+
+    async def _authorized_private_asset(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        product_id: UUID,
+        asset_id: UUID,
+    ) -> tuple[Product, ProductAsset]:
+        account = await self.member_access.current_account(session, actor_id, lock=True)
+        if account is None:
+            raise ProductNotFoundError("product media unavailable")
+        product = await self.repository.get_product(session, product_id=product_id, lock=True)
+        if product is None:
+            raise ProductNotFoundError("product media unavailable")
+        is_owner = actor_id == product.founder_id
+        if not is_owner:
+            if (
+                account.role not in {"reviewer", "admin"}
+                or not account.verified
+                or account.suspended_at is not None
+                or product.status != "submitted"
+                or await self.repository.get_pending_submission(
+                    session, product_id=product.id, lock=True
+                )
+                is None
+            ):
+                raise ProductNotFoundError("product media unavailable")
+        asset = await self.repository.get_asset(
+            session, product_id=product.id, asset_id=asset_id, lock=True
+        )
+        if (
+            asset is None
+            or asset.state != "clean"
+            or asset.attached_at is None
+            or asset.clean_key is None
+        ):
+            raise ProductNotFoundError("product media unavailable")
+        return product, asset
 
     async def get_draft(
         self, session: AsyncSession, *, actor_id: UUID, product_id: UUID
@@ -934,3 +1050,7 @@ def _replace_url(
     parsed: SplitResult, *, netloc: str, path: str, query: str, fragment: str
 ) -> SplitResult:
     return parsed._replace(netloc=netloc, path=path, query=query, fragment=fragment)
+
+
+def _product_media_path(product_id: UUID, asset_id: UUID) -> str:
+    return f"/api/v1/products/{product_id}/assets/{asset_id}"

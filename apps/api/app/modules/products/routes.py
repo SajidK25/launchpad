@@ -31,7 +31,8 @@ from app.shared.storage.objects import (
     ObjectValidationError,
     PrivateObjectStore,
 )
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
@@ -148,6 +149,51 @@ def router(
             ) as error:
                 raise map_error(error) from error
         return Response(status_code=204)
+
+    @routes.get("/products/{product_id}/assets/{asset_id}")
+    async def get_private_product_asset(
+        product_id: UUID,
+        asset_id: UUID,
+        request: Request,
+        session: DbSession,
+        expires: Annotated[int, Query(ge=0)],
+        signature: Annotated[str, Query(min_length=64, max_length=64)],
+    ) -> Response:
+        session_secret = request.cookies.get(settings.session_cookie_name)
+        if not session_secret:
+            raise HTTPException(status_code=404, detail="product media unavailable")
+        try:
+            async with session.begin():
+                member = await session_service.resolve(session, session_secret=session_secret)
+                media = await service().read_private_asset(
+                    session,
+                    actor_id=member.account_id,
+                    session_secret=session_secret,
+                    product_id=product_id,
+                    asset_id=asset_id,
+                    expires_at=expires,
+                    signature=signature,
+                    storage=storage,
+                )
+        except UnauthenticatedError as error:
+            raise HTTPException(status_code=404, detail="product media unavailable") from error
+        except ProductNotFoundError as error:
+            raise HTTPException(status_code=404, detail="product media unavailable") from error
+        except (
+            ProductInfrastructureError,
+            ObjectOperationError,
+            SQLAlchemyError,
+            RedisError,
+        ) as error:
+            raise HTTPException(status_code=503, detail="service unavailable") from error
+        return StreamingResponse(
+            iter((media.body,)),
+            media_type=media.media_type,
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     @routes.post(
         "/me/products/{product_id}/assets",

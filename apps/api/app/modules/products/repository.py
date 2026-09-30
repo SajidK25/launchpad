@@ -306,6 +306,20 @@ class ProductRepository:
             statement = statement.with_for_update()
         return cast(Product | None, await session.scalar(statement))
 
+    async def get_product(
+        self, session: AsyncSession, *, product_id: UUID, lock: bool = False
+    ) -> Product | None:
+        """Load the current product for an authorization decision inside its transaction."""
+
+        statement = (
+            select(Product)
+            .where(Product.id == product_id)
+            .execution_options(populate_existing=True)
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return cast(Product | None, await session.scalar(statement))
+
     async def get_pending_submission(
         self, session: AsyncSession, *, product_id: UUID, lock: bool = False
     ) -> ProductSubmission | None:

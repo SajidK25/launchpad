@@ -628,7 +628,7 @@ Allow an unsuspended owner to hard-delete only a private draft after storage ava
 
 ## Task T11: Serve Session-Bound Private Product Media
 
-> **Status:** not started
+> **Status:** completed
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

@@ -48,6 +48,7 @@ def test_asset_routes_are_explicit_and_require_trusted_origin() -> None:
         "/api/v1/me/products/{product_id}",
         "/api/v1/me/products/{product_id}/assets",
         "/api/v1/me/products/{product_id}/assets/{asset_id}/complete",
+        "/api/v1/products/{product_id}/assets/{asset_id}",
     }
     response = TestClient(app).post(
         "/api/v1/me/products/00000000-0000-0000-0000-000000000001/assets",
@@ -67,6 +68,17 @@ def test_asset_intent_contract_rejects_untrusted_upload_types() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_private_media_route_hides_missing_sessions() -> None:
+    app, _ = _app(("http://localhost:8080",))
+    response = TestClient(app).get(
+        "/api/v1/products/00000000-0000-0000-0000-000000000001/assets/"
+        "00000000-0000-0000-0000-000000000002?expires=1790760000&signature=" + "a" * 64
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "product media unavailable"}
 
 
 def test_asset_mutations_accept_only_exact_configured_origins_before_auth() -> None:
