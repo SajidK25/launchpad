@@ -85,6 +85,28 @@ class TopicRepository:
 class ProductRepository:
     """Persist owner-scoped draft rows and their optimistic version."""
 
+    async def replace_product_topics(
+        self, session: AsyncSession, *, product_id: UUID, topic_ids: list[UUID]
+    ) -> bool:
+        """Replace ordered links in the caller's transaction; report whether they changed."""
+
+        current = list(
+            await session.scalars(
+                select(ProductTopic.topic_id)
+                .where(ProductTopic.product_id == product_id)
+                .order_by(ProductTopic.position)
+            )
+        )
+        if current == topic_ids:
+            return False
+        await session.execute(delete(ProductTopic).where(ProductTopic.product_id == product_id))
+        session.add_all(
+            ProductTopic(product_id=product_id, topic_id=topic_id, position=position)
+            for position, topic_id in enumerate(topic_ids, start=1)
+        )
+        await session.flush()
+        return True
+
     async def get_product_assets(
         self, session: AsyncSession, *, product_id: UUID, lock: bool = False
     ) -> list[ProductAsset]:

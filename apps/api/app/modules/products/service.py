@@ -416,6 +416,7 @@ class ProductService:
         product_id: UUID,
         expected_version: int,
         content: ProductContentInput,
+        topic_names: list[str] | None = None,
     ) -> ProductDraft:
         """Apply a partial content update only to the current owner's expected draft version."""
 
@@ -437,7 +438,12 @@ class ProductService:
             }
             current.update(content.model_dump(exclude_unset=True))
             candidate = ProductContentInput.model_validate(current)
-            if all(getattr(product, field) == getattr(candidate, field) for field in current):
+            topics_changed = await self._replace_topics(
+                session, product_id=product.id, topic_names=topic_names
+            )
+            if not topics_changed and all(
+                getattr(product, field) == getattr(candidate, field) for field in current
+            ):
                 return _draft_view(product)
             website_key = (
                 canonical_website_key(candidate.website_url)
@@ -791,6 +797,7 @@ class ProductService:
         product_id: UUID,
         expected_version: int,
         content: ProductContentInput,
+        topic_names: list[str] | None = None,
     ) -> SubmittedProduct:
         """Save only complete edits to an open period without changing its queue time."""
 
@@ -819,6 +826,11 @@ class ProductService:
             candidate_values.update(content.model_dump(exclude_unset=True))
             candidate = ProductContentInput.model_validate(candidate_values)
             validate_submission_content(candidate)
+            if topic_names is not None and not topic_names:
+                raise ProductValidationError(
+                    "a pending product needs at least one topic", fields=("topics",)
+                )
+            await self._replace_topics(session, product_id=product.id, topic_names=topic_names)
             missing = await self.repository.submission_gaps(session, product_id=product.id)
             if missing:
                 raise ProductValidationError(
@@ -839,6 +851,25 @@ class ProductService:
             )
             await self._record_event(session, saved, event_type="product.saved.v1", now=now)
             return _submitted_view(saved)
+
+    async def _replace_topics(
+        self, session: AsyncSession, *, product_id: UUID, topic_names: list[str] | None
+    ) -> bool:
+        """Resolve a supplied selection without exposing another founder's proposal."""
+
+        if topic_names is None:
+            return False
+        labels = validate_topic_names(topic_names) if topic_names else []
+        from app.modules.products.repository import TopicRepository
+
+        topics = TopicRepository()
+        topic_ids = [
+            (await topics.get_or_create_topic(session, label.display_name)).topic_id
+            for label in labels
+        ]
+        return await self.repository.replace_product_topics(
+            session, product_id=product_id, topic_ids=topic_ids
+        )
 
     async def withdraw_submission(
         self,

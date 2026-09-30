@@ -68,6 +68,57 @@ class ProductContentInput(BaseModel):
         return value
 
 
+class ProductSaveInput(ProductContentInput):
+    """Versioned partial content update with optional full topic replacement."""
+
+    version: int = Field(ge=0, strict=True)
+    topic_names: list[str] | None = Field(default=None, max_length=3)
+
+    @field_validator("topic_names", mode="before")
+    @classmethod
+    def reject_explicit_null_topics(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("topic_names must be a list when supplied")
+        return value
+
+    def changed_content(self) -> ProductContentInput:
+        """Pass only supplied content fields to the aggregate save service."""
+
+        return ProductContentInput.model_validate(
+            self.model_dump(exclude_unset=True, exclude={"version", "topic_names"})
+        )
+
+
+class ProductVersionInput(BaseModel):
+    """Expected version for an explicit state transition."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=0, strict=True)
+
+
+class ProductWithdrawInput(ProductVersionInput):
+    """Target the exact active queue period being withdrawn."""
+
+    submission_id: UUID
+
+
+class ProductStateResponse(BaseModel):
+    """Owner-safe product identity and optimistic version."""
+
+    id: UUID
+    status: Literal["draft", "submitted"]
+    version: int
+
+
+class ProductSubmitResponse(BaseModel):
+    """Owner-safe current queue period without private content."""
+
+    submission_id: UUID
+    product_id: UUID
+    product_version: int
+
+
 class ProductAssetIntentInput(BaseModel):
     """Bounded declaration for one private logo or screenshot upload."""
 

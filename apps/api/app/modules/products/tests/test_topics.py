@@ -4,20 +4,34 @@ import asyncio
 import os
 from datetime import UTC, datetime
 from typing import cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from app.modules.products.models import Product, Topic
+from app.modules.auth.models import Account
+from app.modules.auth.staff import AuthAccessService
+from app.modules.products.models import Product, ProductTopic, Topic
+from app.modules.products.policies import ProductInfrastructureError
 from app.modules.products.repository import TopicRepository, TopicResolution
+from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import (
+    ProductService,
     ProductValidationError,
     canonical_topic_key,
     canonical_website_key,
     validate_topic_names,
 )
 from app.shared.db.database import Database
+from app.shared.email.codec import EmailPayloadCodec
+from app.shared.events.models import OutboxMessage
+from app.shared.events.outbox import OutboxEvent, OutboxRepository
 from sqlalchemy import Table, delete, func, select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+
+class _FailAfterOutboxWrite:
+    async def add(self, session: AsyncSession, event: OutboxEvent) -> UUID:
+        await OutboxRepository().add(session, event)
+        raise RuntimeError("simulated product event write failure")
 
 
 def test_topic_names_reuse_case_and_surrounding_space_variants() -> None:
@@ -103,6 +117,159 @@ def test_equivalent_topics_reuse_one_row_under_concurrent_creation() -> None:
         finally:
             async with database.engine.begin() as connection:
                 await connection.execute(delete(Topic).where(Topic.name_key == key))
+            await database.close()
+
+    asyncio.run(verify())
+
+
+@pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="requires check PostgreSQL")
+def test_draft_topic_save_replaces_order_and_preserves_omitted_selection() -> None:
+    async def verify() -> None:
+        database = Database.connect(os.environ["DATABASE_URL"])
+        founder_id = uuid4()
+        product_id = uuid4()
+        suffix = uuid4().hex[:10]
+        labels = [f"Alpha {suffix}", f"Beta {suffix}"]
+        failed_label = f"Failed {suffix}"
+        codec = EmailPayloadCodec({"topics-test": b"t" * 32}, "topics-test")
+        service = ProductService(member_access=AuthAccessService(), payload_codec=codec)
+        try:
+            await database.ensure_compatible()
+            sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+            now = datetime.now(UTC)
+            async with sessions() as session, session.begin():
+                session.add(
+                    Account(
+                        id=founder_id,
+                        email_display=f"{founder_id}@example.test",
+                        email_key=f"{founder_id}@example.test",
+                        password_hash="integration-only-placeholder",
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+            async with sessions() as session, session.begin():
+                draft = await service.create_draft(session, actor_id=founder_id)
+                product_id = draft.id
+            async with sessions() as session, session.begin():
+                saved = await service.save_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=product_id,
+                    expected_version=0,
+                    content=ProductContentInput(),
+                    topic_names=labels,
+                )
+                assert saved.version == 1
+            async with sessions() as session, session.begin():
+                unchanged = await service.save_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=product_id,
+                    expected_version=1,
+                    content=ProductContentInput(),
+                )
+                assert unchanged.version == 1
+                reordered = await service.save_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=product_id,
+                    expected_version=1,
+                    content=ProductContentInput(),
+                    topic_names=[labels[1].upper(), labels[0].upper()],
+                )
+                assert reordered.version == 2
+            async with sessions() as session:
+                selected = list(
+                    await session.scalars(
+                        select(Topic.name_key)
+                        .join(ProductTopic, ProductTopic.topic_id == Topic.id)
+                        .where(ProductTopic.product_id == product_id)
+                        .order_by(ProductTopic.position)
+                    )
+                )
+                count = await session.scalar(
+                    select(func.count())
+                    .select_from(Topic)
+                    .where(Topic.name_key.in_(label.casefold() for label in labels))
+                )
+                events = list(
+                    await session.scalars(
+                        select(OutboxMessage.event_type).where(
+                            OutboxMessage.aggregate_id == product_id
+                        )
+                    )
+                )
+            assert selected == [labels[1].casefold(), labels[0].casefold()]
+            assert count == 2
+            assert events.count("product.saved.v1") == 2
+            async with sessions() as session, session.begin():
+                cleared = await service.save_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=product_id,
+                    expected_version=2,
+                    content=ProductContentInput(),
+                    topic_names=[],
+                )
+                assert cleared.version == 3
+            async with sessions() as session:
+                assert (
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(ProductTopic)
+                        .where(ProductTopic.product_id == product_id)
+                    )
+                    == 0
+                )
+            failing = ProductService(
+                member_access=AuthAccessService(),
+                payload_codec=codec,
+                outbox_repository=_FailAfterOutboxWrite(),
+            )
+            with pytest.raises(ProductInfrastructureError):
+                async with sessions() as session, session.begin():
+                    await failing.save_draft(
+                        session,
+                        actor_id=founder_id,
+                        product_id=product_id,
+                        expected_version=3,
+                        content=ProductContentInput(name="Not committed"),
+                        topic_names=[failed_label],
+                    )
+            async with sessions() as session:
+                product = await session.get(Product, product_id)
+                assert product is not None
+                assert product.version == 3
+                assert product.name is None
+                assert (
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(ProductTopic)
+                        .where(ProductTopic.product_id == product_id)
+                    )
+                    == 0
+                )
+                assert (
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(Topic)
+                        .where(Topic.name_key == failed_label.casefold())
+                    )
+                    == 0
+                )
+        finally:
+            async with database.engine.begin() as connection:
+                await connection.execute(
+                    delete(OutboxMessage).where(OutboxMessage.aggregate_id == product_id)
+                )
+                await connection.execute(delete(Product).where(Product.id == product_id))
+                await connection.execute(delete(Account).where(Account.id == founder_id))
+                await connection.execute(
+                    delete(Topic).where(
+                        Topic.name_key.in_([label.casefold() for label in (*labels, failed_label)])
+                    )
+                )
             await database.close()
 
     asyncio.run(verify())

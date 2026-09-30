@@ -686,23 +686,24 @@ Return short-lived app-signed media URLs bound to the current opaque session, th
 
 ## Task T12: Expose Product REST Commands Safely
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** critical
 > **Depends on:** T6, T8, T10, T11
-> **Satisfies REQs:** R1, R4, R9, R10, R11, R16, R17, N1, N2, N4
-> **Footprint slice:** Products REST routes/schemas and bounded action rate-limit policy within those product boundaries.
+> **Satisfies REQs:** R1, R4, R7, R8, R9, R10, R11, R16, R17, N1, N2, N3, N4
+> **Footprint slice:** Products REST routes/schemas, topic association writes in the existing product service/repository, and bounded action rate-limit policy within those product boundaries.
 > **High-risk areas touched:** Auth/session and operator access; product transactions and queue; private media/storage.
 
 ### Description
 
-Complete the REST command surface for create, save, submit, withdraw, delete, and media actions. Apply existing exact-Origin and CSRF checks, map typed domain errors to safe statuses, and bound high-frequency operations without weakening withdrawal.
+Complete the REST command surface for create, save, submit, withdraw, delete, and media actions. Add optional full ordered `topic_names` replacement to the existing versioned draft and pending save operations: omission preserves the selection, a draft may clear it, and a pending product must remain complete. Resolve equivalent names through the existing canonical-topic upsert and persist ordered associations with the product version, pending-period version, and outbox event in one transaction. Apply existing exact-Origin and CSRF checks, map typed domain errors to safe statuses, and bound high-frequency operations without weakening withdrawal.
 
 ### Test Plan
 
 #### Test File(s)
 - apps/api/app/modules/products/tests/test_routes.py
+- apps/api/app/modules/products/tests/test_topics.py
 - tests/integration/test_product_api.py
 
 #### Test Scenarios
@@ -715,22 +716,29 @@ Complete the REST command surface for create, save, submit, withdraw, delete, an
 - **bounds rapid actions** — GIVEN repeated autosave/upload attempts WHEN rate policy triggers THEN the account is limited without corrupting its latest saved draft _(verifies N4; REQ edge case)_.
 - **does not trap withdrawal** — GIVEN Redis outage or a founder above draft cap WHEN withdrawing THEN the operation remains available and queue entry closes _(verifies R11, R16; ARCH forward stress-test)_.
 
+##### Topic Associations
+
+- **replaces draft selection only when supplied** — GIVEN a saved draft WHEN `topic_names` is omitted, supplied with 1–3 names, reordered, supplied empty, or supplied as `null` THEN omission keeps existing links, supplied lists replace the full ordered selection, an empty list clears a draft, and explicit `null` returns `422` _(verifies R7; A11)_.
+- **reuses equivalent private topics** — GIVEN two founders submit equivalent case/spacing variants WHEN each saves a topic selection THEN one canonical topic row is reused under the unique key, each product has its own ordered links, and the other founder's private product/associations never appear in responses _(verifies R7–R8, N1; A5, A11)_.
+- **keeps pending selection complete and queue position stable** — GIVEN a pending submission WHEN its owner saves a valid topic replacement THEN it has 1–3 distinct normalized topics, product and active-period versions advance together, exactly one `product.saved.v1` event is recorded, and `submitted_at` is unchanged; an empty, duplicate, over-limit, or invalid replacement returns `422` with no change _(verifies R7, R11, N3; A3, A11)_.
+- **rolls back stale and failed topic saves** — GIVEN a stale version or failure during topic association/event persistence WHEN a topic-changing save runs THEN it leaves existing associations, product and active-period versions, and outbox unchanged _(verifies R11, N3; A3, A11)_.
+
 ##### Regression Guard
 
 - **preserves existing identity/profile routes** — GIVEN prior auth and profile mutation requests WHEN new product routes are mounted THEN origin/CSRF and route matching remain unchanged _(guards backward-regression risk for apps/api/app/modules/auth/tests/* and apps/api/app/modules/users/tests/*)_.
 
 ### Implementation Notes
 
-- **Module(s):** products REST transport, shared request-security primitives.
+- **Module(s):** products REST transport, product service/repository topic association operation, shared request-security primitives.
 - **Pattern reference:** apps/api/app/modules/users/routes.py and apps/api/app/modules/auth/routes.py.
-- **Key decisions:** A1, A6; routes remain thin and browser-facing commands keep existing origin/CSRF policy.
+- **Key decisions:** A1, A3, A5, A6, A11; routes remain thin, topic replacement stays in the versioned service transaction, and browser-facing commands keep existing origin/CSRF policy.
 - **Libraries:** FastAPI, Pydantic, Redis rate limiting, pytest.
 - **High-risk callouts:** A 404 must not distinguish nonexistent from another founder's private resource.
 
 ### Scope Boundaries
 
 - Do NOT add GraphQL mutations, reviewer decisions, or a non-browser bypass to product commands.
-- Only transport, rate bounds, and safe error mapping for already-defined services.
+- Limit domain changes to topic association replacement in the existing versioned save service/repository; do not add a separate topic mutation route or unrelated product behavior.
 
 ### Files Expected
 
@@ -739,6 +747,7 @@ Complete the REST command surface for create, save, submit, withdraw, delete, an
 
 **Modified files:**
 - apps/api/app/modules/products/routes.py; schemas.py; tests/test_routes.py (complete command transport).
+- apps/api/app/modules/products/service.py; repository.py; tests/test_topics.py (versioned, atomic topic association replacement).
 
 **Must NOT modify:**
 - apps/api/app/modules/users/routes.py; apps/api/app/modules/auth/routes.py (existing browser-action behavior is regression-checked).

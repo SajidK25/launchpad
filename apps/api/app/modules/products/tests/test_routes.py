@@ -40,12 +40,15 @@ def _app(origins: tuple[str, ...] = ()) -> tuple[FastAPI, APIRouter]:
     return app, routes
 
 
-def test_asset_routes_are_explicit_and_require_trusted_origin() -> None:
+def test_product_routes_are_explicit_and_require_trusted_origin() -> None:
     app, routes = _app(("http://localhost:8080",))
     paths = {route.path for route in routes.routes if isinstance(route, APIRoute)}
 
     assert paths == {
+        "/api/v1/me/products",
         "/api/v1/me/products/{product_id}",
+        "/api/v1/me/products/{product_id}/submit",
+        "/api/v1/me/products/{product_id}/withdraw",
         "/api/v1/me/products/{product_id}/assets",
         "/api/v1/me/products/{product_id}/assets/{asset_id}/complete",
         "/api/v1/products/{product_id}/assets/{asset_id}",
@@ -92,3 +95,37 @@ def test_asset_mutations_accept_only_exact_configured_origins_before_auth() -> N
             headers={"Origin": origin},
         )
         assert response.status_code == 401
+
+
+def test_product_commands_reject_missing_or_untrusted_origins_before_auth() -> None:
+    app, _ = _app(("http://localhost:8080",))
+    client = TestClient(app)
+    product_id = "00000000-0000-0000-0000-000000000001"
+    commands = (
+        ("post", "/api/v1/me/products", None),
+        ("patch", f"/api/v1/me/products/{product_id}", {"version": 0}),
+        ("post", f"/api/v1/me/products/{product_id}/submit", {"version": 0}),
+        (
+            "post",
+            f"/api/v1/me/products/{product_id}/withdraw",
+            {"version": 0, "submission_id": product_id},
+        ),
+    )
+    for method, path, payload in commands:
+        for headers in ({}, {"Origin": "http://evil.example:8080"}):
+            response = client.request(method, path, json=payload, headers=headers)
+            assert response.status_code == 403
+            assert response.json() == {"detail": "request rejected"}
+
+
+def test_save_contract_rejects_explicit_null_and_excess_topics() -> None:
+    app, _ = _app(("http://localhost:8080",))
+    client = TestClient(app)
+    path = "/api/v1/me/products/00000000-0000-0000-0000-000000000001"
+    for names in (None, ["one", "two", "three", "four"]):
+        response = client.patch(
+            path,
+            json={"version": 0, "topic_names": names},
+            headers={"Origin": "http://localhost:8080"},
+        )
+        assert response.status_code == 422
