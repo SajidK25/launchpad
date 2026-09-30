@@ -23,7 +23,7 @@ from app.modules.products.policies import (
     require_product_owner,
 )
 from app.modules.products.schemas import ProductAssetIntentInput, ProductContentInput
-from app.shared.events.outbox import OutboxEvent, OutboxRepository
+from app.shared.events.outbox import OutboxEvent, OutboxRepository, PermanentEventError
 from app.shared.storage.objects import (
     CleanPhoto,
     ObjectNotFound,
@@ -156,6 +156,14 @@ class ProductAssetStorage(Protocol):
     ) -> CleanPhoto: ...
 
 
+class ProductEventStorage(Protocol):
+    """Private object deletion interface used by durable product purge work."""
+
+    async def delete_product_private(
+        self, *, account_id: UUID, product_id: UUID, object_key: str
+    ) -> None: ...
+
+
 class ProductService:
     """Create, load, and version private drafts under live account authorization."""
 
@@ -163,6 +171,16 @@ class ProductService:
     PENDING_ASSET_LIMIT = 10
     ASSET_UPLOAD_EXPIRY_SECONDS = 300
     ASSET_CLEANUP_GRACE = timedelta(hours=24)
+    PRODUCT_STATE_EVENTS = frozenset(
+        {
+            "product.created.v1",
+            "product.saved.v1",
+            "product.submitted.v1",
+            "product.withdrawn.v1",
+            "product.deleted.v1",
+            "product.asset_changed.v1",
+        }
+    )
 
     def __init__(
         self,
@@ -171,6 +189,7 @@ class ProductService:
         outbox_repository: ProductEvents | None = None,
         payload_codec: ProductPayloadCodec,
         repository: ProductRepository | None = None,
+        event_storage: ProductEventStorage | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if repository is None:
@@ -181,6 +200,7 @@ class ProductService:
         self.member_access = member_access
         self.outbox_repository = outbox_repository or OutboxRepository()
         self.payload_codec = payload_codec
+        self.event_storage = event_storage
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def create_draft(self, session: AsyncSession, *, actor_id: UUID) -> ProductDraft:
@@ -527,6 +547,66 @@ class ProductService:
         except Exception as exc:
             raise ProductInfrastructureError("asset cleanup could not be scheduled") from exc
 
+    async def handle_outbox_event(
+        self,
+        session: AsyncSession,
+        *,
+        event_type: str,
+        aggregate_id: UUID,
+        payload: dict[str, object],
+        storage: ProductEventStorage | None = None,
+    ) -> None:
+        """Acknowledge known product state events and execute safe private media purges."""
+
+        if event_type in self.PRODUCT_STATE_EVENTS:
+            return
+        if event_type != "product.media_purge.v1":
+            raise PermanentEventError("product event type is not supported")
+        try:
+            account_id = UUID(_required_event_string(payload, "account_id"))
+            product_id = UUID(_required_event_string(payload, "product_id"))
+            asset_id = UUID(_required_event_string(payload, "asset_id"))
+            staging_key = _required_event_string(payload, "staging_key")
+            clean_key = _required_event_string(payload, "clean_key")
+        except ValueError as error:
+            raise PermanentEventError("product media purge payload is invalid") from error
+        if product_id != aggregate_id:
+            raise PermanentEventError("product media purge aggregate does not match payload")
+        object_suffix = f"{account_id.hex}/{product_id.hex}/{asset_id.hex}"
+        if staging_key != f"product-staging/{object_suffix}" or clean_key != (
+            f"product-clean/{object_suffix}"
+        ):
+            raise PermanentEventError("product media purge key is outside its asset scope")
+        event_storage = storage or self.event_storage
+        if event_storage is None:
+            raise ProductInfrastructureError("product media storage is unavailable")
+
+        product = await self.repository.get_owned_product(
+            session, product_id=product_id, founder_id=account_id, lock=True
+        )
+        asset = (
+            await self.repository.get_asset(
+                session, product_id=product_id, asset_id=asset_id, lock=True
+            )
+            if product is not None
+            else None
+        )
+        keep_clean_object = bool(
+            asset is not None
+            and asset.state == "clean"
+            and asset.attached_at is not None
+            and asset.clean_key == clean_key
+        )
+        if asset is not None and not keep_clean_object and asset.state in {"pending", "clean"}:
+            await self.repository.mark_asset_failed(session, asset=asset)
+        await event_storage.delete_product_private(
+            account_id=account_id, product_id=product_id, object_key=staging_key
+        )
+        if not keep_clean_object:
+            await event_storage.delete_product_private(
+                account_id=account_id, product_id=product_id, object_key=clean_key
+            )
+
     async def save_pending(
         self,
         session: AsyncSession,
@@ -672,6 +752,13 @@ def _asset_view(asset: ProductAsset) -> ProductAssetResult:
         media_type=cast(Literal["image/jpeg", "image/png", "image/webp"], asset.media_type),
         byte_count=asset.byte_count,
     )
+
+
+def _required_event_string(payload: Mapping[str, object], field: str) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value:
+        raise ValueError("product event payload is invalid")
+    return value
 
 
 def _product_content(product: Product) -> ProductContentInput:

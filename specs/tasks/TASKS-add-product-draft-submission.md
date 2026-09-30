@@ -508,7 +508,7 @@ Persist owner-scoped upload intents and promote validated images to clean assets
 
 ## Task T9: Route Product Outbox Events to Typed Worker Handlers
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** critical

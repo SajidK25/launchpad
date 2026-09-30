@@ -20,6 +20,10 @@ MAX_ATTEMPTS = 8
 BASE_RETRY_SECONDS = 30
 
 
+class PermanentEventError(ValueError):
+    """Event metadata or payload is invalid and cannot succeed on a retry."""
+
+
 @dataclass(frozen=True, slots=True)
 class OutboxEvent:
     """Immutable event input produced inside a domain transaction."""
@@ -91,19 +95,34 @@ class OutboxRepository:
         *,
         now: datetime | None = None,
         delay_seconds: int | None = None,
-    ) -> None:
-        """Return a claimed event to pending with bounded exponential backoff."""
+    ) -> bool:
+        """Return work to pending, or report that the retry limit dead-lettered it."""
 
         current = _utc(now or datetime.now(UTC))
         event = await session.get(OutboxMessage, event_id, with_for_update=True)
         if event is None or event.state != "claimed":
-            return
+            return False
         delay = delay_seconds if delay_seconds is not None else _retry_delay(event.attempts)
         event.state = "pending"
         event.claimed_at = None
         event.available_at = current + timedelta(seconds=max(0, delay))
         if event.attempts >= MAX_ATTEMPTS:
             event.state = "dead"
+        await session.flush()
+        return event.state == "dead"
+
+    async def dead_letter(
+        self, session: AsyncSession, event_id: UUID, *, clear_payload: bool = False
+    ) -> None:
+        """Mark permanently invalid work dead while retaining encrypted replay evidence."""
+
+        event = await session.get(OutboxMessage, event_id, with_for_update=True)
+        if event is None:
+            return
+        event.state = "dead"
+        event.claimed_at = None
+        if clear_payload:
+            event.encrypted_payload = None
         await session.flush()
 
     async def complete(
@@ -114,7 +133,19 @@ class OutboxRepository:
         message_id: str,
         sent_at: datetime | None = None,
     ) -> None:
-        """Record idempotent delivery, then clear ciphertext from the completed event."""
+        """Compatibility alias for email completion."""
+
+        await self.complete_email(session, event_id, message_id=message_id, sent_at=sent_at)
+
+    async def complete_email(
+        self,
+        session: AsyncSession,
+        event_id: UUID,
+        *,
+        message_id: str,
+        sent_at: datetime | None = None,
+    ) -> None:
+        """Record idempotent email delivery and clear completed-event ciphertext."""
 
         event = await session.get(OutboxMessage, event_id, with_for_update=True)
         if event is None:
@@ -127,6 +158,24 @@ class OutboxRepository:
         )
         event.state = "completed"
         event.completed_at = delivered_at
+        event.claimed_at = None
+        event.encrypted_payload = None
+        await session.flush()
+
+    async def complete_non_email(
+        self,
+        session: AsyncSession,
+        event_id: UUID,
+        *,
+        completed_at: datetime | None = None,
+    ) -> None:
+        """Complete a non-email event without creating email-delivery metadata."""
+
+        event = await session.get(OutboxMessage, event_id, with_for_update=True)
+        if event is None:
+            return
+        event.state = "completed"
+        event.completed_at = _utc(completed_at or datetime.now(UTC))
         event.claimed_at = None
         event.encrypted_payload = None
         await session.flush()

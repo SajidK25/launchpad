@@ -8,12 +8,16 @@ import os
 import sys
 from pathlib import Path
 
+from app.modules.auth.staff import AuthAccessService
+from app.modules.products.service import ProductService
 from app.shared.config.settings import load_settings
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.email.transport import EmailTransport
 from app.shared.events.dispatcher import dispatch_due
 from app.shared.events.outbox import OutboxRepository
+from app.shared.storage.client import StorageClient
+from app.shared.storage.objects import PrivateObjectStore
 from health import ProgressHealth, progress_is_fresh, record_progress, redis_is_available
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -31,8 +35,29 @@ def is_healthy() -> bool:
 async def run_worker(health: ProgressHealth) -> None:
     settings = load_settings()
     database = Database.connect(str(settings.database_url))
-    key = base64.b64decode(settings.outbox_key.get_secret_value(), validate=True)  # type: ignore[union-attr]
-    codec = EmailPayloadCodec({settings.outbox_key_id: key}, settings.outbox_key_id)  # type: ignore[arg-type]
+    if settings.outbox_key is None or settings.outbox_key_id is None:
+        raise RuntimeError("Outbox encryption configuration is required.")
+    key = base64.b64decode(settings.outbox_key.get_secret_value(), validate=True)
+    codec = EmailPayloadCodec({settings.outbox_key_id: key}, settings.outbox_key_id)
+    if settings.storage_access_key_id is None or settings.storage_secret_access_key is None:
+        raise RuntimeError("Storage runtime credentials are required.")
+    storage_client = StorageClient(
+        str(settings.storage_endpoint_url),
+        settings.storage_access_key_id.get_secret_value(),
+        settings.storage_secret_access_key.get_secret_value(),
+    )
+    product_storage = PrivateObjectStore(
+        endpoint_url=str(settings.storage_endpoint_url),
+        public_endpoint_url=(
+            str(settings.public_upload_endpoint_url)
+            if settings.public_upload_endpoint_url is not None
+            else None
+        ),
+        bucket_name=settings.storage_bucket,
+        access_key_id=settings.storage_access_key_id.get_secret_value(),
+        secret_access_key=settings.storage_secret_access_key.get_secret_value(),
+        client_factory=storage_client._client,
+    )
     transport = EmailTransport(
         hostname=settings.smtp_host,  # type: ignore[arg-type]
         port=settings.smtp_port,  # type: ignore[arg-type]
@@ -42,6 +67,12 @@ async def run_worker(health: ProgressHealth) -> None:
         password=settings.smtp_password.get_secret_value() if settings.smtp_password else None,
     )
     repository = OutboxRepository()
+    product_service = ProductService(
+        member_access=AuthAccessService(),
+        outbox_repository=repository,
+        payload_codec=codec,
+        event_storage=product_storage,
+    )
     sessions = async_sessionmaker(database.engine, expire_on_commit=False)
     try:
         await database.ensure_compatible()
@@ -53,6 +84,7 @@ async def run_worker(health: ProgressHealth) -> None:
                         repository=repository,
                         codec=codec,
                         sender=transport,
+                        product_handler=product_service,
                     )
                 health.tick()
                 record_progress(HEALTH_PATH)

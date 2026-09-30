@@ -66,3 +66,12 @@ def test_background_entry_points_use_durable_outbox_dispatch() -> None:
     assert "OutboxRepository" in worker
     assert "OutboxMessage" in scheduler
     assert "launchpad:outbox:due" in scheduler
+
+
+def test_worker_wires_product_handler_with_private_storage_only() -> None:
+    worker = Path("apps/worker/worker.py").read_text()
+
+    assert "PrivateObjectStore" in worker
+    assert "ProductService(" in worker
+    assert "event_storage=product_storage" in worker
+    assert "product_handler=product_service" in worker
