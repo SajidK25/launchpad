@@ -17,7 +17,7 @@ from app.modules.products.models import (
 from app.modules.products.policies import ProductConflictError
 from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import canonical_topic_key, validate_topic_names
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy import insert as sa_insert
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,28 +81,137 @@ class TopicRepository:
         ).all()
         return [TopicChoice(topic_id=topic.id, display_name=topic.display_name) for topic in topics]
 
+    async def list_owner_proposals(
+        self,
+        session: AsyncSession,
+        *,
+        founder_id: UUID,
+        query: str | None,
+    ) -> list[TopicChoice]:
+        """Read only this founder's still-private association labels."""
+
+        statement = (
+            select(ProductTopic.topic_id, ProductTopic.selected_label)
+            .join(Product, Product.id == ProductTopic.product_id)
+            .join(Topic, Topic.id == ProductTopic.topic_id)
+            .where(Product.founder_id == founder_id, Topic.first_launched_at.is_(None))
+            .order_by(Product.updated_at.desc(), Product.id.desc(), ProductTopic.position)
+            .limit(50)
+        )
+        if query is not None and query.strip():
+            statement = statement.where(
+                Topic.name_key.startswith(canonical_topic_key(query), autoescape=True)
+            )
+        rows = await session.execute(statement)
+        choices: dict[UUID, TopicChoice] = {}
+        for topic_id, label in rows.tuples():
+            choices.setdefault(topic_id, TopicChoice(topic_id=topic_id, display_name=label))
+        return list(choices.values())
+
 
 class ProductRepository:
     """Persist owner-scoped draft rows and their optimistic version."""
 
+    async def list_owner_products(
+        self,
+        session: AsyncSession,
+        *,
+        founder_id: UUID,
+        limit: int,
+        after: tuple[datetime, UUID] | None,
+    ) -> list[Product]:
+        """Return only the founder's current private products, newest first."""
+
+        statement = select(Product).where(Product.founder_id == founder_id)
+        if after is not None:
+            statement = statement.where(tuple_(Product.updated_at, Product.id) < after)
+        return list(
+            (
+                await session.scalars(
+                    statement.order_by(Product.updated_at.desc(), Product.id.desc()).limit(limit)
+                )
+            ).all()
+        )
+
+    async def get_product_topics(
+        self, session: AsyncSession, *, product_id: UUID
+    ) -> list[ProductTopic]:
+        """Return private association labels, never shared canonical display names."""
+
+        return list(
+            (
+                await session.scalars(
+                    select(ProductTopic)
+                    .where(ProductTopic.product_id == product_id)
+                    .order_by(ProductTopic.position)
+                )
+            ).all()
+        )
+
+    async def list_pending_queue(
+        self,
+        session: AsyncSession,
+        *,
+        limit: int,
+        after: tuple[datetime, UUID] | None,
+    ) -> list[tuple[ProductSubmission, Product]]:
+        """Page active periods by their original arrival and stable UUID tie-breaker."""
+
+        statement = (
+            select(ProductSubmission, Product)
+            .join(Product, Product.id == ProductSubmission.product_id)
+            .where(ProductSubmission.state == "pending", Product.status == "submitted")
+        )
+        if after is not None:
+            statement = statement.where(
+                tuple_(ProductSubmission.submitted_at, ProductSubmission.id) > after
+            )
+        rows = await session.execute(
+            statement.order_by(ProductSubmission.submitted_at, ProductSubmission.id).limit(limit)
+        )
+        return [(period, product) for period, product in rows.tuples()]
+
+    async def duplicate_website_keys(
+        self, session: AsyncSession, *, website_keys: set[str]
+    ) -> set[str]:
+        """Return only duplicate keys, never the identities of private matches."""
+
+        if not website_keys:
+            return set()
+        return set(
+            await session.scalars(
+                select(Product.website_key)
+                .where(Product.website_key.in_(website_keys))
+                .group_by(Product.website_key)
+                .having(func.count(Product.id) > 1)
+            )
+        )
+
     async def replace_product_topics(
-        self, session: AsyncSession, *, product_id: UUID, topic_ids: list[UUID]
+        self, session: AsyncSession, *, product_id: UUID, selections: list[TopicResolution]
     ) -> bool:
         """Replace ordered links in the caller's transaction; report whether they changed."""
 
         current = list(
-            await session.scalars(
-                select(ProductTopic.topic_id)
-                .where(ProductTopic.product_id == product_id)
-                .order_by(ProductTopic.position)
-            )
+            (
+                await session.execute(
+                    select(ProductTopic.topic_id, ProductTopic.selected_label)
+                    .where(ProductTopic.product_id == product_id)
+                    .order_by(ProductTopic.position)
+                )
+            ).tuples()
         )
-        if current == topic_ids:
+        if current == [(choice.topic_id, choice.display_name) for choice in selections]:
             return False
         await session.execute(delete(ProductTopic).where(ProductTopic.product_id == product_id))
         session.add_all(
-            ProductTopic(product_id=product_id, topic_id=topic_id, position=position)
-            for position, topic_id in enumerate(topic_ids, start=1)
+            ProductTopic(
+                product_id=product_id,
+                topic_id=choice.topic_id,
+                position=position,
+                selected_label=choice.display_name,
+            )
+            for position, choice in enumerate(selections, start=1)
         )
         await session.flush()
         return True
@@ -114,6 +223,22 @@ class ProductRepository:
         if lock:
             statement = statement.with_for_update()
         return list((await session.scalars(statement.order_by(ProductAsset.id))).all())
+
+    async def get_attached_clean_assets(
+        self, session: AsyncSession, *, product_id: UUID
+    ) -> list[ProductAsset]:
+        """Project only validated attachments in their saved display order."""
+
+        statement = (
+            select(ProductAsset)
+            .where(
+                ProductAsset.product_id == product_id,
+                ProductAsset.state == "clean",
+                ProductAsset.attached_at.is_not(None),
+            )
+            .order_by(ProductAsset.kind, ProductAsset.position, ProductAsset.id)
+        )
+        return list((await session.scalars(statement)).all())
 
     async def delete_product(self, session: AsyncSession, *, product: Product) -> None:
         """Hard-delete the product and its cascading private associations."""

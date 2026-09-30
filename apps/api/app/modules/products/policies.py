@@ -71,6 +71,19 @@ def require_active_founder(account: AccountState | None) -> AccountState:
     return account
 
 
+def require_staff_reviewer(account: AccountState | None) -> AccountState:
+    """Require live, verified, unsuspended reviewer or admin access."""
+
+    if (
+        account is None
+        or not account.verified
+        or account.suspended_at is not None
+        or account.role not in {"reviewer", "admin"}
+    ):
+        raise ProductForbiddenError("product access is forbidden")
+    return account
+
+
 def require_product_owner(*, actor_id: UUID, founder_id: UUID) -> None:
     """Hide a private product from anyone except its founder."""
 

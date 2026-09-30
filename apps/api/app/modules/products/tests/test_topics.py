@@ -201,18 +201,46 @@ def test_draft_topic_save_replaces_order_and_preserves_omitted_selection() -> No
                     )
                 )
             assert selected == [labels[1].casefold(), labels[0].casefold()]
+            async with sessions() as session:
+                selected_labels = list(
+                    await session.scalars(
+                        select(ProductTopic.selected_label)
+                        .where(ProductTopic.product_id == product_id)
+                        .order_by(ProductTopic.position)
+                    )
+                )
+            assert selected_labels == [labels[1].upper(), labels[0].upper()]
             assert count == 2
             assert events.count("product.saved.v1") == 2
             async with sessions() as session, session.begin():
-                cleared = await service.save_draft(
+                recased = await service.save_draft(
                     session,
                     actor_id=founder_id,
                     product_id=product_id,
                     expected_version=2,
                     content=ProductContentInput(),
+                    topic_names=[labels[1], labels[0]],
+                )
+                assert recased.version == 3
+            async with sessions() as session:
+                recased_labels = list(
+                    await session.scalars(
+                        select(ProductTopic.selected_label)
+                        .where(ProductTopic.product_id == product_id)
+                        .order_by(ProductTopic.position)
+                    )
+                )
+                assert recased_labels == [labels[1], labels[0]]
+            async with sessions() as session, session.begin():
+                cleared = await service.save_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=product_id,
+                    expected_version=3,
+                    content=ProductContentInput(),
                     topic_names=[],
                 )
-                assert cleared.version == 3
+                assert cleared.version == 4
             async with sessions() as session:
                 assert (
                     await session.scalar(
@@ -233,14 +261,14 @@ def test_draft_topic_save_replaces_order_and_preserves_omitted_selection() -> No
                         session,
                         actor_id=founder_id,
                         product_id=product_id,
-                        expected_version=3,
+                        expected_version=4,
                         content=ProductContentInput(name="Not committed"),
                         topic_names=[failed_label],
                     )
             async with sessions() as session:
                 product = await session.get(Product, product_id)
                 assert product is not None
-                assert product.version == 3
+                assert product.version == 4
                 assert product.name is None
                 assert (
                     await session.scalar(

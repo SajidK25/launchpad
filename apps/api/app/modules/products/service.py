@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Protocol, cast
@@ -23,6 +23,7 @@ from app.modules.products.policies import (
     require_draft_status,
     require_expected_version,
     require_product_owner,
+    require_staff_reviewer,
     verify_product_media_signature,
 )
 from app.modules.products.schemas import ProductAssetIntentInput, ProductContentInput
@@ -39,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
 
 if TYPE_CHECKING:
-    from app.modules.products.repository import ProductRepository
+    from app.modules.products.repository import ProductRepository, TopicChoice
 
 
 class ProductValidationError(ValueError):
@@ -64,6 +65,10 @@ class ProductMemberAccess(Protocol):
     async def current_account(
         self, session: AsyncSession, account_id: UUID, *, lock: bool = False
     ) -> AccountState | None: ...
+
+    async def founder_states(
+        self, session: AsyncSession, account_ids: Sequence[UUID]
+    ) -> dict[UUID, AccountState]: ...
 
 
 class ProductPayloadCodec(Protocol):
@@ -125,6 +130,61 @@ class ProductAssetResult:
     state: str
     media_type: Literal["image/jpeg", "image/png", "image/webp"]
     byte_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProductTopicSelection:
+    """The label chosen by this product's founder, not the shared topic label."""
+
+    topic_id: UUID
+    display_name: str
+    position: int
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerProductDetail:
+    """Authorized editor snapshot of one private product."""
+
+    product: ProductDraft
+    topics: tuple[ProductTopicSelection, ...]
+    assets: tuple[ProductAssetResult, ...]
+    submission: SubmissionPeriod | None
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerProductPage:
+    """Bounded private founder listing."""
+
+    items: tuple[ProductDraft, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class StaffQueueItem:
+    """Current pending product and flags visible to authorized reviewers only."""
+
+    product: ProductDraft
+    submission: SubmissionPeriod
+    possible_duplicate: bool
+    founder_suspended: bool
+
+
+@dataclass(frozen=True, slots=True)
+class StaffQueuePage:
+    """Bounded oldest-first reviewer queue."""
+
+    items: tuple[StaffQueueItem, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class StaffProductDetail:
+    """One current pending product's complete private review snapshot."""
+
+    product: OwnerProductDetail
+    submission: SubmissionPeriod
+    possible_duplicate: bool
+    founder_suspended: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,6 +415,166 @@ class ProductService:
             raise ProductNotFoundError("product unavailable")
         require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
         return _draft_view(product)
+
+    async def owner_detail(
+        self, session: AsyncSession, *, actor_id: UUID, product_id: UUID
+    ) -> OwnerProductDetail:
+        """Recheck account and ownership before projecting private content."""
+
+        account = await self.member_access.current_account(session, actor_id)
+        if account is None:
+            raise ProductForbiddenError("product access is forbidden")
+        product = await self.repository.get_owned_product(
+            session, product_id=product_id, founder_id=actor_id
+        )
+        if product is None:
+            raise ProductNotFoundError("product unavailable")
+        topics = await self.repository.get_product_topics(session, product_id=product.id)
+        assets = await self.repository.get_attached_clean_assets(session, product_id=product.id)
+        submission = await self.repository.get_pending_submission(session, product_id=product.id)
+        return OwnerProductDetail(
+            product=_draft_view(product),
+            topics=tuple(
+                ProductTopicSelection(
+                    topic_id=topic.topic_id,
+                    display_name=topic.selected_label,
+                    position=topic.position,
+                )
+                for topic in topics
+            ),
+            assets=tuple(_asset_view(asset) for asset in assets),
+            submission=_submission_view(submission) if submission is not None else None,
+        )
+
+    async def owner_list(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        first: int = 20,
+        after: str | None = None,
+    ) -> OwnerProductPage:
+        """Return a bounded list of only this account's private products."""
+
+        account = await self.member_access.current_account(session, actor_id)
+        if account is None:
+            raise ProductForbiddenError("product access is forbidden")
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        products = await self.repository.list_owner_products(
+            session,
+            founder_id=actor_id,
+            limit=first + 1,
+            after=_parse_read_cursor(after) if after is not None else None,
+        )
+        return OwnerProductPage(
+            items=tuple(_draft_view(product) for product in products[:first]),
+            next_cursor=(
+                _read_cursor(products[first - 1].updated_at, products[first - 1].id)
+                if len(products) > first
+                else None
+            ),
+        )
+
+    async def staff_queue(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        first: int = 20,
+        after: str | None = None,
+    ) -> StaffQueuePage:
+        """Authorize live staff state and page only current pending periods."""
+
+        require_staff_reviewer(await self.member_access.current_account(session, actor_id))
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        cursor = _parse_read_cursor(after) if after is not None else None
+        rows = await self.repository.list_pending_queue(session, limit=first + 1, after=cursor)
+        visible = rows[:first]
+        founder_states = await self.member_access.founder_states(
+            session, [product.founder_id for _, product in visible]
+        )
+        duplicates = await self.repository.duplicate_website_keys(
+            session,
+            website_keys={product.website_key for _, product in visible if product.website_key},
+        )
+        items = tuple(
+            StaffQueueItem(
+                product=_draft_view(product),
+                submission=_submission_view(period),
+                possible_duplicate=product.website_key in duplicates,
+                founder_suspended=(
+                    founder_states.get(product.founder_id) is None
+                    or founder_states[product.founder_id].suspended_at is not None
+                ),
+            )
+            for period, product in visible
+        )
+        next_cursor = _queue_cursor(visible[-1][0]) if len(rows) > first and visible else None
+        return StaffQueuePage(items=items, next_cursor=next_cursor)
+
+    async def staff_detail(
+        self, session: AsyncSession, *, actor_id: UUID, product_id: UUID
+    ) -> StaffProductDetail:
+        """Recheck a current pending period before showing complete review data."""
+
+        require_staff_reviewer(await self.member_access.current_account(session, actor_id))
+        product = await self.repository.get_product(session, product_id=product_id)
+        if product is None or product.status != "submitted":
+            raise ProductNotFoundError("product unavailable")
+        period = await self.repository.get_pending_submission(session, product_id=product_id)
+        if period is None:
+            raise ProductNotFoundError("product unavailable")
+        topics = await self.repository.get_product_topics(session, product_id=product_id)
+        assets = await self.repository.get_attached_clean_assets(session, product_id=product_id)
+        founder_states = await self.member_access.founder_states(session, [product.founder_id])
+        duplicates = await self.repository.duplicate_website_keys(
+            session, website_keys={product.website_key} if product.website_key else set()
+        )
+        return StaffProductDetail(
+            product=OwnerProductDetail(
+                product=_draft_view(product),
+                topics=tuple(
+                    ProductTopicSelection(topic.topic_id, topic.selected_label, topic.position)
+                    for topic in topics
+                ),
+                assets=tuple(_asset_view(asset) for asset in assets),
+                submission=_submission_view(period),
+            ),
+            submission=_submission_view(period),
+            possible_duplicate=product.website_key in duplicates,
+            founder_suspended=(
+                founder_states.get(product.founder_id) is None
+                or founder_states[product.founder_id].suspended_at is not None
+            ),
+        )
+
+    async def topic_choices(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID | None,
+        query: str | None = None,
+        first: int = 20,
+    ) -> list[TopicChoice]:
+        """Offer launched canonical names plus only the caller's own private proposals."""
+
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        from app.modules.products.repository import TopicRepository
+
+        topics = TopicRepository()
+        launched = await topics.list_topic_choices(session, query=query, limit=first)
+        choices = {choice.topic_id: choice for choice in launched}
+        if actor_id is not None:
+            account = await self.member_access.current_account(session, actor_id)
+            if account is not None:
+                for choice in await topics.list_owner_proposals(
+                    session, founder_id=actor_id, query=query
+                ):
+                    choices.setdefault(choice.topic_id, choice)
+        return sorted(choices.values(), key=lambda choice: choice.display_name.casefold())[:first]
 
     async def delete_draft(
         self,
@@ -863,12 +1083,11 @@ class ProductService:
         from app.modules.products.repository import TopicRepository
 
         topics = TopicRepository()
-        topic_ids = [
-            (await topics.get_or_create_topic(session, label.display_name)).topic_id
-            for label in labels
+        selections = [
+            await topics.get_or_create_topic(session, label.display_name) for label in labels
         ]
         return await self.repository.replace_product_topics(
-            session, product_id=product_id, topic_ids=topic_ids
+            session, product_id=product_id, selections=selections
         )
 
     async def withdraw_submission(
@@ -997,6 +1216,26 @@ def _submission_view(submission: ProductSubmission) -> SubmissionPeriod:
         submitted_at=submission.submitted_at,
         product_version=submission.product_version,
     )
+
+
+def _queue_cursor(submission: ProductSubmission) -> str:
+    return _read_cursor(submission.submitted_at, submission.id)
+
+
+def _read_cursor(timestamp: datetime, item_id: UUID) -> str:
+    return f"{timestamp.isoformat()}|{item_id}"
+
+
+def _parse_read_cursor(value: str) -> tuple[datetime, UUID]:
+    try:
+        timestamp_text, submission_text = value.split("|", maxsplit=1)
+        timestamp = datetime.fromisoformat(timestamp_text)
+        submission_id = UUID(submission_text)
+        if timestamp.tzinfo is None:
+            raise ValueError("timezone required")
+    except ValueError as error:
+        raise ProductValidationError("invalid cursor", fields=("after",)) from error
+    return timestamp, submission_id
 
 
 def validate_submission_content(content: ProductContentInput) -> ProductContentInput:

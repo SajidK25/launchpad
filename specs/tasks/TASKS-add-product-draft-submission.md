@@ -757,32 +757,37 @@ Complete the REST command surface for create, save, submit, withdraw, delete, an
 
 ## Task T13: Build Owner and Staff Read Projections
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical
-> **Depends on:** T2, T6, T8
-> **Satisfies REQs:** R1, R8, R12, R13, R14, R15, N1, N2, N4
-> **Footprint slice:** Product service/repository read projections for owner lists, staff queue/detail, topics, duplicate and suspension flags.
-> **High-risk areas touched:** Product transactions and queue; auth/session and operator access; shared GraphQL/profile reads.
+> **Depends on:** T2, T6, T8, T12
+> **Satisfies REQs:** R1, R7, R8, R12, R13, R14, R15, N1, N2, N3, N4
+> **Footprint slice:** Additive selected-label migration and product association writes; product service/repository read projections for owner lists, staff queue/detail, topics, duplicate and suspension flags.
+> **High-risk areas touched:** Product transactions and queue; auth/session and operator access; shared GraphQL/profile reads; database readiness and migration rollout.
 
 ### Description
 
-Provide policy-enforced read models for a founder's private products and a staff member's current pending queue. Use bounded keyset paging, indexed duplicate lookup, and batched live founder state without exposing other founders' drafts or proposals.
+Provide policy-enforced read models for a founder's private products and a staff member's current pending queue. First add `ProductTopic.selected_label` in new forward revision `0006`, backfilling existing associations from normalized `topics.name_key` because their original founder spelling cannot be recovered without exposing another founder's private canonical casing. Extend the existing versioned topic save to persist each supplied, trimmed founder label on its association; omitted topics remain untouched. Owner/staff reads use the association label, while general launched choices use the canonical topic display. Use bounded keyset paging, indexed duplicate lookup, and batched live founder state without exposing other founders' drafts, proposals, or private label casing.
 
 ### Test Plan
 
 #### Test File(s)
 - apps/api/app/modules/products/tests/test_reads.py
 - apps/api/app/modules/products/tests/test_queue.py
+- apps/api/app/modules/products/tests/test_topics.py
+- tests/integration/test_product_schema.py
+- tests/integration/test_product_submission.py
 
 #### Test Scenarios
 
 ##### Privacy and Current State
 
 - **returns only owner's private work** — GIVEN drafts/pending items for multiple founders WHEN owner list/detail runs THEN only the actor's items appear; visitors and other members learn nothing _(verifies R1, N1)_.
+- **retains the owner's selected topic label** — GIVEN founders save different case/spacing variants of one canonical private topic WHEN either reopens their own product THEN each sees only their trimmed selected spelling in original order; neither sees the other's label or association _(verifies R7–R8, N1; A5, A11–A12)_.
+- **backfills legacy associations without casing leakage** — GIVEN `0005` associations without founder labels WHEN `0006` upgrades THEN each receives a nonblank normalized-key label, existing topic IDs/order remain unchanged, the original first founder's private display casing is not copied into other owners' associations, and the migration reaches the exact new head _(verifies R8, N1, N3; A12)_.
 - **limits staff to pending** — GIVEN pending, withdrawn, and never-submitted drafts WHEN staff reads THEN only current pending details/media and submission ID/version appear _(verifies R12, R14, N1)_.
-- **keeps topic proposals hidden** — GIVEN another founder's private topic WHEN choices are read THEN it is absent until first launch; own selected label may remain visible to its owner _(verifies R8, N1)_.
+- **keeps topic proposals hidden** — GIVEN another founder's private topic WHEN choices are read THEN it is absent until first launch; a caller's own selected proposal uses its association label, launched choices use the canonical display, and duplicate topic IDs are collapsed _(verifies R8, N1)_.
 - **shows live staff-only flags** — GIVEN same canonical website or a newly suspended founder WHEN queue/detail runs THEN staff sees possible-duplicate/suspended flags but a founder sees no matching private product _(verifies R14, R15)_.
 
 ##### Queue Performance
@@ -792,28 +797,34 @@ Provide policy-enforced read models for a founder's private products and a staff
 
 ### Implementation Notes
 
-- **Module(s):** products read service/repository; auth batch access interface.
+- **Module(s):** products association model and forward migration, existing topic-save service/repository, products read service/repository, auth batch access interface.
 - **Pattern reference:** apps/api/app/modules/users/service.py owner/public read split.
-- **Key decisions:** A1, A3, A5; staff only sees submitted current state, not historical or draft content.
+- **Key decisions:** A1, A3, A5, A11, A12; staff only sees submitted current state, not historical or draft content. The `0005` revision stays unchanged; legacy labels intentionally use normalized keys, while new writes preserve each founder's trimmed spelling.
 - **Libraries:** SQLAlchemy 2 async, pytest.
 - **High-risk callouts:** Duplicate detection may inspect private product rows internally but must not return matching identities to founders.
 
 ### Scope Boundaries
 
 - Do NOT add visitor/public product, search, or public topic discovery.
+- Only add selected-label persistence needed by these projections; do not change topic identity, limits, or the versioned save/submit contract.
 - Only owner and verified unsuspended staff projections plus bounded topic choices.
 
 ### Files Expected
 
 **New files:**
 - apps/api/app/modules/products/tests/test_reads.py; test_queue.py (read/queue coverage).
+- apps/api/alembic/versions/0006_product_topic_selected_labels.py (additive column, normalized-key backfill, non-null/check constraint).
 
 **Modified files:**
-- apps/api/app/modules/products/service.py; repository.py; policies.py (read projections and policy).
+- apps/api/app/modules/products/models.py (required selected association label).
+- apps/api/app/modules/products/service.py; repository.py; policies.py (versioned selected-label writes, read projections, and policy).
+- apps/api/app/modules/products/tests/test_topics.py; tests/integration/test_product_schema.py; tests/integration/test_product_submission.py (association and migration regression coverage, including required selected-label fixtures).
 
 **Must NOT modify:**
 - apps/api/app/modules/users/graphql.py (profile composition is T14).
 - apps/api/app/modules/auth/repository.py (use T2 named batch interface).
+- apps/api/alembic/versions/0005_product_drafts_submission.py (already applied/shared; extend only through `0006`).
+- apps/api/app/shared/db/database.py (exact migration-head readiness remains dynamic).
 
 ---
 

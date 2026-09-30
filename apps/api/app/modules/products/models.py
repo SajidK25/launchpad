@@ -134,6 +134,10 @@ class ProductTopic(ProductBase):
     __tablename__ = "product_topics"
     __table_args__ = (
         CheckConstraint("position BETWEEN 1 AND 3", name="ck_product_topics_position"),
+        CheckConstraint(
+            "selected_label = trim(selected_label) AND length(selected_label) BETWEEN 1 AND 40",
+            name="ck_product_topics_selected_label",
+        ),
         Index("uq_product_topics_product_position", "product_id", "position", unique=True),
     )
 
@@ -144,6 +148,7 @@ class ProductTopic(ProductBase):
         Uuid(as_uuid=True), ForeignKey("topics.id"), primary_key=True
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
+    selected_label: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class ProductAsset(ProductBase):

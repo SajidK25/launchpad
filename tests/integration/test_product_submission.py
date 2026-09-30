@@ -131,7 +131,14 @@ async def _make_complete(
                 attached_at=clock,
             )
         )
-        session.add(ProductTopic(product_id=product_id, topic_id=topic_id, position=1))
+        session.add(
+            ProductTopic(
+                product_id=product_id,
+                topic_id=topic_id,
+                position=1,
+                selected_label="Tools",
+            )
+        )
 
 
 def test_submission_requires_complete_verified_draft_and_is_idempotent(
@@ -204,7 +211,12 @@ def test_submission_requires_complete_verified_draft_and_is_idempotent(
                             expires_at=None,
                             attached_at=now,
                         ),
-                        ProductTopic(product_id=unverified.id, topic_id=topic_id, position=1),
+                        ProductTopic(
+                            product_id=unverified.id,
+                            topic_id=topic_id,
+                            position=1,
+                            selected_label="Tools",
+                        ),
                     ]
                 )
             with pytest.raises(ProductForbiddenError):
