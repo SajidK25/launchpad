@@ -121,4 +121,44 @@ describe("product client", () => {
     await submitting;
     expect(calls.at(-1)).toBe("/api/v1/me/products/p1/submit");
   });
+
+  it("sends the generated full-replacement asset attachment command", async () => {
+    const fetcher = vi.fn().mockImplementation(async (url) => {
+      if (String(url).endsWith("/auth/session"))
+        return Response.json({
+          account_id: "member-1",
+          csrf_token: "csrf-current",
+          role: "member",
+          suspended: false,
+          verified: false,
+        });
+      return Response.json({ id: "p1", status: "draft", version: 4 });
+    });
+    const identity = createIdentityClient(fetcher);
+    const client = createProductClient(fetcher, identity);
+
+    await expect(
+      client.attachAssets("p1", {
+        version: 3,
+        logo_asset_id: "logo-1",
+        screenshot_asset_ids: ["shot-1", "shot-2"],
+      }),
+    ).resolves.toEqual({ id: "p1", status: "draft", version: 4 });
+    expect(fetcher).toHaveBeenLastCalledWith(
+      "/api/v1/me/products/p1/assets",
+      expect.objectContaining({
+        method: "PUT",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-current",
+        },
+        body: JSON.stringify({
+          version: 3,
+          logo_asset_id: "logo-1",
+          screenshot_asset_ids: ["shot-1", "shot-2"],
+        }),
+      }),
+    );
+  });
 });

@@ -433,6 +433,17 @@ function PrivateProfileLanding({ client }: { client: IdentityClient }) {
       <p className="identity-intro">
         You’re signed in. Profile editing will be available here.
       </p>
+      <nav aria-label="Your Launchpad workspace" className="identity-links">
+        <a
+          href="/products"
+          onClick={(event) => {
+            event.preventDefault();
+            navigate("/products");
+          }}
+        >
+          Your product drafts
+        </a>
+      </nav>
       <button
         className="secondary-button"
         disabled={logout.isPending}

@@ -1015,7 +1015,7 @@ Build a generated-type REST/GraphQL client and TanStack Query hooks for product 
 
 ## Task T17: Build the Accessible Founder Product Editor
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high

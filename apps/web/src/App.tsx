@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { useConnectivity } from "./connectivity/useConnectivity";
+import { createProductClient } from "./products/client";
+import { ProductRoutes } from "./products/ProductScreens";
 import { createIdentityClient } from "./identity/client";
-import { IdentityRoutes } from "./identity/Screens";
+import { IdentityRoutes, navigate } from "./identity/Screens";
 import { ProfileRoutes } from "./profiles/ProfileScreens";
 
 const statusCopy = {
@@ -20,6 +22,9 @@ const detailCopy = {
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
   const [identityClient] = useState(() => createIdentityClient());
+  const [productClient] = useState(() =>
+    createProductClient(undefined, identityClient),
+  );
   const connectivity = useConnectivity();
   useEffect(() => {
     const update = () => setPath(window.location.pathname);
@@ -28,9 +33,38 @@ export function App() {
   }, []);
 
   if (path !== "/") {
-    if (path === "/profile" || path.startsWith("/public/")) {
-      return <ProfileRoutes identityClient={identityClient} />;
+    if (path === "/products" || path.startsWith("/products/")) {
+      return (
+        <ProductRoutes
+          identityClient={identityClient}
+          path={path}
+          client={productClient}
+        />
+      );
     }
+    if (path === "/profile") {
+      return (
+        <>
+          <nav
+            aria-label="Founder workspace"
+            className="profile-workspace-link"
+          >
+            <a
+              href="/products"
+              onClick={(event) => {
+                event.preventDefault();
+                navigate("/products");
+              }}
+            >
+              Your product drafts
+            </a>
+          </nav>
+          <ProfileRoutes identityClient={identityClient} />
+        </>
+      );
+    }
+    if (path.startsWith("/public/"))
+      return <ProfileRoutes identityClient={identityClient} />;
     return <IdentityRoutes client={identityClient} />;
   }
   const { refresh, state } = connectivity;

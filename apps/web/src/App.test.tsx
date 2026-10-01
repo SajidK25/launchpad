@@ -13,6 +13,11 @@ vi.mock("./identity/Screens", () => ({
 vi.mock("./profiles/ProfileScreens", () => ({
   ProfileRoutes: () => <div>profile routes</div>,
 }));
+vi.mock("./products/ProductScreens", () => ({
+  ProductRoutes: ({ path }: { path: string }) => (
+    <div>product route: {path}</div>
+  ),
+}));
 vi.mock("./identity/client", () => ({
   createIdentityClient: vi.fn(() => ({ getCsrfToken: () => null })),
 }));
@@ -78,5 +83,23 @@ describe("App", () => {
     view.rerender(<App />);
 
     expect(createIdentityClient).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the founder workspace without replacing identity and profile routes", () => {
+    mockedUseConnectivity.mockReturnValue({
+      refresh: vi.fn(),
+      state: "connected",
+    });
+    window.history.pushState({}, "", "/products/one");
+    const view = render(<App />);
+    expect(screen.getByText("product route: /products/one")).not.toBeNull();
+
+    window.history.pushState({}, "", "/profile");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    view.rerender(<App />);
+    expect(screen.getByText("profile routes")).not.toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Your product drafts" }),
+    ).not.toBeNull();
   });
 });

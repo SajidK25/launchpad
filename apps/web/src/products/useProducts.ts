@@ -78,11 +78,14 @@ export function useProductAutosave(
   productId: string,
   initial: ProductDraftValues & { version: number },
   debounceMs = 400,
+  savePolicy: (values: ProductDraftValues) => boolean = () => true,
 ) {
+  const queryClient = useQueryClient();
   const [values, setValues] = useState<ProductDraftValues>(() =>
     withoutVersion(initial),
   );
   const [status, setStatus] = useState<ProductAutosaveStatus>("saved");
+  const [version, setVersion] = useState(initial.version);
   const valuesRef = useRef(values);
   const savedRef = useRef<ProductDraftValues>(withoutVersion(initial));
   const versionRef = useRef(initial.version);
@@ -90,6 +93,8 @@ export function useProductAutosave(
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef<Promise<ProductState> | null>(null);
   const mountedRef = useRef(true);
+  const savePolicyRef = useRef(savePolicy);
+  savePolicyRef.current = savePolicy;
 
   const updateStatus = useCallback((next: ProductAutosaveStatus) => {
     statusRef.current = next;
@@ -114,6 +119,10 @@ export function useProductAutosave(
     }
 
     const snapshot = valuesRef.current;
+    if (!savePolicyRef.current(snapshot)) {
+      updateStatus("not-saved");
+      throw new Error("This update is not complete enough to save.");
+    }
     updateStatus("saving");
     const request = client.saveProduct(productId, {
       ...snapshot,
@@ -125,6 +134,11 @@ export function useProductAutosave(
       result = await request;
       savedRef.current = snapshot;
       versionRef.current = result.version;
+      if (mountedRef.current) setVersion(result.version);
+      void queryClient.invalidateQueries({ queryKey: productKeys.viewer });
+      void queryClient.invalidateQueries({
+        queryKey: productKeys.detail(productId),
+      });
     } catch (error) {
       const statusCode =
         typeof error === "object" && error !== null && "status" in error
@@ -141,7 +155,7 @@ export function useProductAutosave(
       return saveLatest();
     }
     return result;
-  }, [client, productId, updateStatus]);
+  }, [client, productId, queryClient, updateStatus]);
 
   const schedule = useCallback(() => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
@@ -168,6 +182,27 @@ export function useProductAutosave(
     await saveLatest();
   }, [saveLatest]);
 
+  const adoptVersion = useCallback(
+    (version: number) => {
+      versionRef.current = version;
+      setVersion(version);
+      updateStatus(
+        sameValues(valuesRef.current, savedRef.current) ? "saved" : "dirty",
+      );
+    },
+    [updateStatus],
+  );
+
+  const rebaseAndSave = useCallback(
+    async (version: number) => {
+      versionRef.current = version;
+      setVersion(version);
+      updateStatus("dirty");
+      return saveLatest();
+    },
+    [saveLatest, updateStatus],
+  );
+
   useEffect(() => {
     mountedRef.current = true;
     const reconnect = () => {
@@ -188,8 +223,64 @@ export function useProductAutosave(
     edit,
     retry,
     saveLatest,
-    version: versionRef.current,
+    adoptVersion,
+    rebaseAndSave,
+    version,
   };
+}
+
+export function useAttachProductAssets(
+  client: ProductClient,
+  productId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      version: number;
+      logo_asset_id: string | null;
+      screenshot_asset_ids: string[];
+    }) => client.attachAssets(productId, payload),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: productKeys.viewer });
+      void queryClient.invalidateQueries({
+        queryKey: productKeys.detail(productId),
+      });
+      return result;
+    },
+  });
+}
+
+export function useDeleteProductDraft(
+  client: ProductClient,
+  productId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (version: number) => client.deleteDraft(productId, version),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productKeys.viewer });
+      queryClient.removeQueries({ queryKey: productKeys.detail(productId) });
+    },
+  });
+}
+
+export function useWithdrawProduct(client: ProductClient, productId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      submissionId,
+      version,
+    }: {
+      submissionId: string;
+      version: number;
+    }) => client.withdraw(productId, submissionId, version),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productKeys.viewer });
+      void queryClient.invalidateQueries({
+        queryKey: productKeys.detail(productId),
+      });
+    },
+  });
 }
 
 export function useSubmitProduct(client: ProductClient) {

@@ -111,6 +111,17 @@ export function createProductClient(
           payload,
         ),
       ),
+    attachAssets: async (
+      productId: string,
+      payload: Schemas["ProductAssetAttachmentInput"],
+    ) =>
+      assertProductState(
+        await rest<Schemas["ProductStateResponse"]>(
+          `/api/v1/me/products/${encodeURIComponent(productId)}/assets`,
+          "PUT",
+          payload,
+        ),
+      ),
     deleteDraft: (productId: string, version: number) =>
       rest<void>(
         `/api/v1/me/products/${encodeURIComponent(productId)}?expected_version=${encodeURIComponent(String(version))}`,
