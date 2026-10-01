@@ -19,3 +19,124 @@ query ViewerProfile {
     version
   }
 }
+
+query ViewerProducts($first: Int! = 20, $after: String) {
+  viewerProducts(first: $first, after: $after) {
+    items {
+      id
+      status
+      version
+      name
+      pitch
+      createdAt
+      updatedAt
+    }
+    nextCursor
+  }
+}
+
+query ViewerProduct($id: UUID!) {
+  viewerProduct(id: $id) {
+    summary {
+      id
+      status
+      version
+      name
+      pitch
+      createdAt
+      updatedAt
+    }
+    description
+    websiteUrl
+    topics {
+      id
+      displayName
+      position
+    }
+    assets {
+      id
+      kind
+      mediaType
+      byteCount
+      url
+    }
+    submission {
+      id
+      submittedAt
+      productVersion
+    }
+  }
+}
+
+query ReviewQueue($first: Int! = 20, $after: String) {
+  reviewQueue(first: $first, after: $after) {
+    items {
+      product {
+        id
+        status
+        version
+        name
+        pitch
+        createdAt
+        updatedAt
+      }
+      submission {
+        id
+        submittedAt
+        productVersion
+      }
+      possibleDuplicate
+      founderSuspended
+    }
+    nextCursor
+  }
+}
+
+query ReviewProduct($id: UUID!) {
+  reviewProduct(id: $id) {
+    product {
+      summary {
+        id
+        status
+        version
+        name
+        pitch
+        createdAt
+        updatedAt
+      }
+      description
+      websiteUrl
+      topics {
+        id
+        displayName
+        position
+      }
+      assets {
+        id
+        kind
+        mediaType
+        byteCount
+        url
+      }
+      submission {
+        id
+        submittedAt
+        productVersion
+      }
+    }
+    submission {
+      id
+      submittedAt
+      productVersion
+    }
+    possibleDuplicate
+    founderSuspended
+  }
+}
+
+query TopicChoices($first: Int! = 20, $query: String) {
+  topicChoices(first: $first, query: $query) {
+    id
+    displayName
+  }
+}

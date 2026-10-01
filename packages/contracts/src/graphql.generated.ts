@@ -30,7 +30,13 @@ export type PublicProfileQueryVariables = {
 };
 
 export type PublicProfileQuery = {
-  publicProfile: PublicProfile | null;
+  publicProfile: {
+    accountId: string;
+    displayName: string;
+    bio: string;
+    links: Array<string>;
+    photoUrl: string | null;
+  } | null;
 };
 
 export const PUBLIC_PROFILE_QUERY = `query PublicProfile($accountId: UUID!) {
@@ -46,7 +52,15 @@ export const PUBLIC_PROFILE_QUERY = `query PublicProfile($accountId: UUID!) {
 export type ViewerProfileQueryVariables = {};
 
 export type ViewerProfileQuery = {
-  viewerProfile: ViewerProfile;
+  viewerProfile: {
+    accountId: string;
+    displayName: string;
+    bio: string;
+    links: Array<string>;
+    photoUrl: string | null;
+    visibility: string;
+    version: number;
+  };
 };
 
 export const VIEWER_PROFILE_QUERY = `query ViewerProfile {
@@ -58,5 +72,273 @@ export const VIEWER_PROFILE_QUERY = `query ViewerProfile {
     photoUrl
     visibility
     version
+  }
+}` as const;
+
+export type ViewerProductsQueryVariables = {
+  first?: number;
+  after?: string | null;
+};
+
+export type ViewerProductsQuery = {
+  viewerProducts: {
+    items: Array<{
+      id: string;
+      status: string;
+      version: number;
+      name: string | null;
+      pitch: string | null;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const VIEWER_PRODUCTS_QUERY =
+  `query ViewerProducts($first: Int! = 20, $after: String) {
+  viewerProducts(first: $first, after: $after) {
+    items {
+      id
+      status
+      version
+      name
+      pitch
+      createdAt
+      updatedAt
+    }
+    nextCursor
+  }
+}` as const;
+
+export type ViewerProductQueryVariables = {
+  id: string;
+};
+
+export type ViewerProductQuery = {
+  viewerProduct: {
+    summary: {
+      id: string;
+      status: string;
+      version: number;
+      name: string | null;
+      pitch: string | null;
+      createdAt: string;
+      updatedAt: string;
+    };
+    description: string | null;
+    websiteUrl: string | null;
+    topics: Array<{
+      id: string;
+      displayName: string;
+      position: number;
+    }>;
+    assets: Array<{
+      id: string;
+      kind: string;
+      mediaType: string;
+      byteCount: number;
+      url: string;
+    }>;
+    submission: {
+      id: string;
+      submittedAt: string;
+      productVersion: number;
+    } | null;
+  } | null;
+};
+
+export const VIEWER_PRODUCT_QUERY = `query ViewerProduct($id: UUID!) {
+  viewerProduct(id: $id) {
+    summary {
+      id
+      status
+      version
+      name
+      pitch
+      createdAt
+      updatedAt
+    }
+    description
+    websiteUrl
+    topics {
+      id
+      displayName
+      position
+    }
+    assets {
+      id
+      kind
+      mediaType
+      byteCount
+      url
+    }
+    submission {
+      id
+      submittedAt
+      productVersion
+    }
+  }
+}` as const;
+
+export type ReviewQueueQueryVariables = {
+  first?: number;
+  after?: string | null;
+};
+
+export type ReviewQueueQuery = {
+  reviewQueue: {
+    items: Array<{
+      product: {
+        id: string;
+        status: string;
+        version: number;
+        name: string | null;
+        pitch: string | null;
+        createdAt: string;
+        updatedAt: string;
+      };
+      submission: {
+        id: string;
+        submittedAt: string;
+        productVersion: number;
+      };
+      possibleDuplicate: boolean;
+      founderSuspended: boolean;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const REVIEW_QUEUE_QUERY =
+  `query ReviewQueue($first: Int! = 20, $after: String) {
+  reviewQueue(first: $first, after: $after) {
+    items {
+      product {
+        id
+        status
+        version
+        name
+        pitch
+        createdAt
+        updatedAt
+      }
+      submission {
+        id
+        submittedAt
+        productVersion
+      }
+      possibleDuplicate
+      founderSuspended
+    }
+    nextCursor
+  }
+}` as const;
+
+export type ReviewProductQueryVariables = {
+  id: string;
+};
+
+export type ReviewProductQuery = {
+  reviewProduct: {
+    product: {
+      summary: {
+        id: string;
+        status: string;
+        version: number;
+        name: string | null;
+        pitch: string | null;
+        createdAt: string;
+        updatedAt: string;
+      };
+      description: string | null;
+      websiteUrl: string | null;
+      topics: Array<{
+        id: string;
+        displayName: string;
+        position: number;
+      }>;
+      assets: Array<{
+        id: string;
+        kind: string;
+        mediaType: string;
+        byteCount: number;
+        url: string;
+      }>;
+      submission: {
+        id: string;
+        submittedAt: string;
+        productVersion: number;
+      } | null;
+    };
+    submission: {
+      id: string;
+      submittedAt: string;
+      productVersion: number;
+    };
+    possibleDuplicate: boolean;
+    founderSuspended: boolean;
+  } | null;
+};
+
+export const REVIEW_PRODUCT_QUERY = `query ReviewProduct($id: UUID!) {
+  reviewProduct(id: $id) {
+    product {
+      summary {
+        id
+        status
+        version
+        name
+        pitch
+        createdAt
+        updatedAt
+      }
+      description
+      websiteUrl
+      topics {
+        id
+        displayName
+        position
+      }
+      assets {
+        id
+        kind
+        mediaType
+        byteCount
+        url
+      }
+      submission {
+        id
+        submittedAt
+        productVersion
+      }
+    }
+    submission {
+      id
+      submittedAt
+      productVersion
+    }
+    possibleDuplicate
+    founderSuspended
+  }
+}` as const;
+
+export type TopicChoicesQueryVariables = {
+  first?: number;
+  query?: string | null;
+};
+
+export type TopicChoicesQuery = {
+  topicChoices: Array<{
+    id: string;
+    displayName: string;
+  }>;
+};
+
+export const TOPIC_CHOICES_QUERY =
+  `query TopicChoices($first: Int! = 20, $query: String) {
+  topicChoices(first: $first, query: $query) {
+    id
+    displayName
   }
 }` as const;

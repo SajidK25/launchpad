@@ -895,7 +895,7 @@ Compose product owner/staff fields with the existing profile reads on one bounde
 
 ## Task T15: Gate Product Activation and Regenerate Contracts
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** critical
@@ -936,11 +936,13 @@ Add disabled-by-default product activation, mount product REST/GraphQL only when
 - None.
 
 **Modified files:**
-- apps/api/app/shared/config/settings.py; apps/api/app/main.py (flag and conditional routing).
+- apps/api/app/shared/config/settings.py; apps/api/app/main.py; apps/api/app/graphql.py; apps/api/app/modules/users/routes.py (flag and conditional REST/GraphQL composition).
 - compose.yaml; compose.checks.yaml (explicit local/check enablement).
-- scripts/quality/contracts.sh (generate enabled schema).
+- scripts/quality/contracts.sh; scripts/quality/generate_graphql_types.py (generate enabled schema and concrete nested operation result types).
 - packages/contracts/operations.graphql; schema.graphql; openapi.json; src/generated.ts; src/graphql.generated.ts (generated operation/response contracts).
 - apps/api/app/shared/config/tests/test_settings.py (flag validation coverage).
+- apps/api/app/modules/products/tests/test_graphql.py (feature-off schema and route regression coverage).
+- tests/quality/test_graphql_generation.py (generated product operation types remain concrete and schema-validated).
 
 **Must NOT modify:**
 - apps/api/app/shared/db/database.py; apps/api/app/modules/health/* (exact-head readiness stays intact).

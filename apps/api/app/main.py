@@ -8,6 +8,7 @@ from app.modules.auth.routes import router as auth_router
 from app.modules.health.probes import database_probe, redis_probe, storage_probe
 from app.modules.health.routes import router
 from app.modules.health.service import HealthService
+from app.modules.products.routes import router as products_router
 from app.modules.users.routes import router as users_router
 from app.shared.config.settings import load_settings
 from app.shared.db.database import Database
@@ -63,21 +64,31 @@ def create_app(service: HealthService | None = None) -> FastAPI:
         assert storage is not None
         assert settings.storage_access_key_id is not None
         assert settings.storage_secret_access_key is not None
+        private_store = PrivateObjectStore(
+            endpoint_url=str(settings.storage_endpoint_url),
+            public_endpoint_url=str(settings.public_upload_endpoint_url),
+            bucket_name=settings.storage_bucket,
+            access_key_id=settings.storage_access_key_id.get_secret_value(),
+            secret_access_key=settings.storage_secret_access_key.get_secret_value(),
+            client_factory=storage._client,
+        )
         profile_routes, profile_graphql = users_router(
             settings=settings,
             database=database,
             redis=Redis.from_url(str(settings.redis_url)),
-            storage=PrivateObjectStore(
-                endpoint_url=str(settings.storage_endpoint_url),
-                public_endpoint_url=str(settings.public_upload_endpoint_url),
-                bucket_name=settings.storage_bucket,
-                access_key_id=settings.storage_access_key_id.get_secret_value(),
-                secret_access_key=settings.storage_secret_access_key.get_secret_value(),
-                client_factory=storage._client,
-            ),
+            storage=private_store,
         )
         app.include_router(profile_routes)
         app.include_router(profile_graphql, prefix="/api/v1")
+        if settings.products_enabled:
+            app.include_router(
+                products_router(
+                    settings=settings,
+                    database=database,
+                    redis=Redis.from_url(str(settings.redis_url)),
+                    storage=private_store,
+                )
+            )
     return app
 
 

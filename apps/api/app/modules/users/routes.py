@@ -348,7 +348,8 @@ def router(
             session_service=session_service,
             profile_service_factory=service_for,
             payload_codec=codec,
-        )
+        ),
+        include_products=settings.products_enabled,
     )
     return routes, graphql_routes
 

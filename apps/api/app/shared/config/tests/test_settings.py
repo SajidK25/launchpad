@@ -14,6 +14,7 @@ def test_documented_local_defaults_need_no_external_credentials() -> None:
     )
 
     assert settings.environment == "development"
+    assert settings.products_enabled is False
     assert "@postgres:" in str(settings.database_url)
     assert settings.storage_endpoint_url.host == "minio"
 
@@ -86,6 +87,18 @@ def test_production_does_not_inject_local_origins() -> None:
     )
 
     assert settings.trusted_web_origins == ("https://launchpad.example",)
+    assert settings.products_enabled is False
+
+
+def test_products_feature_can_be_enabled_explicitly() -> None:
+    settings = load_settings(
+        {
+            "LAUNCHPAD_PRODUCTS_ENABLED": "true",
+            "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "http://localhost:8080",
+        }
+    )
+
+    assert settings.products_enabled is True
 
 
 def test_missing_runtime_credentials_outside_development_are_actionable_and_safe() -> None:

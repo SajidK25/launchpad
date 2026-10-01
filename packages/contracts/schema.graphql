@@ -1,3 +1,46 @@
+"""
+Date with time (isoformat)
+"""
+scalar DateTime
+
+type ProductAsset {
+  id: UUID!
+  kind: String!
+  mediaType: String!
+  byteCount: Int!
+  url: String!
+}
+
+type ProductDetail {
+  summary: ProductSummary!
+  description: String
+  websiteUrl: String
+  topics: [ProductTopic!]!
+  assets: [ProductAsset!]!
+  submission: Submission
+}
+
+type ProductPage {
+  items: [ProductSummary!]!
+  nextCursor: String
+}
+
+type ProductSummary {
+  id: UUID!
+  status: String!
+  version: Int!
+  name: String
+  pitch: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ProductTopic {
+  id: UUID!
+  displayName: String!
+  position: Int!
+}
+
 type PublicProfile {
   accountId: UUID!
   displayName: String!
@@ -9,6 +52,41 @@ type PublicProfile {
 type Query {
   viewerProfile: ViewerProfile!
   publicProfile(accountId: UUID!): PublicProfile
+  viewerProducts(first: Int! = 20, after: String = null): ProductPage!
+  viewerProduct(id: UUID!): ProductDetail
+  reviewQueue(first: Int! = 20, after: String = null): ReviewPage!
+  reviewProduct(id: UUID!): ReviewDetail
+  topicChoices(first: Int! = 20, query: String = null): [TopicChoice!]!
+}
+
+type ReviewDetail {
+  product: ProductDetail!
+  submission: Submission!
+  possibleDuplicate: Boolean!
+  founderSuspended: Boolean!
+}
+
+type ReviewEntry {
+  product: ProductSummary!
+  submission: Submission!
+  possibleDuplicate: Boolean!
+  founderSuspended: Boolean!
+}
+
+type ReviewPage {
+  items: [ReviewEntry!]!
+  nextCursor: String
+}
+
+type Submission {
+  id: UUID!
+  submittedAt: DateTime!
+  productVersion: Int!
+}
+
+type TopicChoice {
+  id: UUID!
+  displayName: String!
 }
 
 scalar UUID

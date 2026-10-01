@@ -83,6 +83,7 @@ services:
     working_dir: /workspace
     environment:
       <<: *check_runtime
+      LAUNCHPAD_PRODUCTS_ENABLED: "true"
       AWS_ACCESS_KEY_ID: launchpad_check_minio
       AWS_EC2_METADATA_DISABLED: "true"
       AWS_SECRET_ACCESS_KEY: launchpad_check_minio_password
@@ -153,6 +154,7 @@ services:
     environment:
       <<: *check_runtime
       LAUNCHPAD_ENVIRONMENT: test
+      LAUNCHPAD_PRODUCTS_ENABLED: "true"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
   web:
@@ -181,6 +183,8 @@ services:
         source: ./scripts/quality
         target: /workspace/scripts/quality
         read_only: true
+    tmpfs:
+      - /workspace/apps/web/node_modules:mode=1777
     command: ["npm", "--version"]
 
   quality:

@@ -48,6 +48,11 @@ class Query(ProfileQuery, ProductQuery):
     """The application's single read root; no mutation or subscription exists."""
 
 
+@strawberry.type
+class ProfileOnlyQuery(ProfileQuery):
+    """Read root used while the products feature is disabled."""
+
+
 class PrivateReadRouter(GraphQLRouter):
     """Ensure execution errors never echo private database or storage values."""
 
@@ -70,9 +75,11 @@ class PrivateReadRouter(GraphQLRouter):
         return response
 
 
-def build_router(context_getter: Callable[..., Any]) -> GraphQLRouter:
+def build_router(
+    context_getter: Callable[..., Any], *, include_products: bool = True
+) -> GraphQLRouter:
     router = PrivateReadRouter(
-        strawberry.Schema(query=Query),
+        strawberry.Schema(query=Query if include_products else ProfileOnlyQuery),
         path="/graphql",
         context_getter=context_getter,
         allow_queries_via_get=False,
