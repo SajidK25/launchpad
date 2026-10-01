@@ -952,7 +952,7 @@ Add disabled-by-default product activation, mount product REST/GraphQL only when
 
 ## Task T16: Build Typed Product Client and Autosave State
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high

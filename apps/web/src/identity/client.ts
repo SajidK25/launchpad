@@ -22,6 +22,7 @@ export function createIdentityClient(
   fetcher: Fetcher = globalThis.fetch.bind(globalThis),
 ) {
   let csrfToken: string | null = null;
+  let sessionPromise: Promise<SessionResponse> | null = null;
 
   async function request<T>(
     path: string,
@@ -50,6 +51,18 @@ export function createIdentityClient(
     return responseBody as T;
   }
 
+  async function loadSession(): Promise<SessionResponse> {
+    const result = await request<SessionResponse>(
+      "/api/v1/auth/session",
+      "GET",
+      undefined,
+      false,
+    );
+    if (!isSessionResponse(result)) throw new IdentityRequestError(200, result);
+    csrfToken = result.csrf_token;
+    return result;
+  }
+
   return {
     getCsrfToken: () => csrfToken,
     setCsrfToken: (value: string | null) => {
@@ -75,17 +88,26 @@ export function createIdentityClient(
       csrfToken = result.csrf_token;
       return result;
     },
-    currentSession: async (): Promise<SessionResponse> => {
-      const result = await request<SessionResponse>(
-        "/api/v1/auth/session",
-        "GET",
-        undefined,
-        false,
-      );
-      if (!isSessionResponse(result))
-        throw new IdentityRequestError(200, result);
-      csrfToken = result.csrf_token;
-      return result;
+    currentSession: loadSession,
+    ensureSession: async (): Promise<SessionResponse> => {
+      if (sessionPromise === null) {
+        sessionPromise = loadSession()
+          .then((session) => {
+            if (
+              (session.role !== "member" &&
+                session.role !== "reviewer" &&
+                session.role !== "admin") ||
+              typeof session.suspended !== "boolean"
+            ) {
+              throw new IdentityRequestError(200, session);
+            }
+            return session;
+          })
+          .finally(() => {
+            sessionPromise = null;
+          });
+      }
+      return sessionPromise;
     },
     logout: async (): Promise<void> => {
       await request<void>("/api/v1/auth/logout", "POST");
