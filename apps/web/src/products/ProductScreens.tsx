@@ -9,6 +9,8 @@ import {
   useCreateDraft,
   useDeleteProductDraft,
   useProductAutosave,
+  useReviewProduct,
+  useReviewQueue,
   useSubmitProduct,
   useTopicChoices,
   useViewerProduct,
@@ -42,11 +44,16 @@ export function ProductRoutes({
   path: string;
 }) {
   const session = useCurrentSession(identityClient);
+  const reviewRoute = path.match(/^\/products\/review(?:\/([^/]+))?\/?$/);
   const route = path.match(/^\/products(?:\/([^/]+))?\/?$/);
+  const workspaceLabel = reviewRoute ? "Staff workspace" : "Founder workspace";
 
-  if (!route)
+  if (!route && !reviewRoute)
     return (
-      <ProductFrame identityClient={identityClient}>
+      <ProductFrame
+        identityClient={identityClient}
+        workspaceLabel={workspaceLabel}
+      >
         <p role="alert">That product workspace page is unavailable.</p>
         <button
           className="secondary-button"
@@ -59,13 +66,19 @@ export function ProductRoutes({
     );
   if (session.isPending)
     return (
-      <ProductFrame identityClient={identityClient}>
+      <ProductFrame
+        identityClient={identityClient}
+        workspaceLabel={workspaceLabel}
+      >
         <p role="status">Checking your account…</p>
       </ProductFrame>
     );
   if (session.isError || !session.data)
     return (
-      <ProductFrame identityClient={identityClient}>
+      <ProductFrame
+        identityClient={identityClient}
+        workspaceLabel={workspaceLabel}
+      >
         <h1>Your products</h1>
         <p role="alert">Sign in to view or edit your private product drafts.</p>
         <button
@@ -79,8 +92,30 @@ export function ProductRoutes({
     );
 
   return (
-    <ProductFrame identityClient={identityClient}>
-      {route[1] ? (
+    <ProductFrame
+      identityClient={identityClient}
+      workspaceLabel={workspaceLabel}
+    >
+      {reviewRoute ? (
+        canReviewQueue(session.data) ? (
+          reviewRoute[1] ? (
+            <StaffReviewDetail client={client} productId={reviewRoute[1]} />
+          ) : (
+            <StaffReviewQueue client={client} />
+          )
+        ) : (
+          <section aria-labelledby="review-title" className="product-panel">
+            <p className="eyebrow">Staff workspace</p>
+            <h1 id="review-title">Staff review queue</h1>
+            <p role="alert" className="product-alert">
+              This queue is not available for your account.
+            </p>
+            <a href="/products" onClick={linkTo("/products")}>
+              Back to your products
+            </a>
+          </section>
+        )
+      ) : route?.[1] ? (
         <ProductEditor
           client={client}
           identityClient={identityClient}
@@ -96,9 +131,11 @@ export function ProductRoutes({
 
 function ProductFrame({
   identityClient,
+  workspaceLabel,
   children,
 }: {
   identityClient: IdentityClient;
+  workspaceLabel: string;
   children: React.ReactNode;
 }) {
   const logout = useLogout(identityClient);
@@ -121,7 +158,7 @@ function ProductFrame({
             href="/products"
             onClick={linkTo("/products")}
           >
-            Launchpad <span>Founder workspace</span>
+            Launchpad <span>{workspaceLabel}</span>
           </a>
           <nav aria-label="Your account" className="product-account-nav">
             <a href="/profile" onClick={linkTo("/profile")}>
@@ -203,6 +240,13 @@ function ProductHome({
           </span>
         ) : null}
       </div>
+      {canReviewQueue(session) ? (
+        <p className="product-staff-link">
+          <a href="/products/review" onClick={linkTo("/products/review")}>
+            Open staff review queue
+          </a>
+        </p>
+      ) : null}
       {products.isPending ? (
         <p role="status">Loading your private products…</p>
       ) : null}
@@ -258,6 +302,314 @@ function ProductHome({
       </button>
     </section>
   );
+}
+
+function StaffReviewQueue({ client }: { client: ProductClient }) {
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const after = cursors[cursors.length - 1] ?? null;
+  const queue = useReviewQueue(client, 20, after);
+  const items = queue.data?.items ?? [];
+
+  return (
+    <section
+      aria-labelledby="review-title"
+      className="product-panel staff-review"
+    >
+      <a
+        className="back-link-button"
+        href="/products"
+        onClick={linkTo("/products")}
+      >
+        ← Your products
+      </a>
+      <p className="eyebrow">Staff workspace</p>
+      <div className="staff-review-heading">
+        <div>
+          <h1 id="review-title">Staff review queue</h1>
+          <p className="product-intro">
+            Pending submissions, oldest arrival first. Current product details
+            are shown when you open an entry.
+          </p>
+        </div>
+        <button
+          className="secondary-button"
+          disabled={queue.isFetching}
+          onClick={() => void queue.refetch()}
+          type="button"
+        >
+          {queue.isFetching ? "Refreshing…" : "Refresh queue"}
+        </button>
+      </div>
+      {queue.isPending ? (
+        <p role="status">Loading pending submissions…</p>
+      ) : null}
+      {queue.isError ? (
+        <p className="product-alert" role="alert">
+          The staff queue is unavailable. Try refreshing.
+        </p>
+      ) : null}
+      {queue.data && items.length === 0 ? (
+        <div className="product-empty">
+          <h2>No pending submissions</h2>
+          <p>New submissions will appear here in arrival order.</p>
+        </div>
+      ) : null}
+      {items.length > 0 ? (
+        <ol
+          className="staff-queue-list"
+          aria-label="Pending submissions, oldest first"
+        >
+          {items.map((item) => (
+            <li key={item.submission.id}>
+              <a
+                className="staff-queue-card"
+                href={`/products/review/${item.product.id}`}
+                onClick={linkTo(`/products/review/${item.product.id}`)}
+              >
+                <span className="staff-queue-title">
+                  {item.product.name?.trim() || "Untitled product"}
+                </span>
+                <span className="staff-queue-pitch">
+                  {item.product.pitch?.trim() || "No one-line pitch"}
+                </span>
+                <span>
+                  Submitted {formatReviewDate(item.submission.submittedAt)}
+                </span>
+                <span>Version {item.submission.productVersion}</span>
+                <span className="staff-queue-flags">
+                  {item.possibleDuplicate ? (
+                    <span className="staff-flag staff-flag-warning">
+                      Possible duplicate website
+                    </span>
+                  ) : null}
+                  {item.founderSuspended ? (
+                    <span className="staff-flag staff-flag-danger">
+                      Founder suspended
+                    </span>
+                  ) : null}
+                </span>
+                <span className="staff-queue-open">
+                  Open current submission →
+                </span>
+              </a>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      <nav aria-label="Queue pages" className="staff-queue-pagination">
+        <button
+          className="secondary-button"
+          disabled={cursors.length <= 1 || queue.isFetching}
+          onClick={() => setCursors((current) => current.slice(0, -1))}
+          type="button"
+        >
+          Previous page
+        </button>
+        <span>Page {cursors.length}</span>
+        <button
+          className="secondary-button"
+          disabled={!queue.data?.nextCursor || queue.isFetching}
+          onClick={() => {
+            if (queue.data?.nextCursor)
+              setCursors((current) => [...current, queue.data!.nextCursor]);
+          }}
+          type="button"
+        >
+          Next page
+        </button>
+      </nav>
+    </section>
+  );
+}
+
+function StaffReviewDetail({
+  client,
+  productId,
+}: {
+  client: ProductClient;
+  productId: string;
+}) {
+  const review = useReviewProduct(client, productId);
+  const data = review.data;
+  const product = data?.product;
+  return (
+    <section
+      aria-labelledby="review-detail-title"
+      className="product-panel staff-review staff-review-detail"
+    >
+      <a
+        className="back-link-button"
+        href="/products/review"
+        onClick={linkTo("/products/review")}
+      >
+        ← Staff review queue
+      </a>
+      {review.isPending ? (
+        <p role="status">Loading current submission…</p>
+      ) : null}
+      {review.isError ? (
+        <p className="product-alert" role="alert">
+          Current submission details are unavailable. Refresh the page to try
+          again.
+        </p>
+      ) : null}
+      {review.data === null ? (
+        <div className="product-empty">
+          <h1 id="review-detail-title">Submission no longer pending</h1>
+          <p>
+            This item may have been withdrawn. It is no longer in the queue.
+          </p>
+          <button
+            className="secondary-button"
+            onClick={() => void review.refetch()}
+            type="button"
+          >
+            Refresh submission
+          </button>
+        </div>
+      ) : null}
+      {data && product ? (
+        <>
+          <p className="eyebrow">Current pending submission</p>
+          <div className="staff-review-heading">
+            <div>
+              <h1 id="review-detail-title">
+                {product.summary.name?.trim() || "Untitled product"}
+              </h1>
+              <p className="product-intro">
+                {product.summary.pitch || "No one-line pitch"}
+              </p>
+            </div>
+            <button
+              className="secondary-button"
+              disabled={review.isFetching}
+              onClick={() => void review.refetch()}
+              type="button"
+            >
+              {review.isFetching ? "Refreshing…" : "Refresh current details"}
+            </button>
+          </div>
+          <div
+            className="staff-review-flags"
+            aria-label="Staff-only submission flags"
+          >
+            {data.founderSuspended ? (
+              <p className="staff-flag staff-flag-danger" role="status">
+                Founder account suspended
+              </p>
+            ) : null}
+            {data.possibleDuplicate ? (
+              <p className="staff-flag staff-flag-warning" role="status">
+                Possible duplicate website
+              </p>
+            ) : null}
+            {!data.founderSuspended && !data.possibleDuplicate ? (
+              <p className="staff-flag staff-flag-neutral">No staff flags</p>
+            ) : null}
+          </div>
+          <dl className="staff-review-metadata">
+            <div>
+              <dt>Submission ID</dt>
+              <dd>{data.submission.id}</dd>
+            </div>
+            <div>
+              <dt>Submitted</dt>
+              <dd>{formatReviewDate(data.submission.submittedAt)}</dd>
+            </div>
+            <div>
+              <dt>Current product version</dt>
+              <dd>{product.summary.version}</dd>
+            </div>
+            <div>
+              <dt>Submission version</dt>
+              <dd>{data.submission.productVersion}</dd>
+            </div>
+          </dl>
+          <section
+            aria-labelledby="review-description-title"
+            className="staff-review-section"
+          >
+            <h2 id="review-description-title">Description</h2>
+            <p>{product.description || "No description provided."}</p>
+          </section>
+          <section
+            aria-labelledby="review-website-title"
+            className="staff-review-section"
+          >
+            <h2 id="review-website-title">Product website</h2>
+            {product.websiteUrl ? (
+              <a href={product.websiteUrl} rel="noreferrer" target="_blank">
+                {product.websiteUrl}
+              </a>
+            ) : (
+              <p>No website provided.</p>
+            )}
+          </section>
+          <section
+            aria-labelledby="review-topics-title"
+            className="staff-review-section"
+          >
+            <h2 id="review-topics-title">Topics</h2>
+            <ul className="staff-topic-list">
+              {product.topics.map((topic) => (
+                <li key={topic.id}>{topic.displayName}</li>
+              ))}
+            </ul>
+          </section>
+          <section
+            aria-labelledby="review-media-title"
+            className="staff-review-section"
+          >
+            <h2 id="review-media-title">Private product media</h2>
+            {product.assets.length ? (
+              <div className="staff-media-grid">
+                {product.assets.map((asset) => (
+                  <figure key={asset.id}>
+                    <img
+                      alt={
+                        asset.kind === "logo"
+                          ? "Product logo"
+                          : "Product screenshot"
+                      }
+                      className="staff-media-preview"
+                      loading="lazy"
+                      src={asset.url}
+                    />
+                    <figcaption>
+                      {asset.kind === "logo" ? "Logo" : "Screenshot"} ·{" "}
+                      {asset.mediaType} · {formatBytes(asset.byteCount)}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            ) : (
+              <p>No media is attached to this submission.</p>
+            )}
+          </section>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function canReviewQueue(
+  session: Awaited<ReturnType<IdentityClient["currentSession"]>>,
+): boolean {
+  return (
+    session.verified &&
+    !session.suspended &&
+    (session.role === "reviewer" || session.role === "admin")
+  );
+}
+
+function formatReviewDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Date unavailable"
+    : new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(date);
 }
 
 function ProductEditor({

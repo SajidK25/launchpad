@@ -1076,7 +1076,7 @@ Build the founder's mobile-first private draft/editor journey using the typed ho
 
 ## Task T18: Build the Accessible Staff Review Queue View
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
