@@ -107,6 +107,95 @@ volumes, restore a compatible backup or apply a corrective forward migration, th
 rerun the normal startup command. Re-run the isolated quality project separately; do
 not use global Docker prune/reset commands while investigating a developer database.
 
+## Product draft and staff operations
+
+Product submission is disabled by default outside local/check environments. The product schema is
+additive through migration `0005_product_drafts_submission`; founder-selected topic labels require
+`0006_product_topic_labels`. API and worker readiness require the exact current migration head, so
+pre-0006 binaries are not a rollback target after this rollout.
+
+For a controlled release, drain every pre-0006 API, worker, and scheduler binary, apply migrations
+through 0006, then start the 0006-compatible API and typed worker with product activation still off.
+Verify readiness, worker/scheduler health, and migration head before enabling the feature. If a
+release must be rolled back, disable product activation but keep the 0006-compatible API/worker
+images and schema in place. Do not downgrade the database or restore an older email-only worker:
+it cannot safely consume product events. Local and quality Compose configurations intentionally
+enable products to exercise the feature; production must explicitly opt in only after the compatible
+rollout is healthy.
+
+Roles and suspension are managed only by the restricted operator CLI, never a public endpoint. Run
+it from the repository's operator environment with database access supplied through the approved
+secret manager (do not place credentials in shell history or logs). Use a stable, accountable actor
+identity; each successful change writes an `account_admin_actions` audit row with before/after state.
+For example:
+
+```sh
+PYTHONPATH=apps/api python scripts/operators/manage_accounts.py --actor '<operator-identity>' --account-id '<account-uuid>' set-role --role reviewer
+PYTHONPATH=apps/api python scripts/operators/manage_accounts.py --actor '<operator-identity>' --account-id '<account-uuid>' suspend
+PYTHONPATH=apps/api python scripts/operators/manage_accounts.py --actor '<operator-identity>' --account-id '<account-uuid>' resume
+```
+
+The supported roles are `member`, `reviewer`, and `admin`. Suspension blocks founder product
+changes, but does not trap an already-submitted product: its founder may still withdraw it. Staff
+reviewers/admins see only the current submitted record. Never grant roles by editing rows outside
+the audited service/CLI workflow.
+
+## Private media and deletion operations
+
+Product photos use short-lived signed staging uploads to the private object store (currently five
+minutes). A successful attachment is still private: reads pass through the API, which checks the
+current database visibility and attachment state on every request. The API does not return direct
+object-store URLs. Deleting a draft first checks storage availability; if that preflight fails, the
+request fails and the draft remains available to retry. Once deletion commits, database state and an
+encrypted `product.media_purge.v1` outbox event commit together, revoking access immediately. Physical
+purge is asynchronous and retries safely; an outstanding signed staging upload may remain usable
+until its short expiry, after which the worker can remove the object.
+
+Check service health and recent failure classes without dumping event payloads:
+
+```sh
+docker compose -p launchpad-dev ps
+docker compose -p launchpad-dev logs --since=30m --no-color api worker scheduler prepare
+```
+
+The API/worker logs identify event ID/type and failure class, not object keys or payloads. If a purge
+is stuck, use restricted, audited database access to inspect metadata only:
+
+```sql
+SELECT id, event_type, state, attempts, available_at, claimed_at
+FROM outbox_messages
+WHERE event_type = 'product.media_purge.v1'
+  AND state IN ('pending', 'claimed', 'dead')
+ORDER BY available_at;
+```
+
+Workers retry transient failures with bounded backoff and dead-letter after eight attempts. There is
+currently no replay command. After correcting the underlying storage/configuration issue, an
+authorized operator may replay one confirmed dead event in a transaction, recording its event ID
+in the incident/change log. Do not select or print `encrypted_payload`, `key_id`, storage URLs, or
+object keys. Bind the exact inspected event UUID in place of `'<event-uuid>'`:
+
+```sql
+BEGIN;
+UPDATE outbox_messages
+SET state = 'pending', attempts = 0, available_at = now(), claimed_at = NULL,
+    completed_at = NULL
+WHERE id = '<event-uuid>'
+  AND event_type = 'product.media_purge.v1'
+  AND state = 'dead'
+  AND encrypted_payload IS NOT NULL
+RETURNING id, state, attempts;
+-- Inspect the result interactively. COMMIT only for exactly one expected row;
+-- otherwise issue ROLLBACK and investigate.
+```
+
+Keep the database session open after the update until its returned row has been checked; do not run
+the whole block non-interactively with an unconditional commit.
+
+The purge handler is idempotent, so a retry after a successful-but-unacknowledged storage delete is
+safe. If the event is not eligible for replay or repeatedly dead-letters, preserve the draft/deletion
+and event metadata, escalate to the storage/database operator, and do not manually delete objects.
+
 ## Deliberate reset of a disposable project
 
 This is the only command in this guide that deletes data. Use it only after checking the exact project name and only for a disposable environment:

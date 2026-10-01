@@ -1131,7 +1131,7 @@ Display only current pending submissions to verified unsuspended staff, with old
 
 ## Task T19: Document Operations and Run the Full Gate
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** high
@@ -1148,31 +1148,34 @@ Document staff provisioning, the private-media and deletion lifecycle, feature a
 
 - **Operator instructions** — expected: docs/development.md names the restricted role/suspension command, audit trail, and withdrawal exception without suggesting a public promotion endpoint.
 - **Media and deletion instructions** — expected: docs explain private signed upload/app-gated read, immediate access revocation, delayed purge, preflight failure, and how to inspect/replay stuck purge work without logging object keys.
-- **Safe release/rollback** — expected: docs explicitly drain old 0004 binaries, migrate, start compatible typed worker/API with feature off, verify, then enable; rollback disables feature on 0005-compatible images, never old email-only worker.
+- **Safe release/rollback** — expected: docs explicitly drain all pre-0006 binaries, migrate through 0006, start 0006-compatible typed worker/API with feature off, verify, then enable; rollback disables the feature on 0006-compatible images and retains the typed worker, never an old email-only worker.
 - **Full quality command** — run sh scripts/quality/run.sh with an isolated Compose project; expected: formatter, Ruff, mypy, pytest, web format/lint/types/tests, migrations, contracts, builds, security, and browser categories pass.
 - **Regression surfaces** — expected: existing auth/profile/storage/email/scheduler/health suites pass unchanged, and no public route, resolver, log, or storage URL exposes unpublished product/topic/media data.
 - **Observability** — expected: action IDs/state/error classes and queue/purge health are diagnosable; private content, signatures, object keys, and token values are absent from logs.
+- **Verification evidence** — isolated `COMPOSE_PROJECT_NAME=launchpad-t19-fresh sh scripts/quality/run.sh` passed after ensuring migrations run before integration tests and Prettier ignores generated web build output; Python/integration 295 passed, web 66 passed, and browser 2 passed, with migration, contracts, build, security, lint, type, and format categories successful.
 
 ### Implementation Notes
 
 - **Module(s):** development documentation and full pipeline.
 - **Pattern reference:** docs/development.md and scripts/quality/run.sh.
-- **Key decisions:** A1–A10; the approved two-stage release and deletion compromise must be accurately documented.
+- **Key decisions:** A1–A10; the approved two-stage release and deletion compromise must be accurately documented. The full gate now migrates its isolated database before tests and its web formatter ignores generated `dist/` output.
 - **Libraries:** existing Docker Compose, pytest, Ruff, mypy, Vitest, browser checks.
 - **High-risk callouts:** Do not mark the feature done while a dead purge event or private-data leak remains unexplained.
 
 ### Scope Boundaries
 
-- Do NOT deploy to production, downgrade shared migrations, or implement deferred reviewer/launch flows.
-- Only documentation, diagnostics confirmation, and comprehensive verification.
+- Do NOT deploy to production, downgrade shared migrations, or implement deferred reviewer/launch flows. Scope includes only the documentation, diagnostics, and the minimal quality-gate ordering/generated-output ignore fixes needed for a fresh-project full gate.
 
 ### Files Expected
 
 **New files:**
-- None.
+- .prettierignore (exclude generated web build output from source formatting).
 
 **Modified files:**
 - docs/development.md (operator, media, rollout, and troubleshooting guide).
+- scripts/quality/run.sh (prepare database before integration tests; rebuild formatter image).
+- infra/docker/web.Dockerfile (include the formatter ignore file in its image).
+- specs/tasks/TASKS-add-product-draft-submission.md (migration-0006 rollout wording and T19 evidence).
 
 **Must NOT modify:**
 - apps/api/app/shared/db/database.py; apps/api/alembic/env.py; apps/api/app/modules/health/* (exact-head readiness is preserved).

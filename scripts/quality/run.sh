@@ -36,12 +36,12 @@ fi
 run_category format compose run --rm --no-deps python-checks ruff format --check apps tests
 run_category lint compose run --rm --no-deps python-checks ruff check apps tests
 run_category types compose run --rm --no-deps python-checks mypy apps/api
+run_category migrations compose run --rm prepare
 run_category tests compose run --rm integration python -m pytest
-run_category web-format compose run --rm --no-deps web-checks npm run format:check
+run_category web-format compose run --build --rm --no-deps web-checks npm run format:check
 run_category web-lint compose run --rm --no-deps web-checks npm run lint
 run_category web-types compose run --rm --no-deps web-checks npm run typecheck
 run_category web-tests compose run --rm --no-deps web-checks npm run test
-run_category migrations compose run --rm prepare
 run_category contracts sh scripts/quality/contracts.sh --check
 run_category builds compose build python-checks web-checks web quality browser
 run_category security sh scripts/quality/security.sh

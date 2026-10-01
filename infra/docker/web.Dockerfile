@@ -3,6 +3,7 @@ FROM node:22.14.0-alpine@sha256:9bef0ef1e268f60627da9ba7d7605e8831d5b56ad07487d2
 WORKDIR /workspace
 
 COPY package.json package-lock.json ./
+COPY .prettierignore ./.prettierignore
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/contracts/package.json ./packages/contracts/package.json
 RUN npm ci
