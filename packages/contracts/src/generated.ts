@@ -234,7 +234,8 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    put?: never;
+    /** Attach Product Assets */
+    put: operations["attach_product_assets_api_v1_me_products__product_id__assets_put"];
     /** Create Asset Intent */
     post: operations["create_asset_intent_api_v1_me_products__product_id__assets_post"];
     delete?: never;
@@ -509,6 +510,18 @@ export interface components {
       upload_id: string;
       /** Upload Url */
       upload_url: string;
+    };
+    /**
+     * ProductAssetAttachmentInput
+     * @description Full versioned replacement for a draft's ordered private media selection.
+     */
+    ProductAssetAttachmentInput: {
+      /** Logo Asset Id */
+      logo_asset_id: string | null;
+      /** Screenshot Asset Ids */
+      screenshot_asset_ids: string[];
+      /** Version */
+      version: number;
     };
     /**
      * ProductAssetCompleteResponse
@@ -1117,6 +1130,43 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["ProductSaveInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProductStateResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  attach_product_assets_api_v1_me_products__product_id__assets_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProductAssetAttachmentInput"];
       };
     };
     responses: {

@@ -98,6 +98,22 @@ def test_asset_mutations_accept_only_exact_configured_origins_before_auth() -> N
         assert response.status_code == 401
 
 
+def test_asset_attachment_rejects_missing_or_untrusted_origin_before_auth() -> None:
+    app, _ = _app(("http://localhost:8080",))
+    client = TestClient(app)
+    path = "/api/v1/me/products/00000000-0000-0000-0000-000000000001/assets"
+    payload: dict[str, object] = {
+        "version": 0,
+        "logo_asset_id": None,
+        "screenshot_asset_ids": [],
+    }
+
+    for headers in ({}, {"Origin": "http://evil.example:8080"}):
+        response = client.put(path, json=payload, headers=headers)
+        assert response.status_code == 403
+        assert response.json() == {"detail": "request rejected"}
+
+
 def test_product_commands_reject_missing_or_untrusted_origins_before_auth() -> None:
     app, _ = _app(("http://localhost:8080",))
     client = TestClient(app)

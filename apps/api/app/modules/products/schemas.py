@@ -146,3 +146,13 @@ class ProductAssetCompleteResponse(BaseModel):
     media_type: Literal["image/jpeg", "image/png", "image/webp"]
     byte_count: int
     state: Literal["clean", "failed"]
+
+
+class ProductAssetAttachmentInput(BaseModel):
+    """Full versioned replacement for a draft's ordered private media selection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=0, strict=True)
+    logo_asset_id: UUID | None
+    screenshot_asset_ids: list[UUID] = Field(max_length=10)

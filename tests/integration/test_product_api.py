@@ -72,14 +72,13 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
         finally:
             await database.close()
 
-    async def attach_valid_media(target_id: UUID) -> None:
+    async def attach_valid_media(target_id: UUID) -> tuple[UUID, UUID]:
         database = Database.connect(integration_settings_fixture.database_url)
         try:
             sessions = async_sessionmaker(database.engine, expire_on_commit=False)
-            now = datetime.now(UTC)
+            asset_ids = (uuid4(), uuid4())
             async with sessions() as session, session.begin():
-                for kind, position in (("logo", None), ("screenshot", 1)):
-                    asset_id = uuid4()
+                for asset_id, kind in zip(asset_ids, ("logo", "screenshot"), strict=True):
                     session.add(
                         ProductAsset(
                             id=asset_id,
@@ -90,11 +89,12 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
                             clean_key=f"products/{account_id}/{target_id}/{asset_id}-clean",
                             media_type="image/png",
                             byte_count=100,
-                            position=position,
+                            position=None,
                             expires_at=None,
-                            attached_at=now,
+                            attached_at=None,
                         )
                     )
+            return asset_ids
         finally:
             await database.close()
 
@@ -218,11 +218,47 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
             )
             assert throttled.status_code == 429
             redis.delete(save_bucket)
-            asyncio.run(attach_valid_media(product_id))
+            logo_asset_id, screenshot_asset_id = asyncio.run(attach_valid_media(product_id))
+            asset_path = f"/api/v1/me/products/{product_id}/assets"
+            attachment_payload = {
+                "version": 1,
+                "logo_asset_id": str(logo_asset_id),
+                "screenshot_asset_ids": [str(screenshot_asset_id)],
+            }
+            missing_csrf = client.put(
+                asset_path,
+                json=attachment_payload,
+                headers={"Origin": origin["Origin"]},
+                cookies=cookies,
+            )
+            assert missing_csrf.status_code == 403
+            malformed_attachment = client.put(
+                asset_path,
+                json={"version": 1, "logo_asset_id": str(logo_asset_id)},
+                headers=origin,
+                cookies=cookies,
+            )
+            assert malformed_attachment.status_code == 422
+            other_attachment = client.put(
+                asset_path,
+                json=attachment_payload,
+                headers={"Origin": origin["Origin"], "X-CSRF-Token": other.csrf_token},
+                cookies={settings.session_cookie_name: other.session_secret},
+            )
+            assert other_attachment.status_code == 404
+            attached = client.put(
+                asset_path, json=attachment_payload, headers=origin, cookies=cookies
+            )
+            assert attached.status_code == 200
+            assert attached.json() == {"id": str(product_id), "status": "draft", "version": 2}
+            stale_attachment = client.put(
+                asset_path, json=attachment_payload, headers=origin, cookies=cookies
+            )
+            assert stale_attachment.status_code == 409
 
             submitted = client.post(
                 f"/api/v1/me/products/{product_id}/submit",
-                json={"version": 1},
+                json={"version": 2},
                 headers=origin,
                 cookies=cookies,
             )
@@ -230,7 +266,7 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
             submission_id = submitted.json()["submission_id"]
             repeated = client.post(
                 f"/api/v1/me/products/{product_id}/submit",
-                json={"version": 1},
+                json={"version": 2},
                 headers=origin,
                 cookies=cookies,
             )
@@ -240,7 +276,7 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
             before = asyncio.run(inspect(product_id))
             rejected = client.patch(
                 f"/api/v1/me/products/{product_id}",
-                json={"version": 2, "topic_names": []},
+                json={"version": 3, "topic_names": []},
                 headers=origin,
                 cookies=cookies,
             )
@@ -248,7 +284,7 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
             assert asyncio.run(inspect(product_id)) == before
             duplicate = client.patch(
                 f"/api/v1/me/products/{product_id}",
-                json={"version": 2, "topic_names": [names[0], names[0].upper()]},
+                json={"version": 3, "topic_names": [names[0], names[0].upper()]},
                 headers=origin,
                 cookies=cookies,
             )
@@ -257,15 +293,15 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
 
             edited = client.patch(
                 f"/api/v1/me/products/{product_id}",
-                json={"version": 2, "topic_names": [names[1].upper(), names[0].upper()]},
+                json={"version": 3, "topic_names": [names[1].upper(), names[0].upper()]},
                 headers=origin,
                 cookies=cookies,
             )
             assert edited.status_code == 200
-            assert edited.json()["version"] == 3
+            assert edited.json()["version"] == 4
             after = asyncio.run(inspect(product_id))
             assert after[0] == [names[1].casefold(), names[0].casefold()]
-            assert after[1] == 3
+            assert after[1] == 4
             assert after[2] == before[2] + 1
             assert after[3] == before[3]
 
@@ -275,7 +311,7 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
             monkeypatch.setattr(redis, "incr", unavailable)
             unavailable_save = client.patch(
                 f"/api/v1/me/products/{product_id}",
-                json={"version": 3, "name": "Cannot save during outage"},
+                json={"version": 4, "name": "Cannot save during outage"},
                 headers=origin,
                 cookies=cookies,
             )
@@ -283,7 +319,7 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
 
             withdrawn = client.post(
                 f"/api/v1/me/products/{product_id}/withdraw",
-                json={"version": 3, "submission_id": submission_id},
+                json={"version": 4, "submission_id": submission_id},
                 headers=origin,
                 cookies=cookies,
             )

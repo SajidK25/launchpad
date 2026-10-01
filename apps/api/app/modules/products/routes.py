@@ -22,6 +22,7 @@ from app.modules.products.policies import (
     ProductQuotaError,
 )
 from app.modules.products.schemas import (
+    ProductAssetAttachmentInput,
     ProductAssetCompleteResponse,
     ProductAssetIntentInput,
     ProductAssetIntentResponse,
@@ -468,5 +469,43 @@ def router(
             byte_count=result.byte_count,
             state="clean",
         )
+
+    @routes.put(
+        "/me/products/{product_id}/assets",
+        response_model=ProductStateResponse,
+    )
+    async def attach_product_assets(
+        product_id: UUID,
+        payload: ProductAssetAttachmentInput,
+        request: Request,
+        session: DbSession,
+        x_csrf_token: str | None = Header(default=None),
+    ) -> ProductStateResponse:
+        require_origin(request)
+        async with session.begin():
+            member = await current_member(request, session)
+            require_member_csrf(request, member, x_csrf_token)
+            try:
+                await bound_action(request, member, "asset-attach")
+                saved = await service().attach_assets(
+                    session,
+                    actor_id=member.account_id,
+                    product_id=product_id,
+                    expected_version=payload.version,
+                    logo_asset_id=payload.logo_asset_id,
+                    screenshot_asset_ids=tuple(payload.screenshot_asset_ids),
+                )
+            except (
+                ProductForbiddenError,
+                ProductNotFoundError,
+                ProductConflictError,
+                ProductInfrastructureError,
+                RateLimitExceeded,
+                RateLimitUnavailable,
+                SQLAlchemyError,
+                RedisError,
+            ) as error:
+                raise map_error(error) from error
+        return ProductStateResponse(id=saved.id, status="draft", version=saved.version)
 
     return routes

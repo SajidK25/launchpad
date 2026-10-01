@@ -183,6 +183,41 @@
         "title": "PhotoUploadResponse",
         "type": "object"
       },
+      "ProductAssetAttachmentInput": {
+        "additionalProperties": false,
+        "description": "Full versioned replacement for a draft's ordered private media selection.",
+        "properties": {
+          "logo_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Asset Id"
+          },
+          "screenshot_asset_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Screenshot Asset Ids",
+            "type": "array"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": ["version", "logo_asset_id", "screenshot_asset_ids"],
+        "title": "ProductAssetAttachmentInput",
+        "type": "object"
+      },
       "ProductAssetCompleteResponse": {
         "description": "Safe status of an image that passed byte-level validation.",
         "properties": {
@@ -1232,6 +1267,70 @@
           }
         },
         "summary": "Create Asset Intent"
+      },
+      "put": {
+        "operationId": "attach_product_assets_api_v1_me_products__product_id__assets_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductAssetAttachmentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach Product Assets"
       }
     },
     "/api/v1/me/products/{product_id}/assets/{asset_id}/complete": {

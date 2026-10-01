@@ -1019,20 +1019,21 @@ Build a generated-type REST/GraphQL client and TanStack Query hooks for product 
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
-> **Depends on:** T16
+> **Depends on:** T16, T20
 > **Satisfies REQs:** R1, R2, R3, R4, R5, R6, R7, R9, R11, R16, R17, N5
 > **Footprint slice:** Founder product screen, App route, identity navigation, responsive styles.
 > **High-risk areas touched:** Web editor/staff queue; auth/session and operator access.
 
 ### Description
 
-Build the founder's mobile-first private draft/editor journey using the typed hooks. Make save, conflict, validation, upload, submission, withdrawal, and deletion outcomes visible and keyboard/assistive-technology usable.
+Build the founder's mobile-first private draft/editor journey using the typed hooks. Make save, conflict, validation, upload, attachment, submission, withdrawal, and deletion outcomes visible and keyboard/assistive-technology usable. Completed uploads remain unattached until the founder selects them and the versioned attachment replacement succeeds; flush autosave before attachment and adopt its acknowledged version. Pending-submission media is read-only; withdraw to a private draft before changing attachments.
 
 ### Verification Checklist
 
 - **Phone and desktop editor** — expected: at approximately 390px and 1280px, all required fields, selected media, topics, and primary actions are visible without horizontal overflow.
 - **Save and conflict states** — expected: Saving, Saved, and Not saved are announced; failed/stale saves keep typed values and offer a clear retry or conflict choice.
 - **Submission blockers** — expected: missing/over-limit fields associate errors with controls; pending/failed/eleventh screenshot raises an alert toast; Submit waits for final save.
+- **Validated media attachment** — expected: upload completion alone does not count as selected media; selecting one clean logo and 1–10 clean screenshots persists the full ordered selection and survives reload; pending media is read-only until withdrawal.
 - **Pending choices** — expected: a complete pending edit keeps its queue place; an incomplete one keeps the unsaved local values and explains withdrawal; explicit withdrawal returns the editor to private draft.
 - **Topics and limits** — expected: founder can select or type 1–3 topics, and draft/pending capacity errors explain the relevant 10/3 limit without disclosing another founder's work.
 - **Deletion confirmation** — expected: confirmation precedes permanent deletion; storage failure leaves the draft on screen with a retryable message; suspended owner cannot delete but can withdraw.
@@ -1040,14 +1041,14 @@ Build the founder's mobile-first private draft/editor journey using the typed ho
 
 #### Testable Seams
 
-- apps/web/src/products/ProductScreens.test.tsx checks conditional states, handlers, alert/live regions, validation associations, and keyboard-operable controls.
+- apps/web/src/products/ProductScreens.test.tsx checks conditional states, handlers, alert/live regions, validation associations, media selection/attachment, and keyboard-operable controls; `useProducts.test.ts` guards acknowledged version synchronization.
 - apps/web/src/App.test.tsx checks narrow product routing and existing profile/identity route regression.
 
 ### Implementation Notes
 
 - **Module(s):** web products UI and App routing.
 - **Pattern reference:** apps/web/src/profiles/ProfileScreens.tsx and apps/web/src/identity/Screens.tsx; docs/source/inspiration.md for original visual direction only.
-- **Key decisions:** A3, A7, A8; UI cannot treat local state as persisted or S3 upload as validated.
+- **Key decisions:** A3, A7, A8, A13; UI cannot treat local state as persisted, S3 upload as validated, or validated media as attached before the versioned replacement succeeds.
 - **Libraries:** React, TypeScript strict, Tailwind/current styles, Testing Library/Vitest.
 - **High-risk callouts:** Saved/Not saved and irreversible deletion must be unambiguous to screen readers and sighted users.
 
@@ -1064,6 +1065,8 @@ Build the founder's mobile-first private draft/editor journey using the typed ho
 **Modified files:**
 - apps/web/src/App.tsx; App.test.tsx (product route and existing-route guard).
 - apps/web/src/styles.css; apps/web/src/identity/Screens.tsx (responsive editor and navigation).
+- apps/web/src/products/client.ts; client.test.ts (generated versioned attachment request).
+- apps/web/src/products/useProducts.ts; useProducts.test.ts (flush/version adoption around the attachment command).
 
 **Must NOT modify:**
 - apps/web/src/profiles/* (existing profile behavior is a regression guard).
@@ -1174,5 +1177,75 @@ Document staff provisioning, the private-media and deletion lifecycle, feature a
 **Must NOT modify:**
 - apps/api/app/shared/db/database.py; apps/api/alembic/env.py; apps/api/app/modules/health/* (exact-head readiness is preserved).
 - apps/worker/scheduler.py; apps/web/src/profiles/*; existing auth/identity regression test files (run unchanged).
+
+---
+
+## Task T20: Expose and Generate Versioned Product Asset Attachments
+
+> **Status:** done
+> **Verification:** tdd
+> **Effort:** s
+> **Priority:** critical
+> **Depends on:** T8, T12, T15, T16
+> **Satisfies REQs:** R3, R6, R9, R11, N1, N2, N3, N4
+> **Footprint slice:** Product asset REST schema/route and generated OpenAPI client contract; prerequisite for founder media controls.
+> **High-risk areas touched:** Product transactions and private media/storage; browser mutation security.
+
+### Description
+
+Expose the existing `ProductService.attach_assets` operation as a versioned full replacement for a private draft's media selection. The authenticated owner supplies `version`, nullable `logo_asset_id`, and ordered `screenshot_asset_ids`; the service verifies current ownership, active unsuspended status, draft state, asset ownership, clean validation state, and matching media kinds, then returns the updated product state/version. Keep upload intent/completion separate from attachment, preserve Origin/CSRF and bounded action-rate checks, and regenerate the OpenAPI contracts. Do not add GraphQL mutations or duplicate attachment business logic in the route.
+
+### Test Plan
+
+#### Test File(s)
+- apps/api/app/modules/products/tests/test_routes.py
+- tests/integration/test_product_api.py
+- apps/api/app/modules/products/tests/test_assets.py (existing service-level attachment regression suite runs unchanged)
+- packages/contracts/openapi.json and packages/contracts/src/generated.ts (generated contract verification)
+
+#### Test Scenarios
+
+##### Versioned Attachment Command
+
+- **replaces ordered selection** — GIVEN a current private draft and clean owned logo/screenshots WHEN the owner PUTs the full selection THEN the service replaces attachment order atomically and returns the incremented product version _(verifies R3, R6, N3; A13)_.
+- **clears or omits media explicitly** — GIVEN a draft WHEN the owner supplies a nullable logo and empty screenshot list THEN existing attachments are detached and cleanup is scheduled; omitted required replacement fields are rejected _(verifies R6, N3)_.
+- **rejects stale, invalid, or unavailable assets** — GIVEN a stale version, pending/failed/foreign asset, wrong media kind, duplicate selection, or more than ten screenshots WHEN replacement is attempted THEN no attachment, product version, or cleanup state is partially changed _(verifies R3, R6, N1, N3)_.
+- **enforces owner and draft-only state** — GIVEN another owner's product, a submitted product, suspended account, or missing session WHEN attachment is attempted THEN access is safely denied and no private product or asset data is returned; an unverified owner may still work on a private draft _(verifies R1, R9, R11, N1–N2)_.
+- **enforces browser mutation checks** — GIVEN missing/untrusted Origin, invalid CSRF, rate limit, or dependency failure WHEN the command runs THEN existing safe `403/429/503` behavior applies _(verifies N2, N4)_.
+- **generates the REST contract** — GIVEN the feature-enabled API schema WHEN contract generation/check runs THEN the PUT request and `ProductStateResponse` are present in generated OpenAPI/TypeScript without hand-maintained API types _(verifies contract consistency)_.
+
+##### Regression Guard
+
+- **preserves upload and product commands** — GIVEN existing create/save/submit/delete/upload flows WHEN the new method is mounted on the same `/assets` path under PUT THEN POST intent, POST completion, feature gating, profile routes, and Origin/CSRF behavior remain unchanged.
+
+### Implementation Notes
+
+- **Module(s):** product REST transport, Pydantic input schema, generated contracts.
+- **Pattern reference:** existing `POST /me/products/{id}/assets`, `ProductService.attach_assets`, and versioned product save routes.
+- **Key decisions:** A7, A13; `PUT /me/products/{id}/assets` is a full replacement and returns the incremented product version.
+- **Libraries:** FastAPI, Pydantic, pytest, existing OpenAPI contract generator.
+- **High-risk callouts:** Keep transport thin; the existing service is the authority for clean/owned asset checks and atomic detach cleanup.
+
+### Scope Boundaries
+
+- Do NOT add a migration, GraphQL mutation, new storage behavior, or parallel attachment service logic.
+- Do NOT permit attachment changes on submitted products; the founder withdraws first to return to draft.
+- Only expose and generate the existing versioned attachment operation.
+
+### Files Expected
+
+**New files:**
+- None.
+
+**Modified files:**
+- apps/api/app/modules/products/schemas.py; routes.py; tests/test_routes.py (typed request, authenticated PUT route, and transport regression tests).
+- tests/integration/test_product_api.py (HTTP and feature-gate regression coverage).
+- packages/contracts/openapi.json; packages/contracts/src/generated.ts (generated outputs only).
+
+**Must NOT modify:**
+- apps/api/app/modules/products/service.py; repository.py (reuse the tested `attach_assets` operation unchanged).
+- apps/api/app/modules/products/models.py; apps/api/alembic/versions/* (no data-model or migration change).
+- apps/api/app/modules/products/graphql.py; packages/contracts/operations.graphql; packages/contracts/src/graphql.generated.ts (REST command only).
+- apps/api/app/shared/security/csrf.py; apps/api/app/modules/users/* (reuse existing browser-action policy; profile boundary unchanged).
 
 ---
