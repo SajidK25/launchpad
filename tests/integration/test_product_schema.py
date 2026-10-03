@@ -203,6 +203,7 @@ def test_submission_history_and_topic_asset_constraints(
                 assert {
                     "uq_product_submissions_pending_product",
                     "ix_product_submissions_pending_queue",
+                    "ix_product_submissions_product_id",
                 } <= indexes["product_submissions"]
                 assert "uq_topics_name_key" in indexes["topics"]
                 assert "ix_product_assets_pending_expiry" in indexes["product_assets"]
@@ -265,7 +266,7 @@ def test_selected_topic_labels_backfill_from_private_normalized_keys(
                     )
             assert await database.current_revision() == "0005_product_drafts_submission"
             await database.prepare()
-            assert await database.current_revision() == "0006_product_topic_labels"
+            assert await database.current_revision() == "0007_product_submission_idx"
             async with database.engine.connect() as connection:
                 rows = (
                     await connection.execute(

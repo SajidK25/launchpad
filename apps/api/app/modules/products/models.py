@@ -76,6 +76,7 @@ class ProductSubmission(ProductBase):
             "(state = 'withdrawn' AND closed_at IS NOT NULL)",
             name="ck_product_submissions_closed",
         ),
+        Index("ix_product_submissions_product_id", "product_id"),
         Index(
             "uq_product_submissions_pending_product",
             "product_id",
