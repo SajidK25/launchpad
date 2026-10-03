@@ -18,7 +18,10 @@ class Product(ProductBase):
 
     __tablename__ = "products"
     __table_args__ = (
-        CheckConstraint("status IN ('draft', 'submitted')", name="ck_products_status"),
+        CheckConstraint(
+            "status IN ('draft', 'submitted', 'changes_requested', 'approved', 'rejected')",
+            name="ck_products_status",
+        ),
         CheckConstraint("version >= 0", name="ck_products_version"),
         CheckConstraint(
             "name IS NULL OR (length(trim(name)) BETWEEN 1 AND 80)", name="ck_products_name"
@@ -38,12 +41,19 @@ class Product(ProductBase):
             "website_key IS NULL OR length(website_key) <= 2048", name="ck_products_website_key"
         ),
         CheckConstraint(
-            "status = 'draft' OR (name IS NOT NULL AND pitch IS NOT NULL "
+            "status IN ('draft', 'changes_requested') OR "
+            "(name IS NOT NULL AND pitch IS NOT NULL "
             "AND description IS NOT NULL AND website_url IS NOT NULL "
             "AND website_key IS NOT NULL)",
             name="ck_products_submitted_fields",
         ),
         Index("ix_products_founder_status_updated", "founder_id", "status", "updated_at", "id"),
+        Index(
+            "ix_products_approved_updated",
+            "updated_at",
+            "id",
+            postgresql_where=text("status = 'approved'"),
+        ),
         Index("ix_products_website_key", "website_key"),
     )
 
@@ -69,11 +79,15 @@ class ProductSubmission(ProductBase):
 
     __tablename__ = "product_submissions"
     __table_args__ = (
-        CheckConstraint("state IN ('pending', 'withdrawn')", name="ck_product_submissions_state"),
+        CheckConstraint(
+            "state IN ('pending', 'withdrawn', 'changes_requested', 'approved', 'rejected')",
+            name="ck_product_submissions_state",
+        ),
         CheckConstraint("product_version >= 0", name="ck_product_submissions_version"),
         CheckConstraint(
             "(state = 'pending' AND closed_at IS NULL) OR "
-            "(state = 'withdrawn' AND closed_at IS NOT NULL)",
+            "(state IN ('withdrawn', 'changes_requested', 'approved', 'rejected') "
+            "AND closed_at IS NOT NULL)",
             name="ck_product_submissions_closed",
         ),
         Index("ix_product_submissions_product_id", "product_id"),
@@ -99,6 +113,73 @@ class ProductSubmission(ProductBase):
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     product_version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ProductReviewDecision(ProductBase):
+    """Immutable staff action against one product submission period."""
+
+    __tablename__ = "product_review_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "(from_status = 'submitted' AND outcome IN "
+            "('approved', 'rejected', 'changes_requested')) OR "
+            "(from_status = 'approved' AND outcome = 'changes_requested')",
+            name="ck_product_review_decisions_transition",
+        ),
+        CheckConstraint(
+            "(outcome = 'approved' AND feedback IS NULL) OR "
+            "(outcome IN ('rejected', 'changes_requested') AND "
+            "feedback = trim(feedback) AND length(feedback) BETWEEN 1 AND 2000)",
+            name="ck_product_review_decisions_feedback",
+        ),
+        CheckConstraint(
+            "reviewed_product_version >= 0",
+            name="ck_product_review_decisions_version",
+        ),
+        CheckConstraint(
+            "idempotency_key = trim(idempotency_key) AND length(idempotency_key) BETWEEN 1 AND 255",
+            name="ck_product_review_decisions_idempotency_key",
+        ),
+        CheckConstraint(
+            "length(request_fingerprint) = 64",
+            name="ck_product_review_decisions_fingerprint",
+        ),
+        Index(
+            "uq_product_review_decisions_submission_from",
+            "submission_id",
+            "from_status",
+            unique=True,
+        ),
+        Index(
+            "uq_product_review_decisions_actor_key",
+            "actor_account_id",
+            "idempotency_key",
+            unique=True,
+        ),
+        Index(
+            "ix_product_review_decisions_submission_created",
+            "submission_id",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    submission_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("product_submissions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    actor_account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    from_status: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    reviewed_product_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    feedback: Mapped[str | None] = mapped_column(Text)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Topic(ProductBase):

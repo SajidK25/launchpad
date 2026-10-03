@@ -266,7 +266,7 @@ def test_selected_topic_labels_backfill_from_private_normalized_keys(
                     )
             assert await database.current_revision() == "0005_product_drafts_submission"
             await database.prepare()
-            assert await database.current_revision() == "0007_product_submission_idx"
+            assert await database.current_revision() == migration_head()
             async with database.engine.connect() as connection:
                 rows = (
                     await connection.execute(
