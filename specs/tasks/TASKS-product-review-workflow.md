@@ -65,7 +65,7 @@ Extend the PostgreSQL lifecycle checks and create immutable review-decision and 
 
 ## Task T2: Persist Founder Notifications in the Review Transaction
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

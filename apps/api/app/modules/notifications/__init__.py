@@ -1,0 +1,1 @@
+"""Founder notification feature."""

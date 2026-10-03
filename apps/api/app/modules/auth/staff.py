@@ -32,6 +32,14 @@ class AuthAccessService:
     def __init__(self, repository: AuthRepository | None = None) -> None:
         self.repository = repository or AuthRepository()
 
+    async def verified_recipient_email(self, session: AsyncSession, account_id: UUID) -> str | None:
+        """Return this account's current verified address for deferred delivery."""
+
+        account = await self.repository.find_account_by_id(session, account_id)
+        if account is None or account.verified_at is None:
+            return None
+        return account.email_display
+
     async def current_account(
         self, session: AsyncSession, account_id: UUID, *, lock: bool = False
     ) -> AccountState | None:
