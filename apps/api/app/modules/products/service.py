@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import json
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 from urllib.parse import SplitResult, urlsplit
 from uuid import UUID
@@ -176,6 +176,15 @@ class OwnerProductDetail:
     topics: tuple[ProductTopicSelection, ...]
     assets: tuple[ProductAssetResult, ...]
     submission: SubmissionPeriod | None
+    review_outcome: OwnerReviewOutcome | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerReviewOutcome:
+    """Latest founder-visible decision fields, without reviewer identity or audit keys."""
+
+    status: str
+    feedback: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +210,23 @@ class StaffQueuePage:
     """Bounded oldest-first reviewer queue."""
 
     items: tuple[StaffQueueItem, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovedReviewItem:
+    """One currently approved product available to staff for a correction return."""
+
+    product: ProductDraft
+    submission: SubmissionPeriod
+    approved_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovedReviewPage:
+    """Bounded approved product discovery ordered by approval time and identity."""
+
+    items: tuple[ApprovedReviewItem, ...]
     next_cursor: str | None
 
 
@@ -329,7 +355,6 @@ class ProductService:
         self.event_storage = event_storage
         if review_notifications is None:
             from app.modules.notifications.service import NotificationService
-
             from app.shared.email.codec import EmailPayloadCodec
 
             review_notifications = NotificationService(
@@ -364,7 +389,9 @@ class ProductService:
             raise ProductValidationError("invalid review outcome", fields=("outcome",))
         if outcome == "approved":
             if normalized_feedback is not None:
-                raise ProductValidationError("approval cannot include feedback", fields=("feedback",))
+                raise ProductValidationError(
+                    "approval cannot include feedback", fields=("feedback",)
+                )
         elif normalized_feedback is None or len(normalized_feedback) > 2000:
             raise ProductValidationError(
                 "feedback must contain 1 to 2,000 characters", fields=("feedback",)
@@ -605,6 +632,19 @@ class ProductService:
             ),
             assets=tuple(_asset_view(asset) for asset in assets),
             submission=_submission_view(submission) if submission is not None else None,
+            review_outcome=(
+                OwnerReviewOutcome(
+                    status=decision.outcome,
+                    feedback=decision.feedback,
+                )
+                if (
+                    decision := await self.repository.get_latest_review_decision(
+                        session, product_id=product.id
+                    )
+                )
+                is not None
+                else None
+            ),
         )
 
     async def owner_list(
@@ -682,10 +722,16 @@ class ProductService:
 
         require_staff_reviewer(await self.member_access.current_account(session, actor_id))
         product = await self.repository.get_product(session, product_id=product_id)
-        if product is None or product.status != "submitted":
+        if product is None or product.status not in {"submitted", "approved"}:
             raise ProductNotFoundError("product unavailable")
-        period = await self.repository.get_pending_submission(session, product_id=product_id)
+        period = (
+            await self.repository.get_pending_submission(session, product_id=product_id)
+            if product.status == "submitted"
+            else await self.repository.get_latest_submission(session, product_id=product_id)
+        )
         if period is None:
+            raise ProductNotFoundError("product unavailable")
+        if product.status == "approved" and period.state != "approved":
             raise ProductNotFoundError("product unavailable")
         topics = await self.repository.get_product_topics(session, product_id=product_id)
         assets = await self.repository.get_attached_clean_assets(session, product_id=product_id)
@@ -710,6 +756,38 @@ class ProductService:
                 or founder_states[product.founder_id].suspended_at is not None
             ),
         )
+
+    async def approved_review_page(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        first: int = 20,
+        after: str | None = None,
+    ) -> ApprovedReviewPage:
+        """Find private, currently approved products for verified staff only."""
+
+        require_staff_reviewer(await self.member_access.current_account(session, actor_id))
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        cursor = _parse_read_cursor(after) if after is not None else None
+        rows = await self.repository.list_approved_reviews(session, limit=first + 1, after=cursor)
+        visible = rows[:first]
+        items = tuple(
+            ApprovedReviewItem(
+                product=_draft_view(product),
+                submission=_submission_view(period),
+                approved_at=period.closed_at,
+            )
+            for period, product in visible
+            if period.closed_at is not None
+        )
+        next_cursor = (
+            _read_cursor(items[-1].approved_at, items[-1].product.id)
+            if len(rows) > first and items
+            else None
+        )
+        return ApprovedReviewPage(items=items, next_cursor=next_cursor)
 
     async def topic_choices(
         self,

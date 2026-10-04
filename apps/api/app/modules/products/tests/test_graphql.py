@@ -35,6 +35,7 @@ def test_composed_schema_preserves_profiles_and_adds_private_product_reads() -> 
         "viewerProduct",
         "reviewQueue",
         "reviewProduct",
+        "approvedReviews",
         "topicChoices",
     }
     assert schema.mutation_type is None
@@ -106,6 +107,7 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "viewerProduct",
                     "reviewQueue",
                     "reviewProduct",
+                    "approvedReviews",
                     "topicChoices",
                 }
                 if products_enabled

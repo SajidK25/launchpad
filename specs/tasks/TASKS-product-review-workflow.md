@@ -254,7 +254,7 @@ Add the `POST /api/v1/staff/products/{product_id}/review-decisions` command and 
 
 ## Task T5: Compose Founder and Staff Review Reads
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high

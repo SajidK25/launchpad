@@ -34,6 +34,7 @@ _ALLOWED_ROOT_FIELDS = frozenset(
         "viewerProduct",
         "reviewQueue",
         "reviewProduct",
+        "approvedReviews",
         "topicChoices",
     }
 )

@@ -521,6 +521,43 @@ class ProductRepository:
             statement = statement.with_for_update()
         return cast(ProductSubmission | None, await session.scalar(statement))
 
+    async def get_latest_review_decision(
+        self, session: AsyncSession, *, product_id: UUID
+    ) -> ProductReviewDecision | None:
+        statement = (
+            select(ProductReviewDecision)
+            .join(ProductSubmission, ProductSubmission.id == ProductReviewDecision.submission_id)
+            .where(ProductSubmission.product_id == product_id)
+            .order_by(ProductReviewDecision.created_at.desc(), ProductReviewDecision.id.desc())
+            .limit(1)
+        )
+        return cast(ProductReviewDecision | None, await session.scalar(statement))
+
+    async def list_approved_reviews(
+        self,
+        session: AsyncSession,
+        *,
+        limit: int,
+        after: tuple[datetime, UUID] | None,
+    ) -> list[tuple[ProductSubmission, Product]]:
+        """Page currently approved products newest approval first with a stable keyset."""
+
+        statement = (
+            select(ProductSubmission, Product)
+            .join(Product, Product.id == ProductSubmission.product_id)
+            .where(
+                Product.status == "approved",
+                ProductSubmission.state == "approved",
+                ProductSubmission.closed_at.is_not(None),
+            )
+        )
+        if after is not None:
+            statement = statement.where(tuple_(ProductSubmission.closed_at, Product.id) < after)
+        rows = await session.execute(
+            statement.order_by(ProductSubmission.closed_at.desc(), Product.id.desc()).limit(limit)
+        )
+        return [(period, product) for period, product in rows.tuples()]
+
     async def find_review_decision_by_actor_key(
         self, session: AsyncSession, *, actor_id: UUID, idempotency_key: str
     ) -> ProductReviewDecision | None:

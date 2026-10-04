@@ -18,8 +18,10 @@ from app.modules.products.policies import (
     ProductNotFoundError,
     require_staff_reviewer,
 )
+from app.modules.products.service import ApprovedReviewPage as ApprovedReviewResultPage
 from app.modules.products.service import (
     OwnerProductDetail,
+    OwnerReviewOutcome,
     ProductDraft,
     ProductService,
     ProductValidationError,
@@ -82,6 +84,7 @@ class ProductDetail:
     topics: list[ProductTopic]
     assets: list[ProductAsset]
     submission: Submission | None
+    review_outcome: ReviewOutcome | None
 
 
 @strawberry.type
@@ -104,6 +107,27 @@ class ReviewDetail:
     submission: Submission
     possible_duplicate: bool
     founder_suspended: bool
+
+
+@strawberry.type
+class ReviewOutcome:
+    """Founder-visible result only; excludes reviewer identity and request metadata."""
+
+    status: str
+    feedback: str | None
+
+
+@strawberry.type
+class ApprovedReviewEntry:
+    product: ProductSummary
+    submission: Submission
+    approved_at: datetime
+
+
+@strawberry.type
+class ApprovedReviewPage:
+    items: list[ApprovedReviewEntry]
+    next_cursor: str | None
 
 
 def _member(info: strawberry.Info) -> MemberContext:
@@ -200,6 +224,16 @@ async def _detail(
         ],
         assets=assets,
         submission=_submission(result.submission) if result.submission is not None else None,
+        review_outcome=(
+            _review_outcome(result.review_outcome) if result.review_outcome is not None else None
+        ),
+    )
+
+
+def _review_outcome(result: OwnerReviewOutcome) -> ReviewOutcome:
+    return ReviewOutcome(
+        status=result.status,
+        feedback=result.feedback,
     )
 
 
@@ -280,6 +314,28 @@ class ProductQuery:
                 submission=_submission(result.submission),
                 possible_duplicate=result.possible_duplicate,
                 founder_suspended=result.founder_suspended,
+            )
+
+    @strawberry.field
+    async def approved_reviews(
+        self, info: strawberry.Info, first: int = 20, after: str | None = None
+    ) -> ApprovedReviewPage:
+        async with _safe_read():
+            member = _staff(info)
+            async with info.context["session_factory"]() as session:
+                page: ApprovedReviewResultPage = await _service(info).approved_review_page(
+                    session, actor_id=member.account_id, first=first, after=after
+                )
+            return ApprovedReviewPage(
+                items=[
+                    ApprovedReviewEntry(
+                        product=_summary(item.product),
+                        submission=_submission(item.submission),
+                        approved_at=item.approved_at,
+                    )
+                    for item in page.items
+                ],
+                next_cursor=page.next_cursor,
             )
 
     @strawberry.field
