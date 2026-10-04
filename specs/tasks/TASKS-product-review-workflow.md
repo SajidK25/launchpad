@@ -313,7 +313,7 @@ Extend the existing read composition so a founder can reopen the latest outcome 
 
 ## Task T6: Read and Mark Individual Notifications
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
