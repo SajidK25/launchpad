@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
 from graphql import GraphQLObjectType
 from sqlalchemy import delete, insert, select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from strawberry import Schema
 
 from app.modules.auth.models import Account
@@ -39,7 +40,15 @@ class _Repository:
         self.rows = rows
         self.read_calls: list[tuple[Any, Any]] = []
 
-    async def list_for_recipient(self, session: Any, *, recipient_id: Any, limit: int, after: Any):
+    async def find_review_notification(self, session: Any, decision_id: Any) -> Any | None:
+        return next((row for row in self.rows if row.review_decision_id == decision_id), None)
+
+    async def add(self, session: Any, notification: Any) -> None:
+        self.rows.append(notification)
+
+    async def list_for_recipient(
+        self, session: Any, *, recipient_id: Any, limit: int, after: Any
+    ) -> list[Any]:
         rows = [row for row in self.rows if row.recipient_account_id == recipient_id]
         if after is not None:
             rows = [row for row in rows if (row.created_at, row.id) < after]
@@ -51,7 +60,9 @@ class _Repository:
             row.recipient_account_id == recipient_id and row.read_at is None for row in self.rows
         )
 
-    async def get_for_recipient(self, session: Any, *, recipient_id: Any, notification_id: Any):
+    async def get_for_recipient(
+        self, session: Any, *, recipient_id: Any, notification_id: Any
+    ) -> Any | None:
         return next(
             (
                 row
@@ -82,10 +93,19 @@ class _Repository:
 class _Outbox:
     async def add(self, session: Any, event: Any) -> Any:
         self._events.append(event)
-        return event.id
+        return uuid4()
 
     def __init__(self) -> None:
         self._events: list[Any] = []
+
+
+class _Codec:
+    def encode(self, payload: Mapping[str, object]) -> tuple[str, bytes]:
+        return "key", b"ciphertext"
+
+
+def _session() -> AsyncSession:
+    return cast(AsyncSession, object())
 
 
 def test_notification_query_exposes_bounded_inbox_and_read_only_schema() -> None:
@@ -142,7 +162,7 @@ def test_inbox_pages_only_active_recipient_items_without_marking_them_read() -> 
         service = NotificationService(
             repository=repository,
             outbox_repository=outbox,
-            payload_codec=SimpleNamespace(encode=lambda _: ("key", b"ciphertext")),
+            payload_codec=_Codec(),
             member_access=_Access(
                 {
                     recipient: AccountState(recipient, True, "member", None),
@@ -152,7 +172,7 @@ def test_inbox_pages_only_active_recipient_items_without_marking_them_read() -> 
             clock=lambda: now,
         )
 
-        page = await service.inbox(object(), actor_id=recipient, first=2)
+        page = await service.inbox(_session(), actor_id=recipient, first=2)
 
         assert [item.id for item in page.items] == [rows[3].id, rows[2].id]
         assert page.unread_count == 4
@@ -161,7 +181,7 @@ def test_inbox_pages_only_active_recipient_items_without_marking_them_read() -> 
         assert outbox._events == []
 
         next_page = await service.inbox(
-            object(), actor_id=recipient, first=2, after=page.next_cursor
+            _session(), actor_id=recipient, first=2, after=page.next_cursor
         )
         assert [item.id for item in next_page.items] == [rows[1].id, rows[0].id]
         assert next_page.next_cursor is None
@@ -196,7 +216,7 @@ def test_mark_read_changes_only_owned_item_once_and_enqueues_one_hint() -> None:
         service = NotificationService(
             repository=repository,
             outbox_repository=outbox,
-            payload_codec=SimpleNamespace(encode=lambda _: ("key", b"ciphertext")),
+            payload_codec=_Codec(),
             member_access=_Access(
                 {
                     recipient: AccountState(recipient, True, "member", None),
@@ -207,10 +227,10 @@ def test_mark_read_changes_only_owned_item_once_and_enqueues_one_hint() -> None:
         )
 
         first = await service.mark_read(
-            object(), actor_id=recipient, notification_id=notification_id
+            _session(), actor_id=recipient, notification_id=notification_id
         )
         second = await service.mark_read(
-            object(), actor_id=recipient, notification_id=notification_id
+            _session(), actor_id=recipient, notification_id=notification_id
         )
 
         assert first.read_at == second.read_at == now
@@ -221,7 +241,7 @@ def test_mark_read_changes_only_owned_item_once_and_enqueues_one_hint() -> None:
         assert outbox._events[0].aggregate_id == notification_id
 
         with pytest.raises(NotificationNotFoundError):
-            await service.mark_read(object(), actor_id=other, notification_id=notification_id)
+            await service.mark_read(_session(), actor_id=other, notification_id=notification_id)
         assert len(outbox._events) == 1
 
     asyncio.run(verify())
@@ -234,7 +254,7 @@ def test_notification_reads_reject_inactive_or_missing_accounts_and_invalid_page
         service = NotificationService(
             repository=repository,
             outbox_repository=outbox,
-            payload_codec=SimpleNamespace(encode=lambda _: ("key", b"ciphertext")),
+            payload_codec=_Codec(),
             member_access=_Access(
                 {
                     active_id: AccountState(active_id, False, "member", None),
@@ -244,11 +264,11 @@ def test_notification_reads_reject_inactive_or_missing_accounts_and_invalid_page
         )
 
         with pytest.raises(ValueError, match="page size"):
-            await service.inbox(object(), actor_id=active_id, first=0)
+            await service.inbox(_session(), actor_id=active_id, first=0)
         with pytest.raises(PermissionError):
-            await service.inbox(object(), actor_id=suspended_id)
+            await service.inbox(_session(), actor_id=suspended_id)
         with pytest.raises(PermissionError):
-            await service.inbox(object(), actor_id=missing_id)
+            await service.inbox(_session(), actor_id=missing_id)
 
     asyncio.run(verify())
 

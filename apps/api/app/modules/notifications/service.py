@@ -10,11 +10,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
 
+from app.modules.auth.staff import AccountState
 from app.modules.notifications.models import Notification
 from app.modules.notifications.policies import review_notification_kind
 from app.modules.notifications.repository import NotificationRepository
 from app.modules.notifications.schemas import NotificationInbox, NotificationItem, NotificationKind
-from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.outbox import OutboxEvent, OutboxRepository
 
 
@@ -25,15 +25,50 @@ class ReviewDecision(Protocol):
     outcome: str
 
 
-class NotificationAccount(Protocol):
-    account_id: UUID
-    suspended_at: datetime | None
-
-
 class NotificationMemberAccess(Protocol):
     async def current_account(
         self, session: AsyncSession, account_id: UUID, *, lock: bool = False
-    ) -> NotificationAccount | None: ...
+    ) -> AccountState | None: ...
+
+
+class NotificationRepositoryAccess(Protocol):
+    async def find_review_notification(
+        self, session: AsyncSession, review_decision_id: UUID
+    ) -> Notification | None: ...
+
+    async def add(self, session: AsyncSession, notification: Notification) -> None: ...
+
+    async def list_for_recipient(
+        self,
+        session: AsyncSession,
+        *,
+        recipient_id: UUID,
+        limit: int,
+        after: tuple[datetime, UUID] | None,
+    ) -> list[Notification]: ...
+
+    async def count_unread(self, session: AsyncSession, *, recipient_id: UUID) -> int: ...
+
+    async def get_for_recipient(
+        self, session: AsyncSession, *, recipient_id: UUID, notification_id: UUID
+    ) -> Notification | None: ...
+
+    async def mark_unread(
+        self,
+        session: AsyncSession,
+        *,
+        recipient_id: UUID,
+        notification_id: UUID,
+        read_at: datetime,
+    ) -> Notification | None: ...
+
+
+class NotificationOutboxAccess(Protocol):
+    async def add(self, session: AsyncSession, event: OutboxEvent) -> UUID: ...
+
+
+class NotificationPayloadCodec(Protocol):
+    def encode(self, payload: dict[str, object]) -> tuple[str, bytes]: ...
 
 
 class NotificationError(ValueError):
@@ -58,9 +93,9 @@ class NotificationService:
     def __init__(
         self,
         *,
-        repository: NotificationRepository | None = None,
-        outbox_repository: OutboxRepository | None = None,
-        payload_codec: EmailPayloadCodec,
+        repository: NotificationRepositoryAccess | None = None,
+        outbox_repository: NotificationOutboxAccess | None = None,
+        payload_codec: NotificationPayloadCodec,
         member_access: NotificationMemberAccess | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
@@ -70,8 +105,9 @@ class NotificationService:
         if member_access is None:
             from app.modules.auth.staff import AuthAccessService
 
-            member_access = AuthAccessService()
-        self.member_access = member_access
+            self.member_access: NotificationMemberAccess = AuthAccessService()
+        else:
+            self.member_access = member_access
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def inbox(
@@ -146,9 +182,7 @@ class NotificationService:
                     raise NotificationNotFoundError("notification unavailable")
         return _item(notification)
 
-    async def _require_active_account(
-        self, session: AsyncSession, actor_id: UUID
-    ) -> NotificationAccount:
+    async def _require_active_account(self, session: AsyncSession, actor_id: UUID) -> AccountState:
         account = await self.member_access.current_account(session, actor_id)
         if account is None or account.suspended_at is not None:
             raise NotificationForbiddenError("notification access is forbidden")
