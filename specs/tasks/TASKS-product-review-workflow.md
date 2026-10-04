@@ -193,7 +193,7 @@ Make the product service the sole authority for review decisions and subsequent 
 
 ## Task T4: Expose the Staff Review REST Command
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from types import SimpleNamespace
 
+import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
@@ -14,6 +16,7 @@ from redis import Redis
 from app.modules.products.routes import router
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
+from app.shared.security.rate_limit import RateLimiter, RateLimitExceeded
 from app.shared.storage.objects import PrivateObjectStore
 
 
@@ -50,6 +53,7 @@ def test_product_routes_are_explicit_and_require_trusted_origin() -> None:
         "/api/v1/me/products/{product_id}",
         "/api/v1/me/products/{product_id}/submit",
         "/api/v1/me/products/{product_id}/withdraw",
+        "/api/v1/staff/products/{product_id}/review-decisions",
         "/api/v1/me/products/{product_id}/assets",
         "/api/v1/me/products/{product_id}/assets/{asset_id}/complete",
         "/api/v1/products/{product_id}/assets/{asset_id}",
@@ -61,6 +65,34 @@ def test_product_routes_are_explicit_and_require_trusted_origin() -> None:
 
     assert response.status_code == 403
     assert response.json() == {"detail": "request rejected"}
+
+
+def test_asset_intent_action_rate_limit_rejects_the_61st_request() -> None:
+    class RedisCounter:
+        def __init__(self) -> None:
+            self.values: dict[str, int] = {}
+
+        def incr(self, key: str) -> int:
+            self.values[key] = self.values.get(key, 0) + 1
+            return self.values[key]
+
+        def expire(self, key: str, seconds: int) -> bool:
+            return seconds == 60
+
+    async def verify() -> None:
+        limiter = RateLimiter(RedisCounter(), limit=60, window_seconds=60)
+        for _ in range(60):
+            await limiter.check(
+                address_key="product:asset-intent:account:test",
+                source_key="product:asset-intent:source:test",
+            )
+        with pytest.raises(RateLimitExceeded):
+            await limiter.check(
+                address_key="product:asset-intent:account:test",
+                source_key="product:asset-intent:source:test",
+            )
+
+    asyncio.run(verify())
 
 
 def test_asset_intent_contract_rejects_untrusted_upload_types() -> None:

@@ -6,9 +6,18 @@ from typing import Literal
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, TypeAdapter, field_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 _HTTP_URL = TypeAdapter(AnyHttpUrl)
+ProductStatus = Literal["draft", "submitted", "changes_requested", "approved", "rejected"]
 
 
 class ProductContentInput(BaseModel):
@@ -103,11 +112,47 @@ class ProductWithdrawInput(ProductVersionInput):
     submission_id: UUID
 
 
+class ReviewDecisionInput(BaseModel):
+    """Version-bound staff decision request with an outcome-specific feedback contract."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    submission_id: UUID
+    expected_version: int = Field(ge=0, strict=True)
+    outcome: Literal["approved", "rejected", "changes_requested"]
+    feedback: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("feedback", mode="before")
+    @classmethod
+    def normalize_feedback(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @model_validator(mode="after")
+    def validate_feedback_for_outcome(self) -> ReviewDecisionInput:
+        if self.outcome == "approved" and self.feedback is not None:
+            raise ValueError("approval cannot include feedback")
+        if self.outcome != "approved" and not self.feedback:
+            raise ValueError("a reason is required for this outcome")
+        return self
+
+
+class ReviewDecisionResponse(BaseModel):
+    """Safe result of a staff review command."""
+
+    decision_id: UUID
+    product_id: UUID
+    submission_id: UUID
+    status: Literal["approved", "rejected", "changes_requested"]
+    version: int
+
+
 class ProductStateResponse(BaseModel):
     """Owner-safe product identity and optimistic version."""
 
     id: UUID
-    status: Literal["draft", "submitted"]
+    status: ProductStatus
     version: int
 
 

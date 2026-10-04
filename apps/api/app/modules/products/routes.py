@@ -2,7 +2,7 @@
 
 import base64
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
@@ -31,6 +31,8 @@ from app.modules.products.schemas import (
     ProductSubmitResponse,
     ProductVersionInput,
     ProductWithdrawInput,
+    ReviewDecisionInput,
+    ReviewDecisionResponse,
 )
 from app.modules.products.service import (
     ProductDraft,
@@ -150,6 +152,59 @@ def router(
         ):
             return HTTPException(status_code=503, detail="service unavailable")
         return HTTPException(status_code=400, detail="request could not be completed")
+
+    @routes.post(
+        "/staff/products/{product_id}/review-decisions",
+        response_model=ReviewDecisionResponse,
+        status_code=201,
+    )
+    async def create_review_decision(
+        product_id: UUID,
+        payload: ReviewDecisionInput,
+        request: Request,
+        session: DbSession,
+        idempotency_key: Annotated[
+            str, Header(alias="Idempotency-Key", min_length=1, max_length=255)
+        ],
+        x_csrf_token: str | None = Header(default=None),
+    ) -> ReviewDecisionResponse:
+        require_origin(request)
+        if not settings.review_writes_enabled:
+            raise HTTPException(status_code=503, detail="service unavailable")
+        async with session.begin():
+            member = await current_member(request, session)
+            require_member_csrf(request, member, x_csrf_token)
+            try:
+                await bound_action(request, member, "review")
+                result = await service().decide_review(
+                    session,
+                    actor_id=member.account_id,
+                    product_id=product_id,
+                    submission_id=payload.submission_id,
+                    expected_version=payload.expected_version,
+                    outcome=payload.outcome,
+                    feedback=payload.feedback,
+                    idempotency_key=idempotency_key,
+                )
+            except (
+                ProductForbiddenError,
+                ProductNotFoundError,
+                ProductConflictError,
+                ProductValidationError,
+                ProductInfrastructureError,
+                RateLimitExceeded,
+                RateLimitUnavailable,
+                SQLAlchemyError,
+                RedisError,
+            ) as error:
+                raise map_error(error) from error
+        return ReviewDecisionResponse(
+            decision_id=result.decision.id,
+            product_id=result.product_id,
+            submission_id=result.decision.submission_id,
+            status=cast(Literal["approved", "rejected", "changes_requested"], result.status),
+            version=result.version,
+        )
 
     @routes.post("/me/products", response_model=ProductStateResponse, status_code=201)
     async def create_draft(
