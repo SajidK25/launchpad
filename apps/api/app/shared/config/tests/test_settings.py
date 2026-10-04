@@ -17,6 +17,20 @@ def test_documented_local_defaults_need_no_external_credentials() -> None:
     assert settings.products_enabled is False
     assert "@postgres:" in str(settings.database_url)
     assert settings.storage_endpoint_url.host == "minio"
+    assert settings.review_writes_enabled is True
+
+
+def test_local_review_writes_can_be_disabled_independently() -> None:
+    settings = load_settings(
+        {
+            "LAUNCHPAD_REVIEW_WRITES_ENABLED": "false",
+            "LAUNCHPAD_PRODUCTS_ENABLED": "true",
+            "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "http://localhost:8080",
+        }
+    )
+
+    assert settings.review_writes_enabled is False
+    assert settings.products_enabled is True
 
 
 def test_trusted_web_origins_parse_into_canonical_values() -> None:
@@ -88,6 +102,89 @@ def test_production_does_not_inject_local_origins() -> None:
 
     assert settings.trusted_web_origins == ("https://launchpad.example",)
     assert settings.products_enabled is False
+    assert settings.review_writes_enabled is False
+
+
+def test_production_worker_requires_resend_key_but_api_does_not() -> None:
+    environment = {
+        "LAUNCHPAD_ENVIRONMENT": "production",
+        "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "runtime-user",
+        "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "runtime-secret",
+        "LAUNCHPAD_MAIL_WEB_ORIGIN": "https://launchpad.example",
+        "LAUNCHPAD_MAIL_SENDER": "noreply@launchpad.example",
+        "LAUNCHPAD_OUTBOX_KEY_ID": "production-v1",
+        "LAUNCHPAD_OUTBOX_KEY": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
+        "LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL": "https://uploads.example",
+        "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "https://launchpad.example",
+    }
+
+    api_settings = load_settings(environment)
+    assert api_settings.resend_api_key is None
+
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_RESEND_API_KEY"):
+        load_settings(environment, require_worker_mail=True)
+
+    worker_settings = load_settings(
+        {**environment, "LAUNCHPAD_RESEND_API_KEY": "re_test_key"},
+        require_worker_mail=True,
+    )
+    assert worker_settings.resend_api_key is not None
+
+
+def test_production_resend_key_is_rejected_outside_worker_configuration() -> None:
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_RESEND_API_KEY"):
+        load_settings(
+            {
+                "LAUNCHPAD_ENVIRONMENT": "production",
+                "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "runtime-user",
+                "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "runtime-secret",
+                "LAUNCHPAD_MAIL_WEB_ORIGIN": "https://launchpad.example",
+                "LAUNCHPAD_MAIL_SENDER": "noreply@launchpad.example",
+                "LAUNCHPAD_OUTBOX_KEY_ID": "production-v1",
+                "LAUNCHPAD_OUTBOX_KEY": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
+                "LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL": "https://uploads.example",
+                "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "https://launchpad.example",
+                "LAUNCHPAD_RESEND_API_KEY": "re_test_key",
+            }
+        )
+
+
+def test_production_worker_rejects_blank_resend_key_and_invalid_sender() -> None:
+    base = {
+        "LAUNCHPAD_ENVIRONMENT": "production",
+        "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "runtime-user",
+        "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "runtime-secret",
+        "LAUNCHPAD_MAIL_WEB_ORIGIN": "https://launchpad.example",
+        "LAUNCHPAD_OUTBOX_KEY_ID": "production-v1",
+        "LAUNCHPAD_OUTBOX_KEY": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
+        "LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL": "https://uploads.example",
+        "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "https://launchpad.example",
+        "LAUNCHPAD_RESEND_API_KEY": " ",
+    }
+
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_RESEND_API_KEY"):
+        load_settings(
+            {**base, "LAUNCHPAD_MAIL_SENDER": "noreply@launchpad.example"},
+            require_worker_mail=True,
+        )
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_RESEND_API_KEY"):
+        load_settings(
+            {
+                **base,
+                "LAUNCHPAD_RESEND_API_KEY": "invalid-key",
+                "LAUNCHPAD_MAIL_SENDER": "noreply@launchpad.example",
+            },
+            require_worker_mail=True,
+        )
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_MAIL_SENDER"):
+        load_settings(
+            {
+                **base,
+                "LAUNCHPAD_RESEND_API_KEY": "re_test_key",
+                "LAUNCHPAD_MAIL_SENDER": "invalid sender",
+            },
+            require_worker_mail=True,
+        )
 
 
 def test_products_feature_can_be_enabled_explicitly() -> None:

@@ -555,7 +555,7 @@ Add an async Resend API adapter behind the existing email sender contract and se
 
 ## Task T10: Configure Review Writes and Production Mail Safely
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** critical

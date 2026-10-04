@@ -33,7 +33,7 @@ def is_healthy() -> bool:
 
 
 async def run_worker(health: ProgressHealth) -> None:
-    settings = load_settings()
+    settings = load_settings(require_worker_mail=True)
     database = Database.connect(str(settings.database_url))
     if settings.outbox_key is None or settings.outbox_key_id is None:
         raise RuntimeError("Outbox encryption configuration is required.")

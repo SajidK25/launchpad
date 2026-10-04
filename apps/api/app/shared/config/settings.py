@@ -36,6 +36,7 @@ class Settings(BaseModel):
 
     environment: Literal["development", "test", "check", "production"] = "development"
     products_enabled: bool = False
+    review_writes_enabled: bool = False
     database_url: PostgresDsn = PostgresDsn(
         "postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development"
     )
@@ -48,6 +49,7 @@ class Settings(BaseModel):
     bootstrap_storage_secret_access_key: SecretStr | None = None
     mail_web_origin: AnyHttpUrl | None = None
     mail_sender: EmailStr | None = None
+    resend_api_key: SecretStr | None = None
     smtp_host: str | None = None
     smtp_port: int | None = Field(default=None, ge=1, le=65535)
     smtp_use_tls: bool | None = None
@@ -112,6 +114,9 @@ class Settings(BaseModel):
     def apply_or_validate_storage_credentials(self) -> Settings:
         """Use known local-only credentials or require explicitly separated credentials."""
 
+        if "review_writes_enabled" not in self.model_fields_set:
+            self.review_writes_enabled = self.environment in {"development", "test", "check"}
+
         if self.environment == "development":
             if self.storage_access_key_id is None:
                 self.storage_access_key_id = SecretStr("launchpad_development_minio_runtime")
@@ -175,7 +180,11 @@ class Settings(BaseModel):
         return self
 
 
-def load_settings(environment: Mapping[str, str] | None = None) -> Settings:
+def load_settings(
+    environment: Mapping[str, str] | None = None,
+    *,
+    require_worker_mail: bool = False,
+) -> Settings:
     """Load settings from an environment mapping with safe validation errors."""
 
     if environment is None:
@@ -191,11 +200,11 @@ def load_settings(environment: Mapping[str, str] | None = None) -> Settings:
         settings = Settings.model_validate(fields)
     except ValidationError as error:
         raise _configuration_error(error) from None
-    _validate_identity_settings(settings)
+    _validate_identity_settings(settings, require_worker_mail=require_worker_mail)
     return settings
 
 
-def _validate_identity_settings(settings: Settings) -> None:
+def _validate_identity_settings(settings: Settings, *, require_worker_mail: bool = False) -> None:
     """Fail closed on missing/unsafe mail and encryption configuration without echoing values."""
 
     missing = [
@@ -203,9 +212,6 @@ def _validate_identity_settings(settings: Settings) -> None:
         for name, value in (
             ("LAUNCHPAD_MAIL_WEB_ORIGIN", settings.mail_web_origin),
             ("LAUNCHPAD_MAIL_SENDER", settings.mail_sender),
-            ("LAUNCHPAD_SMTP_HOST", settings.smtp_host),
-            ("LAUNCHPAD_SMTP_PORT", settings.smtp_port),
-            ("LAUNCHPAD_SMTP_USE_TLS", settings.smtp_use_tls),
             ("LAUNCHPAD_OUTBOX_KEY_ID", settings.outbox_key_id),
             ("LAUNCHPAD_OUTBOX_KEY", settings.outbox_key),
             ("LAUNCHPAD_TRUSTED_WEB_ORIGINS", settings.trusted_web_origins),
@@ -213,6 +219,22 @@ def _validate_identity_settings(settings: Settings) -> None:
         )
         if value is None or value == "" or value == ()
     ]
+    if settings.environment != "production" or (require_worker_mail and not settings.resend_api_key):
+        missing.extend(
+            name
+            for name, value in (
+                ("LAUNCHPAD_SMTP_HOST", settings.smtp_host),
+                ("LAUNCHPAD_SMTP_PORT", settings.smtp_port),
+                ("LAUNCHPAD_SMTP_USE_TLS", settings.smtp_use_tls),
+            )
+            if value is None
+        )
+    if settings.environment == "production" and require_worker_mail:
+        if (
+            settings.resend_api_key is None
+            or not settings.resend_api_key.get_secret_value().strip().startswith("re_")
+        ):
+            missing.append("LAUNCHPAD_RESEND_API_KEY")
     if missing:
         raise ConfigurationError(f"Invalid configuration: {', '.join(missing)}")
 
@@ -220,7 +242,8 @@ def _validate_identity_settings(settings: Settings) -> None:
     assert settings.public_upload_endpoint_url is not None
     assert settings.outbox_key is not None
     assert settings.outbox_key_id is not None
-    assert settings.smtp_host is not None
+    if settings.environment != "production" or (require_worker_mail and not settings.resend_api_key):
+        assert settings.smtp_host is not None
 
     for name, url in (
         ("LAUNCHPAD_MAIL_WEB_ORIGIN", settings.mail_web_origin),
@@ -244,10 +267,19 @@ def _validate_identity_settings(settings: Settings) -> None:
         or not settings.outbox_key_id.replace("-", "").isalnum()
     ):
         raise ConfigurationError("Invalid configuration: LAUNCHPAD_OUTBOX_KEY_ID")
-    if settings.environment == "production" and not settings.smtp_use_tls:
-        raise ConfigurationError("Invalid configuration: LAUNCHPAD_SMTP_USE_TLS")
-    if settings.environment == "production" and settings.smtp_host == "mailpit":
-        raise ConfigurationError("Invalid configuration: LAUNCHPAD_SMTP_HOST")
+    if settings.environment == "production" and not require_worker_mail and settings.resend_api_key:
+        raise ConfigurationError("Invalid configuration: LAUNCHPAD_RESEND_API_KEY")
+    if (
+        settings.environment == "production"
+        and settings.resend_api_key
+        and not settings.resend_api_key.get_secret_value().strip().startswith("re_")
+    ):
+        raise ConfigurationError("Invalid configuration: LAUNCHPAD_RESEND_API_KEY")
+    if settings.environment == "production" and not require_worker_mail and settings.smtp_host:
+        if not settings.smtp_use_tls:
+            raise ConfigurationError("Invalid configuration: LAUNCHPAD_SMTP_USE_TLS")
+        if settings.smtp_host == "mailpit":
+            raise ConfigurationError("Invalid configuration: LAUNCHPAD_SMTP_HOST")
     if (settings.smtp_username is None) != (settings.smtp_password is None):
         raise ConfigurationError(
             "Invalid configuration: LAUNCHPAD_SMTP_USERNAME, LAUNCHPAD_SMTP_PASSWORD"

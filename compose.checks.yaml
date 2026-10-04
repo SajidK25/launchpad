@@ -1,5 +1,6 @@
 x-check-runtime: &check_runtime
   LAUNCHPAD_ENVIRONMENT: check
+  LAUNCHPAD_REVIEW_WRITES_ENABLED: "true"
   LAUNCHPAD_DATABASE_URL: postgresql://launchpad_check:launchpad_check_password@postgres:5432/launchpad_check
   LAUNCHPAD_REDIS_URL: redis://redis:6379/0
   LAUNCHPAD_STORAGE_ENDPOINT_URL: http://minio:9000
