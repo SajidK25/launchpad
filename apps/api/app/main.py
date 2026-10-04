@@ -1,13 +1,17 @@
 import logging
+from typing import cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from redis import Redis
+from redis.asyncio import Redis as AsyncRedis
 
 from app.modules.auth.routes import router as auth_router
 from app.modules.health.probes import database_probe, redis_probe, storage_probe
 from app.modules.health.routes import router
 from app.modules.health.service import HealthService
+from app.modules.notifications.live import NotificationRedis
+from app.modules.notifications.routes import router as notifications_router
 from app.modules.products.routes import router as products_router
 from app.modules.users.routes import router as users_router
 from app.shared.config.settings import load_settings
@@ -80,6 +84,15 @@ def create_app(service: HealthService | None = None) -> FastAPI:
         )
         app.include_router(profile_routes)
         app.include_router(profile_graphql, prefix="/api/v1")
+        live_redis = cast(NotificationRedis, AsyncRedis.from_url(str(settings.redis_url)))
+        app.include_router(
+            notifications_router(
+                settings=settings,
+                database=database,
+                redis=Redis.from_url(str(settings.redis_url)),
+                live_redis=live_redis,
+            )
+        )
         if settings.products_enabled:
             app.include_router(
                 products_router(

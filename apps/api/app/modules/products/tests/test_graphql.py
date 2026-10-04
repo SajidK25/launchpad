@@ -37,6 +37,7 @@ def test_composed_schema_preserves_profiles_and_adds_private_product_reads() -> 
         "reviewProduct",
         "approvedReviews",
         "topicChoices",
+        "viewerNotificationInbox",
     }
     assert schema.mutation_type is None
     assert schema.subscription_type is None
@@ -47,7 +48,11 @@ def test_feature_off_graphql_schema_keeps_profiles_without_product_fields() -> N
 
     root = schema.query_type
     assert root is not None
-    assert set(root.fields) == {"viewerProfile", "publicProfile"}
+    assert set(root.fields) == {
+        "viewerProfile",
+        "publicProfile",
+        "viewerNotificationInbox",
+    }
     assert "viewerProducts" not in root.fields
     assert schema.mutation_type is None
 
@@ -58,7 +63,11 @@ def test_router_can_exclude_products_from_composed_schema() -> None:
 
     router = build_router(context_getter, include_products=False)
 
-    assert _query_fields(router.schema) == {"viewerProfile", "publicProfile"}
+    assert _query_fields(router.schema) == {
+        "viewerProfile",
+        "publicProfile",
+        "viewerNotificationInbox",
+    }
 
 
 @pytest.mark.parametrize("products_enabled", [False, True])
@@ -70,6 +79,7 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
     main = cast(Any, sys.modules["app.main"])
     settings = Settings(
         products_enabled=products_enabled,
+        review_writes_enabled=False,
         trusted_web_origins=("http://localhost:8080",),
     )
     monkeypatch.setattr(main, "load_settings", lambda: settings)
@@ -96,8 +106,10 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
         application = create_app()
         paths = set(application.openapi()["paths"])
         product_route_present = "/api/v1/me/products" in paths
+        notification_route_present = "/api/v1/me/notifications/{notification_id}/read" in paths
 
         assert product_route_present is products_enabled
+        assert notification_route_present
         assert graph_fields == [
             (
                 {
@@ -109,9 +121,10 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "reviewProduct",
                     "approvedReviews",
                     "topicChoices",
+                    "viewerNotificationInbox",
                 }
                 if products_enabled
-                else {"viewerProfile", "publicProfile"}
+                else {"viewerProfile", "publicProfile", "viewerNotificationInbox"}
             )
         ]
     finally:

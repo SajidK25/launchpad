@@ -18,6 +18,8 @@ from strawberry.types.execution import ExecutionResult
 
 from app.modules.auth.sessions import MemberContext, SessionService, UnauthenticatedError
 from app.modules.auth.staff import AuthAccessService
+from app.modules.notifications.graphql import NotificationQuery
+from app.modules.notifications.service import NotificationService
 from app.modules.products.graphql import ProductQuery
 from app.modules.products.policies import ProductForbiddenError, ProductNotFoundError
 from app.modules.products.service import ProductService, ProductValidationError
@@ -36,6 +38,7 @@ _ALLOWED_ROOT_FIELDS = frozenset(
         "reviewProduct",
         "approvedReviews",
         "topicChoices",
+        "viewerNotificationInbox",
     }
 )
 _MAX_QUERY_LENGTH = 8192
@@ -45,12 +48,12 @@ _MAX_QUERY_FIELDS = 60
 
 
 @strawberry.type
-class Query(ProfileQuery, ProductQuery):
+class Query(ProfileQuery, ProductQuery, NotificationQuery):
     """The application's single read root; no mutation or subscription exists."""
 
 
 @strawberry.type
-class ProfileOnlyQuery(ProfileQuery):
+class ProfileOnlyQuery(ProfileQuery, NotificationQuery):
     """Read root used while the products feature is disabled."""
 
 
@@ -140,6 +143,9 @@ def context_getter(
             "session_factory": session_factory,
             "service_factory": profile_service_factory,
             "product_service_factory": lambda: ProductService(
+                member_access=AuthAccessService(), payload_codec=payload_codec
+            ),
+            "notification_service_factory": lambda: NotificationService(
                 member_access=AuthAccessService(), payload_codec=payload_codec
             ),
         }

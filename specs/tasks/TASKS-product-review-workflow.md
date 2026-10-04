@@ -372,7 +372,7 @@ Provide bounded owner-only notification reads and an idempotent one-item read op
 
 ## Task T7: Bind Account-Scoped Notification WebSockets
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high
