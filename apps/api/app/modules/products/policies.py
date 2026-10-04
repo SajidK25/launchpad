@@ -98,6 +98,30 @@ def require_draft_status(status: str) -> None:
         raise ProductConflictError("product is no longer an editable draft")
 
 
+def require_editable_status(status: str) -> None:
+    """Permit founder corrections only while a product is draft or changes requested."""
+
+    if status not in {"draft", "changes_requested"}:
+        raise ProductConflictError("product is not editable")
+
+
+def require_review_transition(*, status: str, outcome: str) -> None:
+    """Enforce the explicit pending and approved-return review transitions."""
+
+    if status == "submitted" and outcome in {"approved", "rejected", "changes_requested"}:
+        return
+    if status == "approved" and outcome == "changes_requested":
+        return
+    raise ProductConflictError("product cannot receive this review outcome")
+
+
+def require_product_not_reviewed(*, has_decisions: bool) -> None:
+    """Keep immutable review audit history by blocking permanent deletion."""
+
+    if has_decisions:
+        raise ProductConflictError("reviewed products cannot be deleted")
+
+
 def require_expected_version(*, current: int, expected: int) -> None:
     """Reject stale writes without replacing newer content."""
 

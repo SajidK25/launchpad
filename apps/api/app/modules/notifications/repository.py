@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.notifications.models import Notification
@@ -25,5 +25,15 @@ class NotificationRepository:
         )
 
     async def add(self, session: AsyncSession, notification: Notification) -> None:
-        session.add(notification)
-        await session.flush()
+        """Insert through SQL Core across the notification module's separate metadata."""
+
+        await session.execute(
+            insert(Notification).values(
+                id=notification.id,
+                recipient_account_id=notification.recipient_account_id,
+                review_decision_id=notification.review_decision_id,
+                kind=notification.kind,
+                created_at=notification.created_at,
+                read_at=notification.read_at,
+            )
+        )

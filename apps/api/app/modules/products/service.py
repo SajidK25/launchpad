@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import hashlib
+import hmac
+import json
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 from urllib.parse import SplitResult, urlsplit
 from uuid import UUID
@@ -14,7 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
 
 from app.modules.auth.staff import AccountState
-from app.modules.products.models import Product, ProductAsset, ProductSubmission
+from app.modules.products.models import (
+    Product,
+    ProductAsset,
+    ProductReviewDecision,
+    ProductSubmission,
+)
 from app.modules.products.policies import (
     PRODUCT_MEDIA_URL_TTL_SECONDS,
     ProductConflictError,
@@ -25,8 +33,11 @@ from app.modules.products.policies import (
     create_product_media_signature,
     require_active_founder,
     require_draft_status,
+    require_editable_status,
     require_expected_version,
+    require_product_not_reviewed,
     require_product_owner,
+    require_review_transition,
     require_staff_reviewer,
     verify_product_media_signature,
 )
@@ -82,6 +93,21 @@ class ProductEvents(Protocol):
     """Transactional outbox interface used by the products feature."""
 
     async def add(self, session: AsyncSession, event: OutboxEvent) -> UUID: ...
+
+
+class ReviewNoticeDecision(Protocol):
+    """Small immutable decision shape passed across the notification boundary."""
+
+    id: UUID
+    outcome: str
+
+
+class ProductReviewNotifications(Protocol):
+    """Named notifications interface used within a product decision transaction."""
+
+    async def record_review_outcome(
+        self, session: AsyncSession, *, decision: ReviewNoticeDecision, founder_id: UUID
+    ) -> object: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +215,16 @@ class StaffProductDetail:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductReviewResult:
+    """Safe command result for one immutable staff review action."""
+
+    decision: ProductReviewDecision
+    product_id: UUID
+    status: str
+    version: int
+
+
+@dataclass(frozen=True, slots=True)
 class ProductAssetUpload:
     """Intent metadata and short-lived write-only storage capability."""
 
@@ -279,6 +315,7 @@ class ProductService:
         payload_codec: ProductPayloadCodec,
         repository: ProductRepository | None = None,
         event_storage: ProductEventStorage | None = None,
+        review_notifications: ProductReviewNotifications | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if repository is None:
@@ -290,7 +327,130 @@ class ProductService:
         self.outbox_repository = outbox_repository or OutboxRepository()
         self.payload_codec = payload_codec
         self.event_storage = event_storage
+        if review_notifications is None:
+            from app.modules.notifications.service import NotificationService
+
+            from app.shared.email.codec import EmailPayloadCodec
+
+            review_notifications = NotificationService(
+                outbox_repository=cast(OutboxRepository, self.outbox_repository),
+                payload_codec=cast(EmailPayloadCodec, payload_codec),
+            )
+        self.review_notifications = review_notifications
         self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def decide_review(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        product_id: UUID,
+        submission_id: UUID,
+        expected_version: int,
+        outcome: str,
+        feedback: str | None,
+        idempotency_key: str,
+    ) -> ProductReviewResult:
+        """Resolve the current product version and persist audit/notice in one transaction."""
+
+        require_staff_reviewer(
+            await self.member_access.current_account(session, actor_id, lock=True)
+        )
+        key = idempotency_key.strip()
+        normalized_feedback = feedback.strip() if feedback is not None else None
+        if not key or len(key) > 255:
+            raise ProductValidationError("invalid idempotency key", fields=("idempotency_key",))
+        if outcome not in {"approved", "rejected", "changes_requested"}:
+            raise ProductValidationError("invalid review outcome", fields=("outcome",))
+        if outcome == "approved":
+            if normalized_feedback is not None:
+                raise ProductValidationError("approval cannot include feedback", fields=("feedback",))
+        elif normalized_feedback is None or len(normalized_feedback) > 2000:
+            raise ProductValidationError(
+                "feedback must contain 1 to 2,000 characters", fields=("feedback",)
+            )
+
+        fingerprint = _review_request_fingerprint(
+            product_id=product_id,
+            submission_id=submission_id,
+            expected_version=expected_version,
+            outcome=outcome,
+            feedback=normalized_feedback,
+        )
+        async with session.begin_nested():
+            replay = await self.repository.find_review_decision_by_actor_key(
+                session, actor_id=actor_id, idempotency_key=key
+            )
+            if replay is not None:
+                if not hmac.compare_digest(replay.request_fingerprint, fingerprint):
+                    raise ProductConflictError("idempotency key was used for a different review")
+                return ProductReviewResult(
+                    decision=replay,
+                    product_id=product_id,
+                    status=replay.outcome,
+                    version=replay.reviewed_product_version + 1,
+                )
+
+            product = await self.repository.get_product(session, product_id=product_id, lock=True)
+            if product is None:
+                raise ProductNotFoundError("product unavailable")
+            require_review_transition(status=product.status, outcome=outcome)
+            require_expected_version(current=product.version, expected=expected_version)
+
+            if product.status == "submitted":
+                submission = await self.repository.get_pending_submission(
+                    session, product_id=product_id, lock=True
+                )
+                if (
+                    submission is None
+                    or submission.id != submission_id
+                    or submission.product_version != expected_version
+                ):
+                    raise ProductConflictError("submission period has changed")
+            else:
+                submission = await self.repository.get_latest_submission(
+                    session, product_id=product_id, lock=True
+                )
+                if (
+                    submission is None
+                    or submission.id != submission_id
+                    or submission.state != "approved"
+                ):
+                    raise ProductConflictError("approved submission period has changed")
+
+            current_status = product.status
+            reviewed_version = product.version
+            now = self.clock()
+            updated = await self.repository.set_product_state(
+                session, product=product, status=outcome, now=now
+            )
+            await self.repository.resolve_submission(
+                session, submission=submission, outcome=outcome, closed_at=now
+            )
+            decision = await self.repository.create_review_decision(
+                session,
+                submission_id=submission.id,
+                actor_id=actor_id,
+                from_status=current_status,
+                outcome=outcome,
+                reviewed_product_version=reviewed_version,
+                feedback=normalized_feedback,
+                idempotency_key=key,
+                request_fingerprint=fingerprint,
+                created_at=now,
+            )
+            try:
+                await self.review_notifications.record_review_outcome(
+                    session, decision=decision, founder_id=product.founder_id
+                )
+            except Exception as error:
+                raise ProductInfrastructureError("review outcome could not be recorded") from error
+            return ProductReviewResult(
+                decision=decision,
+                product_id=product.id,
+                status=updated.status,
+                version=updated.version,
+            )
 
     async def create_draft(self, session: AsyncSession, *, actor_id: UUID) -> ProductDraft:
         """Create an incomplete private draft for any signed-in unsuspended member."""
@@ -599,6 +759,11 @@ class ProductService:
             require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
             require_draft_status(product.status)
             require_expected_version(current=product.version, expected=expected_version)
+            require_product_not_reviewed(
+                has_decisions=await self.repository.has_review_decisions(
+                    session, product_id=product.id
+                )
+            )
             try:
                 await storage.get_product_private(
                     account_id=actor_id,
@@ -710,6 +875,8 @@ class ProductService:
                 if current is not None:
                     return _submission_view(current)
                 raise ProductConflictError("product submission is no longer pending")
+            if product.status not in {"draft", "changes_requested"}:
+                raise ProductConflictError("product is not eligible for submission")
             require_expected_version(current=product.version, expected=expected_version)
             validate_submission_content(_product_content(product))
             missing = await self.repository.submission_gaps(session, product_id=product.id)
@@ -752,7 +919,7 @@ class ProductService:
             if product is None:
                 raise ProductNotFoundError("product unavailable")
             require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
-            require_draft_status(product.status)
+            require_editable_status(product.status)
             now = self.clock()
             pending_count = await self.repository.count_pending_assets(
                 session, product_id=product.id, now=now
@@ -811,7 +978,7 @@ class ProductService:
             if product is None:
                 raise ProductNotFoundError("product unavailable")
             require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
-            require_draft_status(product.status)
+            require_editable_status(product.status)
             asset = await self.repository.get_asset(
                 session, product_id=product.id, asset_id=asset_id, lock=True
             )
@@ -881,7 +1048,7 @@ class ProductService:
             if product is None:
                 raise ProductNotFoundError("product unavailable")
             require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
-            require_draft_status(product.status)
+            require_editable_status(product.status)
             require_expected_version(current=product.version, expected=expected_version)
             assets = await self.repository.get_assets(
                 session, product_id=product.id, asset_ids=set(selected)
@@ -910,7 +1077,7 @@ class ProductService:
                     available_at=now + self.ASSET_CLEANUP_GRACE,
                 )
             saved = await self.repository.set_product_state(
-                session, product=product, status="draft", now=now
+                session, product=product, status=product.status, now=now
             )
             await self._record_event(session, saved, event_type="product.asset_changed.v1", now=now)
             return _draft_view(saved)
@@ -1169,6 +1336,30 @@ def _draft_view(product: Product) -> ProductDraft:
         created_at=product.created_at,
         updated_at=product.updated_at,
     )
+
+
+def _review_request_fingerprint(
+    *,
+    product_id: UUID,
+    submission_id: UUID,
+    expected_version: int,
+    outcome: str,
+    feedback: str | None,
+) -> str:
+    """Hash normalized command fields so key replay cannot change its meaning."""
+
+    payload = json.dumps(
+        {
+            "product_id": str(product_id),
+            "submission_id": str(submission_id),
+            "expected_version": expected_version,
+            "outcome": outcome,
+            "feedback": feedback,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _asset_view(asset: ProductAsset) -> ProductAssetResult:

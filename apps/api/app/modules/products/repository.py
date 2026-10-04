@@ -16,6 +16,7 @@ from uuid6 import uuid7
 from app.modules.products.models import (
     Product,
     ProductAsset,
+    ProductReviewDecision,
     ProductSubmission,
     ProductTopic,
     Topic,
@@ -246,11 +247,23 @@ class ProductRepository:
 
         await session.execute(delete(Product).where(Product.id == product.id))
 
+    async def has_review_decisions(self, session: AsyncSession, *, product_id: UUID) -> bool:
+        decision_id = await session.scalar(
+            select(ProductReviewDecision.id)
+            .join(ProductSubmission, ProductSubmission.id == ProductReviewDecision.submission_id)
+            .where(ProductSubmission.product_id == product_id)
+            .limit(1)
+        )
+        return decision_id is not None
+
     async def count_drafts(self, session: AsyncSession, *, founder_id: UUID) -> int:
         count = await session.scalar(
             select(func.count())
             .select_from(Product)
-            .where(Product.founder_id == founder_id, Product.status == "draft")
+            .where(
+                Product.founder_id == founder_id,
+                Product.status.in_(("draft", "changes_requested")),
+            )
         )
         return int(count or 0)
 
@@ -479,6 +492,87 @@ class ProductRepository:
             statement = statement.with_for_update()
         return cast(ProductSubmission | None, await session.scalar(statement))
 
+    async def get_submission(
+        self,
+        session: AsyncSession,
+        *,
+        product_id: UUID,
+        submission_id: UUID,
+        lock: bool = False,
+    ) -> ProductSubmission | None:
+        statement = select(ProductSubmission).where(
+            ProductSubmission.product_id == product_id,
+            ProductSubmission.id == submission_id,
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return cast(ProductSubmission | None, await session.scalar(statement))
+
+    async def get_latest_submission(
+        self, session: AsyncSession, *, product_id: UUID, lock: bool = False
+    ) -> ProductSubmission | None:
+        statement = (
+            select(ProductSubmission)
+            .where(ProductSubmission.product_id == product_id)
+            .order_by(ProductSubmission.submitted_at.desc(), ProductSubmission.id.desc())
+            .limit(1)
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return cast(ProductSubmission | None, await session.scalar(statement))
+
+    async def find_review_decision_by_actor_key(
+        self, session: AsyncSession, *, actor_id: UUID, idempotency_key: str
+    ) -> ProductReviewDecision | None:
+        statement = select(ProductReviewDecision).where(
+            ProductReviewDecision.actor_account_id == actor_id,
+            ProductReviewDecision.idempotency_key == idempotency_key,
+        )
+        return cast(ProductReviewDecision | None, await session.scalar(statement))
+
+    async def create_review_decision(
+        self,
+        session: AsyncSession,
+        *,
+        submission_id: UUID,
+        actor_id: UUID,
+        from_status: str,
+        outcome: str,
+        reviewed_product_version: int,
+        feedback: str | None,
+        idempotency_key: str,
+        request_fingerprint: str,
+        created_at: datetime,
+    ) -> ProductReviewDecision:
+        values = {
+            "id": uuid7(),
+            "submission_id": submission_id,
+            "actor_account_id": actor_id,
+            "from_status": from_status,
+            "outcome": outcome,
+            "reviewed_product_version": reviewed_product_version,
+            "feedback": feedback,
+            "idempotency_key": idempotency_key,
+            "request_fingerprint": request_fingerprint,
+            "created_at": created_at,
+        }
+        result = await session.execute(
+            sa_insert(ProductReviewDecision).values(**values).returning(ProductReviewDecision)
+        )
+        return result.scalar_one()
+
+    async def resolve_submission(
+        self,
+        session: AsyncSession,
+        *,
+        submission: ProductSubmission,
+        outcome: str,
+        closed_at: datetime,
+    ) -> None:
+        submission.state = outcome
+        submission.closed_at = closed_at
+        await session.flush()
+
     async def create_submission(
         self,
         session: AsyncSession,
@@ -582,7 +676,7 @@ class ProductRepository:
             .where(
                 Product.id == product_id,
                 Product.founder_id == founder_id,
-                Product.status == "draft",
+                Product.status.in_(("draft", "changes_requested")),
             )
             .execution_options(populate_existing=True)
         )
@@ -604,7 +698,7 @@ class ProductRepository:
             .where(
                 Product.id == product.id,
                 Product.founder_id == product.founder_id,
-                Product.status == "draft",
+                Product.status.in_(("draft", "changes_requested")),
                 Product.version == product.version,
             )
             .values(

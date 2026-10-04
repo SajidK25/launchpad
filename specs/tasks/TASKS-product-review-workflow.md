@@ -124,7 +124,7 @@ Provide the notification service that a product decision calls inside its databa
 
 ## Task T3: Enforce Review and Founder Correction Transitions
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
