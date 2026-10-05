@@ -495,7 +495,7 @@ Register typed handlers for review outcome email and account-scoped Redis invali
 
 ## Task T9: Send Production Transactional Email Through Resend
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high

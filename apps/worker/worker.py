@@ -14,9 +14,10 @@ from app.modules.auth.staff import AuthAccessService
 from app.modules.notifications.live import notification_channel
 from app.modules.notifications.repository import NotificationRepository
 from app.modules.products.service import ProductService
-from app.shared.config.settings import load_settings
+from app.shared.config.settings import Settings, load_settings
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
+from app.shared.email.resend import ResendEmailSender
 from app.shared.email.transport import EmailTransport
 from app.shared.events.dispatcher import dispatch_due
 from app.shared.events.outbox import OutboxRepository, PermanentEventError
@@ -32,6 +33,30 @@ FRESHNESS_SECONDS = 5.0
 
 class RedisPublisher(Protocol):
     async def publish(self, channel: str, message: str) -> int: ...
+
+
+def create_email_sender(settings: Settings) -> EmailTransport | ResendEmailSender:
+    """Select the production API sender or the local/check SMTP transport."""
+
+    if settings.mail_sender is None:
+        raise RuntimeError("Transactional email sender address is not configured.")
+    if settings.environment == "production":
+        if settings.resend_api_key is None:
+            raise RuntimeError("Resend API credentials are not configured.")
+        return ResendEmailSender(
+            api_key=settings.resend_api_key.get_secret_value(),
+            sender=str(settings.mail_sender),
+        )
+    if settings.smtp_host is None or settings.smtp_port is None or settings.smtp_use_tls is None:
+        raise RuntimeError("Local transactional email transport is not configured.")
+    return EmailTransport(
+        hostname=settings.smtp_host,
+        port=settings.smtp_port,
+        sender=str(settings.mail_sender),
+        use_tls=settings.smtp_use_tls,
+        username=settings.smtp_username.get_secret_value() if settings.smtp_username else None,
+        password=settings.smtp_password.get_secret_value() if settings.smtp_password else None,
+    )
 
 
 class ReviewOutcomeEmailHandler:
@@ -163,14 +188,7 @@ async def run_worker(health: ProgressHealth) -> None:
         secret_access_key=settings.storage_secret_access_key.get_secret_value(),
         client_factory=storage_client._client,
     )
-    transport = EmailTransport(
-        hostname=settings.smtp_host,  # type: ignore[arg-type]
-        port=settings.smtp_port,  # type: ignore[arg-type]
-        sender=str(settings.mail_sender),
-        use_tls=settings.smtp_use_tls,  # type: ignore[arg-type]
-        username=settings.smtp_username.get_secret_value() if settings.smtp_username else None,
-        password=settings.smtp_password.get_secret_value() if settings.smtp_password else None,
-    )
+    email_sender = create_email_sender(settings)
     repository = OutboxRepository()
     notification_repository = NotificationRepository()
     member_access = AuthAccessService()
@@ -191,7 +209,7 @@ async def run_worker(health: ProgressHealth) -> None:
                         session,
                         repository=repository,
                         codec=codec,
-                        sender=transport,
+                        sender=email_sender,
                         product_handler=product_service,
                         review_email_handler=ReviewOutcomeEmailHandler(
                             member_access=member_access,
@@ -210,6 +228,8 @@ async def run_worker(health: ProgressHealth) -> None:
                 pass
             await asyncio.sleep(1)
     finally:
+        if isinstance(email_sender, ResendEmailSender):
+            await email_sender.aclose()
         await redis.aclose()
         await database.close()
 
