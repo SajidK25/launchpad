@@ -778,7 +778,7 @@ Present reviewer decisions and founder outcome paths in the existing product wor
 
 ## Task T14: Add Typed Notification Client and Live Reconciliation
 
-> **Status:** in progress
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
