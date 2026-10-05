@@ -87,6 +87,7 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, UUID, UUID]:
             read_states[notification_id] = now
         return NotificationItem(
             id=notification_id,
+            product_id=uuid4(),
             kind="review_approved",
             created_at=now,
             read_at=read_states[notification_id],

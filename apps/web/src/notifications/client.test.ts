@@ -10,7 +10,8 @@ describe("notification client", () => {
             items: [
               {
                 id: "notice-1",
-                kind: "review_approved",
+                productId: "product-1",
+                kind: "REVIEW_APPROVED",
                 createdAt: "2026-10-01T00:00:00Z",
                 readAt: null,
               },
@@ -37,6 +38,7 @@ describe("notification client", () => {
     const fetcher = vi.fn().mockResolvedValue(
       Response.json({
         id: "notice-2",
+        product_id: "product-2",
         kind: "review_rejected",
         created_at: "2026-10-02T00:00:00Z",
         read_at: "2026-10-03T00:00:00Z",

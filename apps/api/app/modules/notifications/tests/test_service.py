@@ -73,18 +73,19 @@ async def _caller_transaction(repository: Any, outbox: Any) -> AsyncIterator[Non
 
 def test_review_outcome_records_notice_and_encrypted_channel_events_in_caller_session() -> None:
     async def verify() -> None:
-        decision_id, founder_id = uuid4(), uuid4()
+        decision_id, founder_id, product_id = uuid4(), uuid4(), uuid4()
         decision = SimpleNamespace(id=decision_id, outcome="changes_requested")
         session = cast(AsyncSession, object())
         repository, outbox = _NotificationRepository(), _OutboxRepository()
         service, codec = _service(repository, outbox)
 
         notice = await service.record_review_outcome(
-            session, decision=decision, founder_id=founder_id
+            session, decision=decision, founder_id=founder_id, product_id=product_id
         )
 
         assert notice is repository.rows[decision_id]
         assert notice.recipient_account_id == founder_id
+        assert notice.product_id == product_id
         assert notice.review_decision_id == decision_id
         assert notice.kind == "review_changes_requested"
         assert len(outbox.events) == 2
@@ -95,9 +96,7 @@ def test_review_outcome_records_notice_and_encrypted_channel_events_in_caller_se
         assert all(event.aggregate_id == decision_id for event in outbox.events)
         assert repository.sessions == [session, session]
         assert outbox.sessions == [session, session]
-        email_payload = codec.decode(
-            outbox.events[0].key_id, outbox.events[0].encrypted_payload
-        )
+        email_payload = codec.decode(outbox.events[0].key_id, outbox.events[0].encrypted_payload)
         live_payload = codec.decode(outbox.events[1].key_id, outbox.events[1].encrypted_payload)
         assert email_payload == {
             "recipient_account_id": str(founder_id),
@@ -118,17 +117,17 @@ def test_review_outcome_records_notice_and_encrypted_channel_events_in_caller_se
 
 def test_replaying_review_outcome_does_not_add_another_notice_or_events() -> None:
     async def verify() -> None:
-        decision_id, founder_id = uuid4(), uuid4()
+        decision_id, founder_id, product_id = uuid4(), uuid4(), uuid4()
         session = cast(AsyncSession, object())
         repository, outbox = _NotificationRepository(), _OutboxRepository()
         service, _ = _service(repository, outbox)
         decision = SimpleNamespace(id=decision_id, outcome="approved")
 
         first = await service.record_review_outcome(
-            session, decision=decision, founder_id=founder_id
+            session, decision=decision, founder_id=founder_id, product_id=product_id
         )
         second = await service.record_review_outcome(
-            session, decision=decision, founder_id=founder_id
+            session, decision=decision, founder_id=founder_id, product_id=product_id
         )
 
         assert second is first
@@ -140,7 +139,7 @@ def test_replaying_review_outcome_does_not_add_another_notice_or_events() -> Non
 
 def test_outbox_failure_leaves_rollback_to_callers_transaction() -> None:
     async def verify() -> None:
-        decision_id, founder_id = uuid4(), uuid4()
+        decision_id, founder_id, product_id = uuid4(), uuid4(), uuid4()
         repository, outbox = _NotificationRepository(), _OutboxRepository(fail_on=2)
         service, _ = _service(repository, outbox)
         decision = SimpleNamespace(id=decision_id, outcome="rejected")
@@ -150,7 +149,10 @@ def test_outbox_failure_leaves_rollback_to_callers_transaction() -> None:
         with pytest.raises(RuntimeError, match="outbox unavailable"):
             async with _caller_transaction(repository, outbox):
                 await service.record_review_outcome(
-                    typed_session, decision=decision, founder_id=founder_id
+                    typed_session,
+                    decision=decision,
+                    founder_id=founder_id,
+                    product_id=product_id,
                 )
 
         # The caller owns commit/rollback. A rolled-back caller transaction drops the first
@@ -170,6 +172,7 @@ def test_notification_service_never_calls_a_delivery_provider() -> None:
             cast(AsyncSession, object()),
             decision=SimpleNamespace(id=uuid4(), outcome="approved"),
             founder_id=uuid4(),
+            product_id=uuid4(),
         )
 
         assert not hasattr(service, "email_sender")

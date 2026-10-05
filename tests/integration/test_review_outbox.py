@@ -139,6 +139,7 @@ def test_review_outbox_dispatches_private_email_and_owner_scoped_hint(
                     insert(Notification).values(
                         id=notification_id,
                         recipient_account_id=owner_id,
+                        product_id=product_id,
                         review_decision_id=decision_id,
                         kind="review_changes_requested",
                         created_at=now,

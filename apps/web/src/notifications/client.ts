@@ -20,7 +20,10 @@ export type NotificationPage = Omit<
   "items"
 > & {
   items: Array<
-    Omit<ViewerNotificationInboxQuery["viewerNotificationInbox"]["items"][number], "kind"> & {
+    Omit<
+      ViewerNotificationInboxQuery["viewerNotificationInbox"]["items"][number],
+      "kind"
+    > & {
       kind: NotificationKind;
     }
   >;
@@ -28,7 +31,10 @@ export type NotificationPage = Omit<
 export type NotificationRead = Schemas["NotificationReadResponse"];
 
 export class NotificationRequestError extends Error {
-  constructor(readonly status: number, readonly body: unknown) {
+  constructor(
+    readonly status: number,
+    readonly body: unknown,
+  ) {
     super(`Notification request failed with status ${status}.`);
   }
 }
@@ -59,7 +65,10 @@ export function createNotificationClient(
         errors?: unknown[];
       };
       if (result.errors?.length || !result.data?.viewerNotificationInbox)
-        throw new NotificationRequestError(response.status, result.errors ?? value);
+        throw new NotificationRequestError(
+          response.status,
+          result.errors ?? value,
+        );
       return validateInbox(result.data.viewerNotificationInbox);
     },
     markRead: async (id: string): Promise<NotificationRead> => {
@@ -115,13 +124,16 @@ function validateInbox(
   value: ViewerNotificationInboxQuery["viewerNotificationInbox"],
 ): NotificationPage {
   const items = value.items.map((item) => {
-    if (
-      item.kind !== "review_approved" &&
-      item.kind !== "review_rejected" &&
-      item.kind !== "review_changes_requested"
-    )
-      throw new NotificationRequestError(200, value);
-    return item as NotificationPage["items"][number];
+    const kind: NotificationKind | null =
+      item.kind === "REVIEW_APPROVED"
+        ? "review_approved"
+        : item.kind === "REVIEW_REJECTED"
+          ? "review_rejected"
+          : item.kind === "REVIEW_CHANGES_REQUESTED"
+            ? "review_changes_requested"
+            : null;
+    if (!kind) throw new NotificationRequestError(200, value);
+    return { ...item, kind };
   });
   return { ...value, items };
 }

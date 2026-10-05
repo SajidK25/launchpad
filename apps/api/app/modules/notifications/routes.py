@@ -41,6 +41,7 @@ class NotificationReadResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    product_id: UUID
     kind: NotificationKind
     created_at: datetime
     read_at: datetime | None

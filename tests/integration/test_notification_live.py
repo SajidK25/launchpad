@@ -122,6 +122,7 @@ def test_mounted_notification_reads_survive_disconnect_and_live_hints_stay_accou
                         insert(Notification).values(
                             id=notification_id,
                             recipient_account_id=founder_id,
+                            product_id=product_id,
                             review_decision_id=decision_id,
                             kind="review_approved",
                             created_at=now,

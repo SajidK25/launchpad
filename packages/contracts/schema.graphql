@@ -16,6 +16,7 @@ scalar DateTime
 
 type NotificationEntry {
   id: UUID!
+  productId: UUID!
   kind: NotificationKindEnum!
   createdAt: DateTime!
   readAt: DateTime

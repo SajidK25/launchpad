@@ -521,6 +521,11 @@ export interface components {
        * @enum {string}
        */
       kind: "review_approved" | "review_rejected" | "review_changes_requested";
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
       /** Read At */
       read_at: string | null;
     };

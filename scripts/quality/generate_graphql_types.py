@@ -8,6 +8,8 @@ from pathlib import Path
 from graphql import build_ast_schema, parse, print_ast, validate
 from graphql.language import ast
 from graphql.type import (
+    GraphQLEnumType,
+    GraphQLNamedType,
     GraphQLList,
     GraphQLNonNull,
     GraphQLObjectType,
@@ -33,12 +35,18 @@ def _ts_type(type_node: ast.TypeNode, schema: GraphQLSchema) -> str:
         return f"Array<{value}> | null"
     assert isinstance(type_node, ast.NamedTypeNode)
     named = get_named_type(schema.get_type(type_node.name.value))
-    return f"{SCALARS.get(named.name, named.name) if named else 'unknown'} | null"
+    return f"{_named_ts_type(named) if named else 'unknown'} | null"
 
 
 def _schema_type(name: str, schema: GraphQLSchema) -> str:
     named = get_named_type(schema.get_type(name))
-    return SCALARS.get(named.name, named.name) if named else "unknown"
+    return _named_ts_type(named) if named else "unknown"
+
+
+def _named_ts_type(named: GraphQLNamedType) -> str:
+    if isinstance(named, GraphQLEnumType):
+        return " | ".join(f'"{value}"' for value in named.values)
+    return SCALARS.get(named.name, named.name)
 
 
 def _output_type(
@@ -57,6 +65,8 @@ def _output_type(
         scalar_type = SCALARS.get(named.name)
         if scalar_type is not None:
             output_type = scalar_type
+        elif isinstance(named, GraphQLEnumType):
+            output_type = _named_ts_type(named)
         elif isinstance(named, GraphQLObjectType):
             if selection_set is None:
                 raise ValueError(f"object field {named.name} requires a selection set")

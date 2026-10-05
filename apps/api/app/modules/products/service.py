@@ -106,7 +106,12 @@ class ProductReviewNotifications(Protocol):
     """Named notifications interface used within a product decision transaction."""
 
     async def record_review_outcome(
-        self, session: AsyncSession, *, decision: ReviewNoticeDecision, founder_id: UUID
+        self,
+        session: AsyncSession,
+        *,
+        decision: ReviewNoticeDecision,
+        founder_id: UUID,
+        product_id: UUID,
     ) -> object: ...
 
 
@@ -468,7 +473,10 @@ class ProductService:
             )
             try:
                 await self.review_notifications.record_review_outcome(
-                    session, decision=decision, founder_id=product.founder_id
+                    session,
+                    decision=decision,
+                    founder_id=product.founder_id,
+                    product_id=product.id,
                 )
             except Exception as error:
                 raise ProductInfrastructureError("review outcome could not be recorded") from error

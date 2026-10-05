@@ -27,6 +27,7 @@ class NotificationKindEnum(StrEnum):
 @strawberry.type
 class NotificationEntry:
     id: UUID
+    product_id: UUID
     kind: NotificationKindEnum
     created_at: datetime
     read_at: datetime | None
@@ -81,6 +82,7 @@ class NotificationQuery:
                 items=[
                     NotificationEntry(
                         id=item.id,
+                        product_id=item.product_id,
                         kind=NotificationKindEnum(item.kind),
                         created_at=item.created_at,
                         read_at=item.read_at,

@@ -22,8 +22,7 @@ export function useNotificationInbox(
   after?: string | null,
 ) {
   const queryClient = useQueryClient();
-  const eligible =
-    session?.role === "member" && session.suspended === false;
+  const eligible = session?.role === "member" && session.suspended === false;
   const accountId = eligible ? session.account_id : "";
   const inbox = useQuery({
     queryKey: notificationKeys.inbox(accountId, first, after),

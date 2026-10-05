@@ -296,7 +296,9 @@ def test_notification_uniqueness_and_read_indexes(
         try:
             await database.prepare()
             async with database.engine.begin() as connection:
-                founder_id, reviewer_id, _, submission_id, now = await _seed_review(connection)
+                founder_id, reviewer_id, product_id, submission_id, now = await _seed_review(
+                    connection
+                )
                 decision_id = uuid4()
                 await connection.execute(
                     _INSERT_DECISION,
@@ -315,12 +317,14 @@ def test_notification_uniqueness_and_read_indexes(
                 await connection.execute(
                     text(
                         "INSERT INTO notifications "
-                        "(id, recipient_account_id, review_decision_id, kind, created_at) "
-                        "VALUES (:id, :recipient, :decision, 'review_approved', :now)"
+                        "(id, recipient_account_id, product_id, review_decision_id, "
+                        "kind, created_at) "
+                        "VALUES (:id, :recipient, :product, :decision, 'review_approved', :now)"
                     ),
                     {
                         "id": uuid4(),
                         "recipient": founder_id,
+                        "product": product_id,
                         "decision": decision_id,
                         "now": now,
                     },
@@ -330,12 +334,14 @@ def test_notification_uniqueness_and_read_indexes(
                     await connection.execute(
                         text(
                             "INSERT INTO notifications "
-                            "(id, recipient_account_id, review_decision_id, kind, created_at) "
-                            "VALUES (:id, :recipient, :decision, 'review_approved', :now)"
+                            "(id, recipient_account_id, product_id, review_decision_id, "
+                            "kind, created_at) "
+                            "VALUES (:id, :recipient, :product, :decision, 'review_approved', :now)"
                         ),
                         {
                             "id": uuid4(),
                             "recipient": founder_id,
+                            "product": product_id,
                             "decision": decision_id,
                             "now": now,
                         },

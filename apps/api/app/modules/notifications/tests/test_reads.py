@@ -118,6 +118,9 @@ def test_notification_query_exposes_bounded_inbox_and_read_only_schema() -> None
     inbox = schema.get_type("NotificationInbox")
     assert isinstance(inbox, GraphQLObjectType)
     assert {"items", "unreadCount", "nextCursor"} <= inbox.fields.keys()
+    entry = schema.get_type("NotificationEntry")
+    assert isinstance(entry, GraphQLObjectType)
+    assert "productId" in entry.fields
 
 
 def test_notification_graphql_requires_an_authenticated_member_context() -> None:
@@ -141,6 +144,7 @@ def test_inbox_pages_only_active_recipient_items_without_marking_them_read() -> 
             SimpleNamespace(
                 id=uuid4(),
                 recipient_account_id=recipient,
+                product_id=uuid4(),
                 review_decision_id=uuid4(),
                 kind="review_approved",
                 created_at=now.replace(minute=index),
@@ -152,6 +156,7 @@ def test_inbox_pages_only_active_recipient_items_without_marking_them_read() -> 
             SimpleNamespace(
                 id=uuid4(),
                 recipient_account_id=other,
+                product_id=uuid4(),
                 review_decision_id=uuid4(),
                 kind="review_rejected",
                 created_at=now,
@@ -198,6 +203,7 @@ def test_mark_read_changes_only_owned_item_once_and_enqueues_one_hint() -> None:
             SimpleNamespace(
                 id=notification_id,
                 recipient_account_id=recipient,
+                product_id=uuid4(),
                 review_decision_id=uuid4(),
                 kind="review_changes_requested",
                 created_at=now,
@@ -206,6 +212,7 @@ def test_mark_read_changes_only_owned_item_once_and_enqueues_one_hint() -> None:
             SimpleNamespace(
                 id=other_id,
                 recipient_account_id=recipient,
+                product_id=uuid4(),
                 review_decision_id=uuid4(),
                 kind="review_approved",
                 created_at=now,
@@ -347,6 +354,7 @@ def test_postgres_notification_reads_are_recipient_scoped_and_mark_once() -> Non
                         insert(Notification).values(
                             id=notification_ids[index],
                             recipient_account_id=owner_id if index < 2 else other_id,
+                            product_id=product_id,
                             review_decision_id=decision_id,
                             kind="review_approved",
                             created_at=now,

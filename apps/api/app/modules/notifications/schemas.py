@@ -12,9 +12,10 @@ NotificationKind = Literal["review_approved", "review_rejected", "review_changes
 
 @dataclass(frozen=True, slots=True)
 class NotificationItem:
-    """Founder-safe notification fields; excludes product and reviewer details."""
+    """Founder-safe notice with its owner-authorized product destination."""
 
     id: UUID
+    product_id: UUID
     kind: NotificationKind
     created_at: datetime
     read_at: datetime | None

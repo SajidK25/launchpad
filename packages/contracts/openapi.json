@@ -119,6 +119,11 @@
             "title": "Kind",
             "type": "string"
           },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
           "read_at": {
             "anyOf": [
               {
@@ -132,7 +137,7 @@
             "title": "Read At"
           }
         },
-        "required": ["id", "kind", "created_at", "read_at"],
+        "required": ["id", "product_id", "kind", "created_at", "read_at"],
         "title": "NotificationReadResponse",
         "type": "object"
       },

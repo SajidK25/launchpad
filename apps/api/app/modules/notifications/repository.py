@@ -32,6 +32,7 @@ class NotificationRepository:
             insert(Notification).values(
                 id=notification.id,
                 recipient_account_id=notification.recipient_account_id,
+                product_id=notification.product_id,
                 review_decision_id=notification.review_decision_id,
                 kind=notification.kind,
                 created_at=notification.created_at,

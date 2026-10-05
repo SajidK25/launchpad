@@ -194,6 +194,7 @@ class NotificationService:
         *,
         decision: ReviewDecision,
         founder_id: UUID,
+        product_id: UUID,
     ) -> Notification:
         """Add one durable notice and two encrypted outbox requests atomically."""
 
@@ -204,6 +205,7 @@ class NotificationService:
         notification = Notification(
             id=uuid7(),
             recipient_account_id=founder_id,
+            product_id=product_id,
             review_decision_id=decision.id,
             kind=review_notification_kind(decision.outcome),
             created_at=self.clock(),
@@ -253,6 +255,7 @@ class NotificationService:
 def _item(notification: Notification) -> NotificationItem:
     return NotificationItem(
         id=notification.id,
+        product_id=notification.product_id,
         kind=cast(NotificationKind, notification.kind),
         created_at=notification.created_at,
         read_at=notification.read_at,

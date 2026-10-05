@@ -837,7 +837,7 @@ Provide typed inbox paging, unread count, one-item read command, and session-sco
 
 ## Task T15: Mount an Accessible Live Notification Bell
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high

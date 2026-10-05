@@ -392,7 +392,8 @@ export type ViewerNotificationInboxQuery = {
   viewerNotificationInbox: {
     items: Array<{
       id: string;
-      kind: unknown;
+      productId: string;
+      kind: "REVIEW_APPROVED" | "REVIEW_REJECTED" | "REVIEW_CHANGES_REQUESTED";
       createdAt: string;
       readAt: string | null;
     }>;
@@ -406,6 +407,7 @@ export const VIEWER_NOTIFICATION_INBOX_QUERY =
   viewerNotificationInbox(first: $first, after: $after) {
     items {
       id
+      productId
       kind
       createdAt
       readAt

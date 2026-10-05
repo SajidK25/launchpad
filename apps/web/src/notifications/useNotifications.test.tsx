@@ -26,7 +26,12 @@ describe("notification inbox", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     const { result } = renderHook(
-      () => useNotificationInbox(client, { account_id: "founder-1", role: "member", suspended: false }),
+      () =>
+        useNotificationInbox(client, {
+          account_id: "founder-1",
+          role: "member",
+          suspended: false,
+        }),
       { wrapper },
     );
 
@@ -43,7 +48,9 @@ describe("notification inbox", () => {
         unreadCount: 2,
         nextCursor: null,
       }),
-      markRead: vi.fn().mockResolvedValue({ id: "notice-2" }),
+      markRead: vi
+        .fn()
+        .mockResolvedValue({ id: "notice-2", product_id: "product-2" }),
       subscribeToChanges: vi.fn(() => () => undefined),
     };
     const queryClient = new QueryClient({
@@ -53,7 +60,12 @@ describe("notification inbox", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     const { result } = renderHook(
-      () => useNotificationInbox(client, { account_id: "founder-1", role: "member", suspended: false }),
+      () =>
+        useNotificationInbox(client, {
+          account_id: "founder-1",
+          role: "member",
+          suspended: false,
+        }),
       { wrapper },
     );
     await waitFor(() => expect(result.current.inbox.data).toBeDefined());
@@ -67,7 +79,9 @@ describe("notification inbox", () => {
   it("clears the previous account inbox and live connection on session change", async () => {
     const close = vi.fn();
     const client = {
-      fetchInbox: vi.fn().mockResolvedValue({ items: [], unreadCount: 0, nextCursor: null }),
+      fetchInbox: vi
+        .fn()
+        .mockResolvedValue({ items: [], unreadCount: 0, nextCursor: null }),
       markRead: vi.fn(),
       subscribeToChanges: vi.fn(() => close),
     };
@@ -76,7 +90,13 @@ describe("notification inbox", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     const { rerender } = renderHook(
-      ({ account }) => useNotificationInbox(client, account ? { account_id: account, role: "member", suspended: false } : null),
+      ({ account }) =>
+        useNotificationInbox(
+          client,
+          account
+            ? { account_id: account, role: "member", suspended: false }
+            : null,
+        ),
       { initialProps: { account: "founder-1" as string | null }, wrapper },
     );
     await waitFor(() => expect(client.fetchInbox).toHaveBeenCalled());

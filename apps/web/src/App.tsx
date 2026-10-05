@@ -6,6 +6,7 @@ import { ProductRoutes } from "./products/ProductScreens";
 import { createIdentityClient } from "./identity/client";
 import { IdentityRoutes, navigate } from "./identity/Screens";
 import { ProfileRoutes } from "./profiles/ProfileScreens";
+import { NotificationBell } from "./notifications/NotificationBell";
 
 const statusCopy = {
   connected: "Connected",
@@ -35,11 +36,14 @@ export function App() {
   if (path !== "/") {
     if (path === "/products" || path.startsWith("/products/")) {
       return (
-        <ProductRoutes
-          identityClient={identityClient}
-          path={path}
-          client={productClient}
-        />
+        <>
+          <NotificationBell identityClient={identityClient} />
+          <ProductRoutes
+            identityClient={identityClient}
+            path={path}
+            client={productClient}
+          />
+        </>
       );
     }
     if (path === "/profile") {

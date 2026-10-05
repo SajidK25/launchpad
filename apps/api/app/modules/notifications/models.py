@@ -39,6 +39,9 @@ class Notification(NotificationBase):
     recipient_account_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
     )
+    product_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("products.id", ondelete="RESTRICT"), nullable=False
+    )
     review_decision_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("product_review_decisions.id", ondelete="RESTRICT"),

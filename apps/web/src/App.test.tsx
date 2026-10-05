@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
@@ -91,7 +92,16 @@ describe("App", () => {
       state: "connected",
     });
     window.history.pushState({}, "", "/products/one");
-    const view = render(<App />);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(<App />, {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    });
     expect(screen.getByText("product route: /products/one")).not.toBeNull();
 
     window.history.pushState({}, "", "/profile");

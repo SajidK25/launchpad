@@ -165,6 +165,7 @@ query ViewerNotificationInbox($first: Int! = 20, $after: String) {
   viewerNotificationInbox(first: $first, after: $after) {
     items {
       id
+      productId
       kind
       createdAt
       readAt
