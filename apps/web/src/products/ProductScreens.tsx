@@ -3,10 +3,17 @@ import type { ViewerProductQuery } from "@launchpad/contracts/src/graphql.genera
 import { useCurrentSession, useLogout } from "../identity/useIdentity";
 import type { IdentityClient } from "../identity/client";
 import { navigate } from "../identity/Screens";
-import { ProductRequestError, type ProductClient } from "./client";
+import {
+  ProductRequestError,
+  type ProductClient,
+  type ReviewDecisionInput,
+  type ReviewDecisionResult,
+} from "./client";
 import {
   useAttachProductAssets,
+  useApprovedReviews,
   useCreateDraft,
+  useDecideReview,
   useDeleteProductDraft,
   useProductAutosave,
   useReviewProduct,
@@ -195,7 +202,9 @@ function ProductHome({
   const create = useCreateDraft(client);
   const [error, setError] = useState("");
   const drafts =
-    products.data?.items.filter((item) => item.status === "draft") ?? [];
+    products.data?.items.filter(
+      (item) => item.status === "draft" || item.status === "changes_requested",
+    ) ?? [];
   const pending =
     products.data?.items.filter((item) => item.status === "submitted") ?? [];
   async function createDraft() {
@@ -278,9 +287,7 @@ function ProductHome({
                 <span
                   className={`product-status product-status-${product.status}`}
                 >
-                  {product.status === "submitted"
-                    ? "In review"
-                    : "Private draft"}
+                  {productStatusLabel(product.status)}
                 </span>
               </a>
             </li>
@@ -311,56 +318,153 @@ function StaffReviewQueue({ client }: { client: ProductClient }) {
   const items = queue.data?.items ?? [];
 
   return (
+    <div className="staff-review-workspace">
+      <section
+        aria-labelledby="review-title"
+        className="product-panel staff-review"
+      >
+        <a
+          className="back-link-button"
+          href="/products"
+          onClick={linkTo("/products")}
+        >
+          ← Your products
+        </a>
+        <p className="eyebrow">Staff workspace</p>
+        <div className="staff-review-heading">
+          <div>
+            <h1 id="review-title">Staff review queue</h1>
+            <p className="product-intro">
+              Pending submissions, oldest arrival first. Current product details
+              are shown when you open an entry.
+            </p>
+          </div>
+          <button
+            className="secondary-button"
+            disabled={queue.isFetching}
+            onClick={() => void queue.refetch()}
+            type="button"
+          >
+            {queue.isFetching ? "Refreshing…" : "Refresh queue"}
+          </button>
+        </div>
+        {queue.isPending ? (
+          <p role="status">Loading pending submissions…</p>
+        ) : null}
+        {queue.isError ? (
+          <p className="product-alert" role="alert">
+            The staff queue is unavailable. Try refreshing.
+          </p>
+        ) : null}
+        {queue.data && items.length === 0 ? (
+          <div className="product-empty">
+            <h2>No pending submissions</h2>
+            <p>New submissions will appear here in arrival order.</p>
+          </div>
+        ) : null}
+        {items.length > 0 ? (
+          <ol
+            className="staff-queue-list"
+            aria-label="Pending submissions, oldest first"
+          >
+            {items.map((item) => (
+              <li key={item.submission.id}>
+                <a
+                  className="staff-queue-card"
+                  href={`/products/review/${item.product.id}`}
+                  onClick={linkTo(`/products/review/${item.product.id}`)}
+                >
+                  <span className="staff-queue-title">
+                    {item.product.name?.trim() || "Untitled product"}
+                  </span>
+                  <span className="staff-queue-pitch">
+                    {item.product.pitch?.trim() || "No one-line pitch"}
+                  </span>
+                  <span>
+                    Submitted {formatReviewDate(item.submission.submittedAt)}
+                  </span>
+                  <span>Version {item.submission.productVersion}</span>
+                  <span className="staff-queue-flags">
+                    {item.possibleDuplicate ? (
+                      <span className="staff-flag staff-flag-warning">
+                        Possible duplicate website
+                      </span>
+                    ) : null}
+                    {item.founderSuspended ? (
+                      <span className="staff-flag staff-flag-danger">
+                        Founder suspended
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="staff-queue-open">
+                    Open current submission →
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+        <nav aria-label="Queue pages" className="staff-queue-pagination">
+          <button
+            className="secondary-button"
+            disabled={cursors.length <= 1 || queue.isFetching}
+            onClick={() => setCursors((current) => current.slice(0, -1))}
+            type="button"
+          >
+            Previous page
+          </button>
+          <span>Page {cursors.length}</span>
+          <button
+            className="secondary-button"
+            disabled={!queue.data?.nextCursor || queue.isFetching}
+            onClick={() => {
+              if (queue.data?.nextCursor)
+                setCursors((current) => [...current, queue.data!.nextCursor]);
+            }}
+            type="button"
+          >
+            Next page
+          </button>
+        </nav>
+      </section>
+      <StaffApprovedReviewList client={client} />
+    </div>
+  );
+}
+
+function StaffApprovedReviewList({ client }: { client: ProductClient }) {
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const after = cursors[cursors.length - 1] ?? null;
+  const approved = useApprovedReviews(client, 20, after);
+  const items = approved.data?.items ?? [];
+
+  return (
     <section
-      aria-labelledby="review-title"
+      aria-labelledby="approved-reviews-title"
       className="product-panel staff-review"
     >
-      <a
-        className="back-link-button"
-        href="/products"
-        onClick={linkTo("/products")}
-      >
-        ← Your products
-      </a>
-      <p className="eyebrow">Staff workspace</p>
-      <div className="staff-review-heading">
-        <div>
-          <h1 id="review-title">Staff review queue</h1>
-          <p className="product-intro">
-            Pending submissions, oldest arrival first. Current product details
-            are shown when you open an entry.
-          </p>
-        </div>
-        <button
-          className="secondary-button"
-          disabled={queue.isFetching}
-          onClick={() => void queue.refetch()}
-          type="button"
-        >
-          {queue.isFetching ? "Refreshing…" : "Refresh queue"}
-        </button>
-      </div>
-      {queue.isPending ? (
-        <p role="status">Loading pending submissions…</p>
+      <h2 id="approved-reviews-title">
+        Approved products needing a second look
+      </h2>
+      <p className="product-intro">
+        Approved products remain private. Open one to request a correction if
+        needed.
+      </p>
+      {approved.isPending ? (
+        <p role="status">Loading approved products…</p>
       ) : null}
-      {queue.isError ? (
-        <p className="product-alert" role="alert">
-          The staff queue is unavailable. Try refreshing.
+      {approved.isError ? (
+        <p role="alert" className="product-alert">
+          Approved products are unavailable. Refresh the page to try again.
         </p>
       ) : null}
-      {queue.data && items.length === 0 ? (
-        <div className="product-empty">
-          <h2>No pending submissions</h2>
-          <p>New submissions will appear here in arrival order.</p>
-        </div>
+      {approved.data && items.length === 0 ? (
+        <p className="product-muted">No approved products need review.</p>
       ) : null}
-      {items.length > 0 ? (
-        <ol
-          className="staff-queue-list"
-          aria-label="Pending submissions, oldest first"
-        >
+      {items.length ? (
+        <ol aria-label="Approved products" className="staff-queue-list">
           {items.map((item) => (
-            <li key={item.submission.id}>
+            <li key={item.product.id}>
               <a
                 className="staff-queue-card"
                 href={`/products/review/${item.product.id}`}
@@ -372,50 +476,38 @@ function StaffReviewQueue({ client }: { client: ProductClient }) {
                 <span className="staff-queue-pitch">
                   {item.product.pitch?.trim() || "No one-line pitch"}
                 </span>
-                <span>
-                  Submitted {formatReviewDate(item.submission.submittedAt)}
-                </span>
-                <span>Version {item.submission.productVersion}</span>
-                <span className="staff-queue-flags">
-                  {item.possibleDuplicate ? (
-                    <span className="staff-flag staff-flag-warning">
-                      Possible duplicate website
-                    </span>
-                  ) : null}
-                  {item.founderSuspended ? (
-                    <span className="staff-flag staff-flag-danger">
-                      Founder suspended
-                    </span>
-                  ) : null}
-                </span>
+                <span>Approved {formatReviewDate(item.approvedAt)}</span>
                 <span className="staff-queue-open">
-                  Open current submission →
+                  Open approved product →
                 </span>
               </a>
             </li>
           ))}
         </ol>
       ) : null}
-      <nav aria-label="Queue pages" className="staff-queue-pagination">
+      <nav
+        aria-label="Approved product pages"
+        className="staff-queue-pagination"
+      >
         <button
           className="secondary-button"
-          disabled={cursors.length <= 1 || queue.isFetching}
+          disabled={cursors.length <= 1 || approved.isFetching}
           onClick={() => setCursors((current) => current.slice(0, -1))}
           type="button"
         >
-          Previous page
+          Previous approved page
         </button>
         <span>Page {cursors.length}</span>
         <button
           className="secondary-button"
-          disabled={!queue.data?.nextCursor || queue.isFetching}
+          disabled={!approved.data?.nextCursor || approved.isFetching}
           onClick={() => {
-            if (queue.data?.nextCursor)
-              setCursors((current) => [...current, queue.data!.nextCursor]);
+            if (approved.data?.nextCursor)
+              setCursors((current) => [...current, approved.data!.nextCursor]);
           }}
           type="button"
         >
-          Next page
+          Next approved page
         </button>
       </nav>
     </section>
@@ -430,6 +522,7 @@ function StaffReviewDetail({
   productId: string;
 }) {
   const review = useReviewProduct(client, productId);
+  const decide = useDecideReview(client, productId);
   const data = review.data;
   const product = data?.product;
   return (
@@ -470,7 +563,11 @@ function StaffReviewDetail({
       ) : null}
       {data && product ? (
         <>
-          <p className="eyebrow">Current pending submission</p>
+          <p className="eyebrow">
+            {product.summary.status === "approved"
+              ? "Approved private product"
+              : "Current pending submission"}
+          </p>
           <div className="staff-review-heading">
             <div>
               <h1 id="review-detail-title">
@@ -586,8 +683,158 @@ function StaffReviewDetail({
               <p>No media is attached to this submission.</p>
             )}
           </section>
+          {product.summary.status === "submitted" ||
+          product.summary.status === "approved" ? (
+            <StaffDecisionPanel
+              currentStatus={product.summary.status}
+              isPending={decide.isPending}
+              onDecide={decide.mutateAsync}
+              productVersion={product.summary.version}
+              submissionId={data.submission.id}
+            />
+          ) : null}
         </>
       ) : null}
+    </section>
+  );
+}
+
+function StaffDecisionPanel({
+  currentStatus,
+  isPending,
+  onDecide,
+  productVersion,
+  submissionId,
+}: {
+  currentStatus: string;
+  isPending: boolean;
+  onDecide: (variables: {
+    payload: ReviewDecisionInput;
+    idempotencyKey: string;
+  }) => Promise<ReviewDecisionResult>;
+  productVersion: number;
+  submissionId: string;
+}) {
+  const isApproved = currentStatus === "approved";
+  const [outcome, setOutcome] = useState<ReviewDecisionInput["outcome"]>(
+    isApproved ? "changes_requested" : "approved",
+  );
+  const [feedback, setFeedback] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const previousRequest = useRef<{
+    signature: string;
+    idempotencyKey: string;
+  } | null>(null);
+
+  async function recordDecision(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    const trimmedFeedback = feedback.trim();
+    if (outcome !== "approved" && !trimmedFeedback) {
+      setError(
+        "Add an explanation for the founder before recording this decision.",
+      );
+      return;
+    }
+    if (outcome !== "approved" && trimmedFeedback.length > 2000) {
+      setError("Feedback must be 2,000 characters or fewer.");
+      return;
+    }
+
+    const payload: ReviewDecisionInput = {
+      submission_id: submissionId,
+      expected_version: productVersion,
+      outcome,
+      ...(outcome === "approved" ? {} : { feedback: trimmedFeedback }),
+    };
+    const signature = JSON.stringify(payload);
+    if (previousRequest.current?.signature !== signature) {
+      previousRequest.current = {
+        signature,
+        idempotencyKey: createReviewIdempotencyKey(),
+      };
+    }
+    try {
+      const result = await onDecide({
+        payload,
+        idempotencyKey: previousRequest.current!.idempotencyKey,
+      });
+      setNotice(
+        `Decision recorded. Product status: ${productStatusLabel(result.status)}.`,
+      );
+    } catch (caught) {
+      if (caught instanceof ProductRequestError && caught.status === 409) {
+        setError(
+          "This product changed after you opened it. Current details were refreshed; review them before retrying.",
+        );
+      } else {
+        setError(
+          "The decision could not be recorded. Your review details are unchanged.",
+        );
+      }
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="review-decision-title"
+      className="staff-review-section staff-decision-panel"
+    >
+      <h2 id="review-decision-title">Review outcome</h2>
+      <form noValidate onSubmit={(event) => void recordDecision(event)}>
+        <label className="product-field" htmlFor="review-outcome">
+          Decision
+          <select
+            id="review-outcome"
+            onChange={(event) =>
+              setOutcome(event.target.value as ReviewDecisionInput["outcome"])
+            }
+            value={outcome}
+          >
+            {isApproved ? (
+              <option value="changes_requested">Request changes</option>
+            ) : (
+              <>
+                <option value="approved">Approve</option>
+                <option value="rejected">Reject</option>
+                <option value="changes_requested">Request changes</option>
+              </>
+            )}
+          </select>
+        </label>
+        {outcome !== "approved" ? (
+          <label className="product-field" htmlFor="review-feedback">
+            Feedback for the founder
+            <textarea
+              aria-describedby="review-feedback-help"
+              id="review-feedback"
+              maxLength={2001}
+              onChange={(event) => setFeedback(event.target.value)}
+              rows={5}
+              value={feedback}
+            />
+            <small id="review-feedback-help">
+              Required for this decision; up to 2,000 characters after trimming.{" "}
+              {feedback.length}/2,000
+            </small>
+          </label>
+        ) : null}
+        {error ? (
+          <p className="product-alert" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {notice ? (
+          <p className="product-notice" role="status">
+            {notice}
+          </p>
+        ) : null}
+        <button className="primary-button" disabled={isPending} type="submit">
+          {isPending ? "Recording decision…" : "Record review decision"}
+        </button>
+      </form>
     </section>
   );
 }
@@ -610,6 +857,28 @@ function formatReviewDate(value: string): string {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(date);
+}
+
+function productStatusLabel(status: string): string {
+  switch (status) {
+    case "submitted":
+      return "In review";
+    case "changes_requested":
+      return "Changes requested";
+    case "approved":
+      return "Approved · private";
+    case "rejected":
+      return "Rejected";
+    case "draft":
+    default:
+      return "Private draft";
+  }
+}
+
+function createReviewIdempotencyKey(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function")
+    return globalThis.crypto.randomUUID();
+  return `review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function ProductEditor({
@@ -660,6 +929,11 @@ function ProductEditor({
         </button>
       </section>
     );
+  if (
+    product.data.summary.status === "approved" ||
+    product.data.summary.status === "rejected"
+  )
+    return <LockedFounderProduct product={product.data} />;
   return (
     <ProductEditorForm
       key={product.data.summary.id}
@@ -669,6 +943,44 @@ function ProductEditor({
       reload={product.refetch}
       session={session}
     />
+  );
+}
+
+function LockedFounderProduct({ product }: { product: ProductDetail }) {
+  const approved = product.summary.status === "approved";
+  return (
+    <section aria-labelledby="locked-product-title" className="product-panel">
+      <button
+        className="back-link-button"
+        onClick={() => navigate("/products")}
+        type="button"
+      >
+        ← Your products
+      </button>
+      <p className="eyebrow">Founder workspace</p>
+      <h1 id="locked-product-title">
+        {product.summary.name?.trim() || "Your product"}
+      </h1>
+      <span className={`product-status product-status-${product.summary.status}`}>
+        {productStatusLabel(product.summary.status)}
+      </span>
+      <section
+        aria-labelledby="locked-outcome-title"
+        className="review-outcome"
+      >
+        <h2 id="locked-outcome-title">Latest review outcome</h2>
+        <p>
+          {approved
+            ? "This product is approved and locked while it waits for the launch workflow."
+            : "This product was rejected. Rejected products cannot be edited or resubmitted in this workflow."}
+        </p>
+        {product.reviewOutcome?.feedback ? (
+          <p className="review-feedback">{product.reviewOutcome.feedback}</p>
+        ) : null}
+      </section>
+      <p>{product.summary.pitch}</p>
+      <p>{product.description}</p>
+    </section>
   );
 }
 
@@ -741,10 +1053,14 @@ function ProductEditorForm({
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [pendingWithdrawn, setPendingWithdrawn] = useState(false);
   const [pendingSubmitted, setPendingSubmitted] = useState(false);
+  const [isSavingMedia, setIsSavingMedia] = useState(false);
   const isPending =
     (product.summary.status === "submitted" || pendingSubmitted) &&
     !pendingWithdrawn;
   const readOnly = session.suspended;
+  const canDeleteDraft =
+    product.summary.status === "draft" && !product.reviewOutcome;
+  const editorBusy = readOnly || isSavingMedia;
   const values = autosave.values;
   const topics = useMemo(
     () => splitTopics(values.topic_names ?? []),
@@ -769,6 +1085,7 @@ function ProductEditorForm({
   const canSubmit =
     !isPending &&
     !readOnly &&
+    !isSavingMedia &&
     session.verified &&
     contentComplete &&
     mediaComplete &&
@@ -844,6 +1161,7 @@ function ProductEditorForm({
   async function saveMedia() {
     setError("");
     setNotice("");
+    setIsSavingMedia(true);
     try {
       const saved = await autosave.saveLatest();
       const result = await attach.mutateAsync({
@@ -867,13 +1185,21 @@ function ProductEditorForm({
         items.filter((asset) => !attachedIds.has(asset.id)),
       );
       setNotice("Selected media is attached to this private draft.");
-      await reload();
+      try {
+        await reload();
+      } catch {
+        setNotice(
+          "Media is attached. The latest product view could not be refreshed.",
+        );
+      }
     } catch (caught) {
       setError(
         caught instanceof ProductRequestError && caught.status === 409
           ? "The product changed elsewhere. Your selection is still here; reload the latest version before retrying."
           : "We could not save this media selection. Your choices are still here; try again.",
       );
+    } finally {
+      setIsSavingMedia(false);
     }
   }
 
@@ -909,12 +1235,19 @@ function ProductEditorForm({
       pendingRef.current = true;
       setPendingSubmitted(true);
       setNotice("Your product is now in the review queue.");
-      await reload();
     } catch (caught) {
       setError(
         caught instanceof ProductRequestError && caught.status === 409
           ? "The product changed or your pending limit was reached. Refresh and review the latest state."
           : "We could not submit your product. Your private draft is still available.",
+      );
+      return;
+    }
+    try {
+      await reload();
+    } catch {
+      setNotice(
+        "Your product was submitted. The latest view could not be refreshed.",
       );
     }
   }
@@ -971,19 +1304,27 @@ function ProductEditorForm({
       return;
     setError("");
     setNotice("");
+    let result: Awaited<ReturnType<typeof withdraw.mutateAsync>>;
     try {
-      const result = await withdraw.mutateAsync({
+      result = await withdraw.mutateAsync({
         submissionId: product.submission.id,
         version: autosave.version,
       });
-      pendingRef.current = false;
-      setPendingWithdrawn(true);
-      autosave.adoptVersion(result.version);
+    } catch {
+      setError("We could not withdraw this submission. Refresh and try again.");
+      return;
+    }
+    pendingRef.current = false;
+    setPendingWithdrawn(true);
+    autosave.adoptVersion(result.version);
+    try {
       await autosave.saveLatest();
       await reload();
       setNotice("Submission withdrawn. Your changes are now a private draft.");
     } catch {
-      setError("We could not withdraw this submission. Refresh and try again.");
+      setNotice(
+        "Submission withdrawn. Refresh the page to confirm your saved draft changes.",
+      );
     }
   }
 
@@ -1038,7 +1379,9 @@ function ProductEditorForm({
       <div className="product-editor-heading">
         <div>
           <p className="eyebrow">
-            {isPending ? "Submitted for review" : "Private draft"}
+            {isPending
+              ? "Submitted for review"
+              : productStatusLabel(product.summary.status)}
           </p>
           <h1 id="editor-title">{values.name?.trim() || "Your product"}</h1>
         </div>
@@ -1054,8 +1397,20 @@ function ProductEditorForm({
       <p className="product-intro">
         {isPending
           ? "This complete version is waiting for staff review. Valid edits keep your place in the queue."
-          : "Your product stays private until a later launch workflow publishes it."}
+          : product.summary.status === "changes_requested"
+            ? "Make private corrections below. Partial edits can be saved; complete the submission checklist before resubmitting."
+            : "Your product stays private until a later launch workflow publishes it."}
       </p>
+      {product.summary.status === "changes_requested" &&
+      product.reviewOutcome?.feedback ? (
+        <section
+          aria-labelledby="correction-feedback-title"
+          className="review-outcome"
+        >
+          <h2 id="correction-feedback-title">Changes requested</h2>
+          <p className="review-feedback">{product.reviewOutcome.feedback}</p>
+        </section>
+      ) : null}
       {session.suspended ? (
         <p className="product-notice">
           Your account is suspended. You can withdraw an existing submission,
@@ -1083,7 +1438,7 @@ function ProductEditorForm({
         className="product-form"
         onSubmit={(event) => void submitForReview(event)}
       >
-        <fieldset disabled={readOnly} className="product-fields">
+        <fieldset disabled={editorBusy} className="product-fields">
           <legend>Product details</legend>
           <label className="product-field" htmlFor="product-name">
             <span>
@@ -1274,7 +1629,7 @@ function ProductEditorForm({
             Upload logo
             <input
               accept="image/jpeg,image/png,image/webp"
-              disabled={readOnly || isPending || uploading > 0}
+              disabled={editorBusy || isPending || uploading > 0}
               onChange={(event) => {
                 void handleUpload(event.target.files?.[0], "logo");
                 event.currentTarget.value = "";
@@ -1284,7 +1639,7 @@ function ProductEditorForm({
           </label>
           <fieldset
             className="asset-picker"
-            disabled={readOnly || isPending || attach.isPending}
+            disabled={editorBusy || isPending || attach.isPending}
           >
             <legend>Choose one logo</legend>
             {logoChoices.length === 0 ? (
@@ -1325,7 +1680,7 @@ function ProductEditorForm({
             <input
               accept="image/jpeg,image/png,image/webp"
               disabled={
-                readOnly ||
+                editorBusy ||
                 isPending ||
                 uploading > 0 ||
                 selection.screenshots.length >= 10
@@ -1339,7 +1694,7 @@ function ProductEditorForm({
           </label>
           <fieldset
             className="asset-picker"
-            disabled={readOnly || isPending || attach.isPending}
+            disabled={editorBusy || isPending || attach.isPending}
           >
             <legend>
               Screenshots ({selection.screenshots.length}/10 selected)
@@ -1528,7 +1883,7 @@ function ProductEditorForm({
           first to change media.
         </p>
       ) : null}
-      {!isPending ? (
+      {canDeleteDraft ? (
         <button
           className="danger-button"
           disabled={readOnly || remove.isPending}

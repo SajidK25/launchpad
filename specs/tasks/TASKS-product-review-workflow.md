@@ -721,7 +721,7 @@ Expose typed review command and approved-list reads to product screens, with que
 
 ## Task T13: Complete Staff and Founder Product Screens
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
@@ -778,7 +778,7 @@ Present reviewer decisions and founder outcome paths in the existing product wor
 
 ## Task T14: Add Typed Notification Client and Live Reconciliation
 
-> **Status:** not started
+> **Status:** in progress
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
