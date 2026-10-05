@@ -1,10 +1,13 @@
 import type { components } from "@launchpad/contracts";
 import {
+  APPROVED_REVIEWS_QUERY,
   REVIEW_PRODUCT_QUERY,
   REVIEW_QUEUE_QUERY,
   TOPIC_CHOICES_QUERY,
   VIEWER_PRODUCT_QUERY,
   VIEWER_PRODUCTS_QUERY,
+  type ApprovedReviewsQuery,
+  type ApprovedReviewsQueryVariables,
   type ReviewProductQuery,
   type ReviewProductQueryVariables,
   type ReviewQueueQuery,
@@ -34,6 +37,8 @@ export class ProductRequestError extends Error {
 
 export type ProductSave = Schemas["ProductSaveInput"];
 export type ProductState = Schemas["ProductStateResponse"];
+export type ReviewDecisionInput = Schemas["ReviewDecisionInput"];
+export type ReviewDecisionResult = Schemas["ReviewDecisionResponse"];
 export type ProductQueuePage = ReviewQueueQuery["reviewQueue"];
 
 export function createProductClient(
@@ -44,9 +49,10 @@ export function createProductClient(
     path: string,
     method: string,
     body?: unknown,
+    extraHeaders: Record<string, string> = {},
   ): Promise<T> {
     await identity.ensureSession();
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...extraHeaders };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const token = identity.getCsrfToken();
     if (token !== null) headers["X-CSRF-Token"] = token;
@@ -94,6 +100,11 @@ export function createProductClient(
     fetchReviewProduct: async (variables: ReviewProductQueryVariables) =>
       (await graphql<ReviewProductQuery>(REVIEW_PRODUCT_QUERY, variables))
         .reviewProduct,
+    fetchApprovedReviews: async (
+      variables: ApprovedReviewsQueryVariables = {},
+    ) =>
+      (await graphql<ApprovedReviewsQuery>(APPROVED_REVIEWS_QUERY, variables))
+        .approvedReviews,
     fetchTopicChoices: async () =>
       (await graphql<TopicChoicesQuery>(TOPIC_CHOICES_QUERY)).topicChoices,
     createDraft: async () =>
@@ -190,6 +201,17 @@ export function createProductClient(
           version,
         } satisfies Schemas["ProductWithdrawInput"],
       ),
+    decideReview: (
+      productId: string,
+      payload: ReviewDecisionInput,
+      idempotencyKey: string,
+    ) =>
+      rest<ReviewDecisionResult>(
+        `/api/v1/staff/products/${encodeURIComponent(productId)}/review-decisions`,
+        "POST",
+        payload,
+        { "Idempotency-Key": idempotencyKey },
+      ),
   };
 }
 
@@ -198,7 +220,11 @@ function assertProductState(value: unknown): ProductState {
     !isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.version !== "number" ||
-    (value.status !== "draft" && value.status !== "submitted")
+    value.status !== "draft" &&
+    value.status !== "submitted" &&
+    value.status !== "changes_requested" &&
+    value.status !== "approved" &&
+    value.status !== "rejected"
   ) {
     throw new ProductRequestError(200, value);
   }

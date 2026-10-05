@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ProductClient, ProductSave, ProductState } from "./client";
+import type {
+  ProductClient,
+  ProductSave,
+  ProductState,
+  ReviewDecisionInput,
+} from "./client";
 
 export type ProductDraftValues = Omit<ProductSave, "version">;
 export type ProductAutosaveStatus =
@@ -19,6 +24,7 @@ export const productKeys = {
   detail: (id: string) => ["products", "viewer", id] as const,
   reviewQueue: ["products", "review-queue"] as const,
   review: (id: string) => ["products", "review", id] as const,
+  approvedReviews: ["products", "approved-reviews"] as const,
   topics: ["products", "topics"] as const,
 };
 
@@ -53,6 +59,40 @@ export function useReviewProduct(client: ProductClient, productId: string) {
     queryKey: productKeys.review(productId),
     queryFn: () => client.fetchReviewProduct({ id: productId }),
     enabled: productId.length > 0,
+  });
+}
+
+export function useApprovedReviews(
+  client: ProductClient,
+  first = 20,
+  after?: string | null,
+) {
+  return useQuery({
+    queryKey: [...productKeys.approvedReviews, first, after],
+    queryFn: () => client.fetchApprovedReviews({ first, after }),
+  });
+}
+
+export function useDecideReview(client: ProductClient, productId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      payload,
+      idempotencyKey,
+    }: {
+      payload: ReviewDecisionInput;
+      idempotencyKey: string;
+    }) => client.decideReview(productId, payload, idempotencyKey),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: productKeys.reviewQueue });
+      void queryClient.invalidateQueries({ queryKey: productKeys.approvedReviews });
+      void queryClient.invalidateQueries({
+        queryKey: productKeys.review(productId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: productKeys.detail(productId),
+      });
+    },
   });
 }
 

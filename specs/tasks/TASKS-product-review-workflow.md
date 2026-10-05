@@ -659,7 +659,7 @@ Generate client contracts from the completed REST and GraphQL boundaries and add
 
 ## Task T12: Add Typed Product Review Client State
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
