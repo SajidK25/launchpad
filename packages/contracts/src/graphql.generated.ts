@@ -145,6 +145,10 @@ export type ViewerProductQuery = {
       submittedAt: string;
       productVersion: number;
     } | null;
+    reviewOutcome: {
+      status: string;
+      feedback: string | null;
+    } | null;
   } | null;
 };
 
@@ -177,6 +181,10 @@ export const VIEWER_PRODUCT_QUERY = `query ViewerProduct($id: UUID!) {
       id
       submittedAt
       productVersion
+    }
+    reviewOutcome {
+      status
+      feedback
     }
   }
 }` as const;
@@ -320,6 +328,90 @@ export const REVIEW_PRODUCT_QUERY = `query ReviewProduct($id: UUID!) {
     }
     possibleDuplicate
     founderSuspended
+  }
+}` as const;
+
+export type ApprovedReviewsQueryVariables = {
+  first?: number;
+  after?: string | null;
+};
+
+export type ApprovedReviewsQuery = {
+  approvedReviews: {
+    items: Array<{
+      product: {
+        id: string;
+        status: string;
+        version: number;
+        name: string | null;
+        pitch: string | null;
+        createdAt: string;
+        updatedAt: string;
+      };
+      submission: {
+        id: string;
+        submittedAt: string;
+        productVersion: number;
+      };
+      approvedAt: string;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const APPROVED_REVIEWS_QUERY =
+  `query ApprovedReviews($first: Int! = 20, $after: String) {
+  approvedReviews(first: $first, after: $after) {
+    items {
+      product {
+        id
+        status
+        version
+        name
+        pitch
+        createdAt
+        updatedAt
+      }
+      submission {
+        id
+        submittedAt
+        productVersion
+      }
+      approvedAt
+    }
+    nextCursor
+  }
+}` as const;
+
+export type ViewerNotificationInboxQueryVariables = {
+  first?: number;
+  after?: string | null;
+};
+
+export type ViewerNotificationInboxQuery = {
+  viewerNotificationInbox: {
+    items: Array<{
+      id: string;
+      kind: unknown;
+      createdAt: string;
+      readAt: string | null;
+    }>;
+    unreadCount: number;
+    nextCursor: string | null;
+  };
+};
+
+export const VIEWER_NOTIFICATION_INBOX_QUERY =
+  `query ViewerNotificationInbox($first: Int! = 20, $after: String) {
+  viewerNotificationInbox(first: $first, after: $after) {
+    items {
+      id
+      kind
+      createdAt
+      readAt
+    }
+    unreadCount
+    nextCursor
   }
 }` as const;
 

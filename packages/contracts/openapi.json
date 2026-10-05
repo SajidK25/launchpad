@@ -97,6 +97,45 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "NotificationReadResponse": {
+        "description": "Safe result of marking one notification read.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "review_approved",
+              "review_rejected",
+              "review_changes_requested"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          }
+        },
+        "required": ["id", "kind", "created_at", "read_at"],
+        "title": "NotificationReadResponse",
+        "type": "object"
+      },
       "PasswordResetRequest": {
         "properties": {
           "new_password": {
@@ -389,7 +428,13 @@
             "type": "string"
           },
           "status": {
-            "enum": ["draft", "submitted"],
+            "enum": [
+              "draft",
+              "submitted",
+              "changes_requested",
+              "approved",
+              "rejected"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -604,6 +649,80 @@
           "version"
         ],
         "title": "ProfileResponse",
+        "type": "object"
+      },
+      "ReviewDecisionInput": {
+        "additionalProperties": false,
+        "description": "Version-bound staff decision request with an outcome-specific feedback contract.",
+        "properties": {
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "outcome": {
+            "enum": ["approved", "rejected", "changes_requested"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "submission_id": {
+            "format": "uuid",
+            "title": "Submission Id",
+            "type": "string"
+          }
+        },
+        "required": ["submission_id", "expected_version", "outcome"],
+        "title": "ReviewDecisionInput",
+        "type": "object"
+      },
+      "ReviewDecisionResponse": {
+        "description": "Safe result of a staff review command.",
+        "properties": {
+          "decision_id": {
+            "format": "uuid",
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": ["approved", "rejected", "changes_requested"],
+            "title": "Status",
+            "type": "string"
+          },
+          "submission_id": {
+            "format": "uuid",
+            "title": "Submission Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decision_id",
+          "product_id",
+          "submission_id",
+          "status",
+          "version"
+        ],
+        "title": "ReviewDecisionResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -1033,6 +1152,62 @@
           }
         },
         "summary": "Ready"
+      }
+    },
+    "/api/v1/me/notifications/{notification_id}/read": {
+      "put": {
+        "operationId": "mark_notification_read_api_v1_me_notifications__notification_id__read_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Notification Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Notification Read"
       }
     },
     "/api/v1/me/products": {
@@ -1916,6 +2091,83 @@
           }
         },
         "summary": "Profile Photo"
+      }
+    },
+    "/api/v1/staff/products/{product_id}/review-decisions": {
+      "post": {
+        "operationId": "create_review_decision_api_v1_staff_products__product_id__review_decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewDecisionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Review Decision"
       }
     }
   }

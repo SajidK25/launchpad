@@ -65,6 +65,10 @@ query ViewerProduct($id: UUID!) {
       submittedAt
       productVersion
     }
+    reviewOutcome {
+      status
+      feedback
+    }
   }
 }
 
@@ -131,6 +135,42 @@ query ReviewProduct($id: UUID!) {
     }
     possibleDuplicate
     founderSuspended
+  }
+}
+
+query ApprovedReviews($first: Int! = 20, $after: String) {
+  approvedReviews(first: $first, after: $after) {
+    items {
+      product {
+        id
+        status
+        version
+        name
+        pitch
+        createdAt
+        updatedAt
+      }
+      submission {
+        id
+        submittedAt
+        productVersion
+      }
+      approvedAt
+    }
+    nextCursor
+  }
+}
+
+query ViewerNotificationInbox($first: Int! = 20, $after: String) {
+  viewerNotificationInbox(first: $first, after: $after) {
+    items {
+      id
+      kind
+      createdAt
+      readAt
+    }
+    unreadCount
+    nextCursor
   }
 }
 

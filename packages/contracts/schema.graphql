@@ -1,7 +1,37 @@
+type ApprovedReviewEntry {
+  product: ProductSummary!
+  submission: Submission!
+  approvedAt: DateTime!
+}
+
+type ApprovedReviewPage {
+  items: [ApprovedReviewEntry!]!
+  nextCursor: String
+}
+
 """
 Date with time (isoformat)
 """
 scalar DateTime
+
+type NotificationEntry {
+  id: UUID!
+  kind: NotificationKindEnum!
+  createdAt: DateTime!
+  readAt: DateTime
+}
+
+type NotificationInbox {
+  items: [NotificationEntry!]!
+  unreadCount: Int!
+  nextCursor: String
+}
+
+enum NotificationKindEnum {
+  REVIEW_APPROVED
+  REVIEW_REJECTED
+  REVIEW_CHANGES_REQUESTED
+}
 
 type ProductAsset {
   id: UUID!
@@ -18,6 +48,7 @@ type ProductDetail {
   topics: [ProductTopic!]!
   assets: [ProductAsset!]!
   submission: Submission
+  reviewOutcome: ReviewOutcome
 }
 
 type ProductPage {
@@ -56,7 +87,12 @@ type Query {
   viewerProduct(id: UUID!): ProductDetail
   reviewQueue(first: Int! = 20, after: String = null): ReviewPage!
   reviewProduct(id: UUID!): ReviewDetail
+  approvedReviews(first: Int! = 20, after: String = null): ApprovedReviewPage!
   topicChoices(first: Int! = 20, query: String = null): [TopicChoice!]!
+  viewerNotificationInbox(
+    first: Int! = 20
+    after: String = null
+  ): NotificationInbox!
 }
 
 type ReviewDetail {
@@ -71,6 +107,11 @@ type ReviewEntry {
   submission: Submission!
   possibleDuplicate: Boolean!
   founderSuspended: Boolean!
+}
+
+type ReviewOutcome {
+  status: String!
+  feedback: String
 }
 
 type ReviewPage {

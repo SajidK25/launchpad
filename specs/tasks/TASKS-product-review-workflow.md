@@ -607,7 +607,7 @@ Define a separate review-write flag and worker-only Resend settings. Local/check
 
 ## Task T11: Regenerate Review and Notification Contracts
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** high

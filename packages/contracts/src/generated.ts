@@ -191,6 +191,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/notifications/{notification_id}/read": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Mark Notification Read */
+    put: operations["mark_notification_read_api_v1_me_notifications__notification_id__read_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me/products": {
     parameters: {
       query?: never;
@@ -414,6 +431,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/staff/products/{product_id}/review-decisions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Review Decision */
+    post: operations["create_review_decision_api_v1_staff_products__product_id__review_decisions_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -466,6 +500,29 @@ export interface components {
       suspended: boolean;
       /** Verified */
       verified: boolean;
+    };
+    /**
+     * NotificationReadResponse
+     * @description Safe result of marking one notification read.
+     */
+    NotificationReadResponse: {
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "review_approved" | "review_rejected" | "review_changes_requested";
+      /** Read At */
+      read_at: string | null;
     };
     /** PasswordResetRequest */
     PasswordResetRequest: {
@@ -620,7 +677,12 @@ export interface components {
        * Status
        * @enum {string}
        */
-      status: "draft" | "submitted";
+      status:
+        | "draft"
+        | "submitted"
+        | "changes_requested"
+        | "approved"
+        | "rejected";
       /** Version */
       version: number;
     };
@@ -702,6 +764,54 @@ export interface components {
       version: number;
       /** Visibility */
       visibility: string;
+    };
+    /**
+     * ReviewDecisionInput
+     * @description Version-bound staff decision request with an outcome-specific feedback contract.
+     */
+    ReviewDecisionInput: {
+      /** Expected Version */
+      expected_version: number;
+      /** Feedback */
+      feedback?: string | null;
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: "approved" | "rejected" | "changes_requested";
+      /**
+       * Submission Id
+       * Format: uuid
+       */
+      submission_id: string;
+    };
+    /**
+     * ReviewDecisionResponse
+     * @description Safe result of a staff review command.
+     */
+    ReviewDecisionResponse: {
+      /**
+       * Decision Id
+       * Format: uuid
+       */
+      decision_id: string;
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "approved" | "rejected" | "changes_requested";
+      /**
+       * Submission Id
+       * Format: uuid
+       */
+      submission_id: string;
+      /** Version */
+      version: number;
     };
     /** SessionResponse */
     SessionResponse: {
@@ -1048,6 +1158,39 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HealthStatus"];
+        };
+      };
+    };
+  };
+  mark_notification_read_api_v1_me_notifications__notification_id__read_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        notification_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NotificationReadResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };
@@ -1561,6 +1704,44 @@ export interface operations {
         };
         content: {
           "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_review_decision_api_v1_staff_products__product_id__review_decisions_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReviewDecisionInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReviewDecisionResponse"];
         };
       };
       /** @description Validation Error */
