@@ -434,7 +434,7 @@ Wire the notification REST/GraphQL read surfaces and add a cookie-authenticated,
 
 ## Task T8: Dispatch Review Email and Live Events
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high

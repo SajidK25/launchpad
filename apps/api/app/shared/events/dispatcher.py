@@ -23,6 +23,8 @@ EMAIL_EVENT_TYPES = frozenset(
         "users.profile_became_private.v1",
     }
 )
+REVIEW_EMAIL_EVENT_TYPES = frozenset({"review.outcome_email_requested.v1"})
+NOTIFICATION_EVENT_TYPES = frozenset({"notification.changed.v1"})
 PRODUCT_EVENT_TYPES = frozenset(
     {
         "product.created.v1",
@@ -51,6 +53,26 @@ class ProductEventHandler(Protocol):
     ) -> None: ...
 
 
+class ReviewOutcomeEmailHandler(Protocol):
+    async def prepare_email(
+        self,
+        session: AsyncSession,
+        *,
+        aggregate_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]: ...
+
+
+class NotificationChangedHandler(Protocol):
+    async def publish_changed(
+        self,
+        session: AsyncSession,
+        *,
+        aggregate_id: UUID,
+        payload: dict[str, object],
+    ) -> None: ...
+
+
 async def dispatch_due(
     session: AsyncSession,
     *,
@@ -58,6 +80,8 @@ async def dispatch_due(
     codec: EmailPayloadCodec,
     sender: EmailSender,
     product_handler: ProductEventHandler | None = None,
+    review_email_handler: ReviewOutcomeEmailHandler | None = None,
+    notification_handler: NotificationChangedHandler | None = None,
     now: datetime | None = None,
     limit: int = 20,
 ) -> int:
@@ -66,7 +90,12 @@ async def dispatch_due(
     current = now or datetime.now(UTC)
     completed = 0
     for event in await repository.claim_due(session, now=current, limit=limit):
-        if event.event_type not in EMAIL_EVENT_TYPES | PRODUCT_EVENT_TYPES:
+        if event.event_type not in (
+            EMAIL_EVENT_TYPES
+            | REVIEW_EMAIL_EVENT_TYPES
+            | NOTIFICATION_EVENT_TYPES
+            | PRODUCT_EVENT_TYPES
+        ):
             await repository.dead_letter(session, event.id)
             logger.error(
                 "Outbox event has no registered handler",
@@ -75,17 +104,35 @@ async def dispatch_due(
             continue
         try:
             payload = codec.decode(event.key_id, event.encrypted_payload or b"")
-            if event.event_type in EMAIL_EVENT_TYPES:
+            if event.event_type in EMAIL_EVENT_TYPES | REVIEW_EMAIL_EVENT_TYPES:
                 if _is_expired_challenge(event, payload, current):
                     await repository.dead_letter(session, event.id, clear_payload=True)
                     continue
-                await sender.send(payload, message_id=f"launchpad-{event.id}")
+                email_payload = payload
+                if event.event_type in REVIEW_EMAIL_EVENT_TYPES:
+                    if review_email_handler is None:
+                        raise RuntimeError("review email handler is not configured")
+                    email_payload = await review_email_handler.prepare_email(
+                        session,
+                        aggregate_id=event.aggregate_id,
+                        payload=payload,
+                    )
+                await sender.send(email_payload, message_id=f"launchpad-{event.id}")
                 await repository.complete_email(
                     session,
                     event.id,
                     message_id=f"launchpad-{event.id}",
                     sent_at=current,
                 )
+            elif event.event_type in NOTIFICATION_EVENT_TYPES:
+                if notification_handler is None:
+                    raise RuntimeError("notification event handler is not configured")
+                await notification_handler.publish_changed(
+                    session,
+                    aggregate_id=event.aggregate_id,
+                    payload=payload,
+                )
+                await repository.complete_non_email(session, event.id, completed_at=current)
             else:
                 if product_handler is None:
                     raise RuntimeError("product event handler is not configured")

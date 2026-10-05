@@ -178,6 +178,25 @@ def test_product_state_event_is_acknowledged_without_storage_mutation() -> None:
     asyncio.run(verify())
 
 
+@pytest.mark.parametrize(
+    "event_type",
+    ("review.outcome_email_requested.v1", "notification.changed.v1"),
+)
+def test_notification_events_are_not_handled_as_product_events(event_type: str) -> None:
+    async def verify() -> None:
+        service = _service(_Repository(owner_id=uuid4(), asset=None))
+
+        with pytest.raises(PermanentEventError):
+            await service.handle_outbox_event(
+                cast(AsyncSession, object()),
+                event_type=event_type,
+                aggregate_id=uuid4(),
+                payload={},
+            )
+
+    asyncio.run(verify())
+
+
 def test_malformed_media_purge_is_permanent_and_never_deletes() -> None:
     async def verify() -> None:
         account_id, product_id, asset_id = uuid4(), uuid4(), uuid4()
