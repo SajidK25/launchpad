@@ -226,7 +226,7 @@ Persist the declared size and media type on profile upload intents so the produc
 
 ## Task T5: Coordinate profile upload transfer
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical
