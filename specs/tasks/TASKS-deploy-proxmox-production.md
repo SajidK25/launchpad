@@ -715,7 +715,7 @@ Define a standalone production Compose project for the shared VM, using digest i
 
 ## Task T14: Implement encrypted database/configuration backups
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical
