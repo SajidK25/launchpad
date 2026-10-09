@@ -14,4 +14,9 @@ RUN python -m pip install --no-deps --requirement requirements.lock
 COPY apps/api ./apps/api
 COPY apps/worker ./apps/worker
 
+RUN groupadd --system --gid 10001 launchpad \
+    && useradd --system --uid 10001 --gid launchpad --home-dir /nonexistent \
+        --shell /usr/sbin/nologin launchpad
+USER launchpad:launchpad
+
 CMD ["python", "--version"]

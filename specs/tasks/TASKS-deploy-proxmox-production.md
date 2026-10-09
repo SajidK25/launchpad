@@ -624,7 +624,7 @@ Add a database-only production migration command that reuses the existing serial
 
 ## Task T12: Build production images and configure proxy behavior
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** high
@@ -638,13 +638,13 @@ Add a database-only production migration command that reuses the existing serial
 Prepare images for production deployment and configure a production proxy for the HTTPS tunnel, raw-body limits, maintenance state, and authenticated WebSockets. Existing local web configuration remains usable.
 
 ### Verification Checklist
-- [ ] Build Python and web images for `linux/amd64`; expected: successful build and recorded digest for each image.
-- [ ] Inspect image contents; expected: no runtime secret/config file and non-root application process where supported.
-- [ ] Start web/API locally; expected: SPA routes, `/api/`, and WebSocket upgrade reach correct services.
-- [ ] Enable maintenance; expected: public routes show maintenance while private readiness remains testable.
-- [ ] Send raw body at and over configured limit; expected: allowed bytes pass and oversized request is rejected before app/storage.
-- [ ] Simulate HTTPS tunnel forwarding; expected: secure session cookie and Origin validation see correct public scheme only from trusted path.
-- [ ] Confirm authenticated/private-media routes are not cached and existing local proxy still works.
+- [x] Build Python and web images for `linux/amd64`; expected: successful build and recorded digest for each image.
+- [x] Inspect image contents; expected: no runtime secret/config file and non-root application process where supported.
+- [x] Start web/API locally; expected: SPA routes, `/api/`, and WebSocket upgrade reach correct services.
+- [x] Enable maintenance; expected: public routes show maintenance while private readiness remains testable.
+- [x] Send raw body at and over configured limit; expected: allowed bytes pass and oversized request is rejected before app/storage.
+- [x] Simulate HTTPS tunnel forwarding; expected: secure session cookie and Origin validation see correct public scheme only from trusted path.
+- [x] Confirm authenticated/private-media routes are not cached and existing local proxy still works.
 
 ### Implementation Notes
 - **Module(s):** Docker images and Nginx
