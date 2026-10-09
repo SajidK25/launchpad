@@ -569,7 +569,7 @@ Wire provider settings consistently through API and worker storage clients and p
 
 ## Task T11: Separate production migrations from MinIO bootstrap
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** s
 > **Priority:** critical
