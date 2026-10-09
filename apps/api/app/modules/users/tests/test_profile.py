@@ -4,7 +4,9 @@ from typing import Any, cast
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
+from app.modules.users.repository import ProfileRepository
 from app.modules.users.service import (
     MemberIdentity,
     ProfileConflictError,
@@ -46,6 +48,36 @@ class FakeRepository:
         self, session: Any, account_id: object, photo_key: str, *, lock: bool = False
     ) -> bool:
         return bool(account_id == self.profile.account_id and photo_key == self.profile.photo_key)
+
+
+@pytest.mark.anyio
+async def test_create_photo_upload_persists_declarations_separately() -> None:
+    class CaptureSession:
+        statement: object | None = None
+
+        async def execute(self, statement: object) -> None:
+            self.statement = statement
+
+    session = CaptureSession()
+    account_id = uuid4()
+    upload_id = uuid4()
+
+    await ProfileRepository().create_photo_upload(
+        session,  # type: ignore[arg-type]
+        account_id=account_id,
+        upload_id=upload_id,
+        staging_key=f"profile-staging/{account_id.hex}/{upload_id.hex}",
+        declared_byte_count=2048,
+        declared_media_type="image/png",
+        expires_in=600,
+    )
+
+    assert session.statement is not None
+    params = session.statement.compile(dialect=postgresql.dialect()).params  # type: ignore[attr-defined]
+    assert params["declared_byte_count"] == 2048
+    assert params["declared_media_type"] == "image/png"
+    assert "byte_count" not in params
+    assert "media_type" not in params
 
 
 class FakeMemberAccess:

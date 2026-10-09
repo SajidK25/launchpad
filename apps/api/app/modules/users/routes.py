@@ -242,6 +242,8 @@ def router(
                     account_id=member.account_id,
                     upload_id=upload_id,
                     staging_key=upload.object_key,
+                    declared_byte_count=payload.size,
+                    declared_media_type=payload.content_type,
                     expires_in=upload.expires_in,
                 )
             except (

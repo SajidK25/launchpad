@@ -102,6 +102,8 @@ class ProfileRepository:
         account_id: UUID,
         upload_id: UUID,
         staging_key: str,
+        declared_byte_count: int,
+        declared_media_type: str,
         expires_in: int,
         now: datetime | None = None,
     ) -> None:
@@ -110,6 +112,8 @@ class ProfileRepository:
                 id=upload_id,
                 account_id=account_id,
                 staging_key=staging_key,
+                declared_byte_count=declared_byte_count,
+                declared_media_type=declared_media_type,
                 expires_at=(now or datetime.now(UTC)) + timedelta(seconds=expires_in),
                 state="pending",
             )

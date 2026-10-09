@@ -168,7 +168,7 @@ Create a reusable bounded receiver for raw uploads that counts actual bytes, app
 
 ## Task T4: Persist profile upload declarations
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high
