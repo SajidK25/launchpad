@@ -135,6 +135,8 @@ def test_quality_compose_uses_isolated_check_credentials_and_named_volumes() -> 
 
     compose = Path("compose.checks.yaml").read_text()
 
+    assert "LAUNCHPAD_STORAGE_PROVIDER: minio" in compose
+    assert "LAUNCHPAD_STORAGE_REGION: us-east-1" in compose
     assert "launchpad_check_password" in compose
     assert "launchpad_check_minio_password" in compose
     assert "check_postgres_data" in compose
