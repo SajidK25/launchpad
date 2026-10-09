@@ -401,7 +401,7 @@ Keep existing intent and completion endpoints while adding explicit transport in
 
 ## Task T8: Generate contracts and add shared frontend uploader
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high

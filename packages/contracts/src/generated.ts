@@ -278,6 +278,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/products/{product_id}/assets/{asset_id}/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Transfer Asset */
+    put: operations["transfer_asset_api_v1_me_products__product_id__assets__asset_id__content_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me/products/{product_id}/submit": {
     parameters: {
       query?: never;
@@ -357,6 +374,23 @@ export interface paths {
     put?: never;
     /** Complete Photo Upload */
     post: operations["complete_photo_upload_api_v1_me_profile_photo_uploads__upload_id__complete_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/me/profile/photo-uploads/{upload_id}/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Transfer Photo Upload */
+    put: operations["transfer_photo_upload_api_v1_me_profile_photo_uploads__upload_id__content_put"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -565,11 +599,25 @@ export interface components {
       fields: {
         [key: string]: string;
       };
+      /** Upload Headers */
+      upload_headers: {
+        [key: string]: string;
+      };
       /**
        * Upload Id
        * Format: uuid
        */
       upload_id: string;
+      /**
+       * Upload Method
+       * @enum {string}
+       */
+      upload_method: "POST" | "PUT";
+      /**
+       * Upload Transport
+       * @enum {string}
+       */
+      upload_transport: "storage_form" | "authenticated_api";
       /** Upload Url */
       upload_url: string;
     };
@@ -647,6 +695,20 @@ export interface components {
       fields: {
         [key: string]: string;
       };
+      /** Upload Headers */
+      upload_headers: {
+        [key: string]: string;
+      };
+      /**
+       * Upload Method
+       * @enum {string}
+       */
+      upload_method: "POST" | "PUT";
+      /**
+       * Upload Transport
+       * @enum {string}
+       */
+      upload_transport: "storage_form" | "authenticated_api";
       /** Upload Url */
       upload_url: string;
     };
@@ -1409,6 +1471,38 @@ export interface operations {
       };
     };
   };
+  transfer_asset_api_v1_me_products__product_id__assets__asset_id__content_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+        asset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   submit_draft_api_v1_me_products__product_id__submit_post: {
     parameters: {
       query?: never;
@@ -1574,6 +1668,37 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["PhotoCompleteResponse"];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  transfer_photo_upload_api_v1_me_profile_photo_uploads__upload_id__content_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        upload_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {
