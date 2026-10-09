@@ -116,7 +116,7 @@ Configure shared S3 clients from the selected provider settings and replace R2-i
 
 ## Task T3: Add bounded upload intake
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical
