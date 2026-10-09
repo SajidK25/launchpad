@@ -512,7 +512,7 @@ Replace each screen/client's form-only transfer with the shared executor, while 
 
 ## Task T10: Wire provider-aware runtime and local development
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high

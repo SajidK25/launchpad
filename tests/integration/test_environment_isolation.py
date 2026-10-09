@@ -143,3 +143,32 @@ def test_quality_compose_uses_isolated_check_credentials_and_named_volumes() -> 
     assert "check_redis_data" in compose
     assert "check_minio_data" in compose
     assert "launchpad_development" not in compose
+
+
+def test_local_runtime_uses_minio_and_keeps_resend_worker_only() -> None:
+    """Local config is self-contained; cloud storage/mail credentials stay out of services."""
+
+    example = Path(".env.example").read_text()
+    compose = Path("compose.yaml").read_text()
+
+    assert "LAUNCHPAD_STORAGE_PROVIDER=minio" in example
+    assert "LAUNCHPAD_STORAGE_REGION=us-east-1" in example
+    assert "LAUNCHPAD_R2_ACCESS_KEY" not in example
+    assert "LAUNCHPAD_R2_SECRET_KEY" not in example
+
+    service_blocks = {
+        "prepare": compose.split("  prepare:\n", 1)[1].split("\n  api:\n", 1)[0],
+        "api": compose.split("  api:\n", 1)[1].split("\n  web:\n", 1)[0],
+        "worker": compose.split("  worker:\n", 1)[1].split("\n  scheduler:\n", 1)[0],
+        "scheduler": compose.split("  scheduler:\n", 1)[1].split("\nvolumes:\n", 1)[0],
+    }
+    for block in service_blocks.values():
+        assert "LAUNCHPAD_STORAGE_PROVIDER: minio" in block
+        assert "LAUNCHPAD_STORAGE_REGION: us-east-1" in block
+
+    worker = service_blocks["worker"]
+    api = service_blocks["api"]
+    scheduler = service_blocks["scheduler"]
+    assert "LAUNCHPAD_RESEND_API_KEY:" in worker
+    assert "LAUNCHPAD_RESEND_API_KEY:" not in api
+    assert "LAUNCHPAD_RESEND_API_KEY:" not in scheduler

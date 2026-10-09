@@ -19,6 +19,13 @@ from worker import create_email_sender
 def _settings(environment: str) -> Settings:
     values = {
         "LAUNCHPAD_ENVIRONMENT": environment,
+        "LAUNCHPAD_STORAGE_PROVIDER": "r2" if environment == "production" else "minio",
+        "LAUNCHPAD_STORAGE_REGION": "auto" if environment == "production" else "us-east-1",
+        "LAUNCHPAD_STORAGE_ENDPOINT_URL": (
+            "https://account123.r2.cloudflarestorage.com"
+            if environment == "production"
+            else "http://minio:9000"
+        ),
         "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "worker-runtime-user",
         "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "worker-runtime-password",
         "LAUNCHPAD_MAIL_WEB_ORIGIN": (
