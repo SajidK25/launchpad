@@ -670,7 +670,7 @@ Prepare images for production deployment and configure a production proxy for th
 
 ## Task T13: Define isolated production Compose configuration
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** critical
@@ -684,13 +684,13 @@ Prepare images for production deployment and configure a production proxy for th
 Define a standalone production Compose project for the shared VM, using digest image references, persistent named volumes, private dependencies, and scoped secrets. Explicit resource names and a preflight prevent collisions with staging.
 
 ### Verification Checklist
-- [ ] Render Compose with sanitized test inputs; expected: valid configuration, fixed project `launchpad-production`, no development credentials, MinIO, or Mailpit.
-- [ ] Inspect service environment; expected: Resend only worker, R2 only storage-using services, no secret on web.
-- [ ] Start isolated stack; expected: correct health checks and stable volumes after container recreation.
-- [ ] Inspect bindings; expected: only configured web loopback port published; database, Redis, object service unpublished.
-- [ ] Run conflict preflight against an occupied port/volume/project name; expected: fail before any mutation.
-- [ ] Verify all deployment operations name this project and no global prune/restart is present.
-- [ ] Confirm unrelated staging Compose project and volumes are not selected by rendered commands.
+- [x] Render Compose with sanitized test inputs; expected: valid configuration, fixed project `launchpad-production`, no development credentials, MinIO, or Mailpit.
+- [x] Inspect service environment; expected: Resend only worker, R2 only storage-using services, no secret on web.
+- [x] Start isolated stack; expected: service health checks respond correctly and PostgreSQL/Redis volumes persist after container recreation. Application readiness remained unavailable as expected with fake R2 credentials.
+- [x] Inspect bindings; expected: only configured web loopback port published; database and Redis unpublished.
+- [ ] Run conflict preflight against an occupied port/volume/project name; expected: fail before any mutation. **Deferred to T18 by developer decision.**
+- [ ] Verify all deployment operations name this project and no global prune/restart is present. **Deferred to T18 with the deployment controller.**
+- [x] Confirm unrelated staging Compose project and volumes are not selected by rendered commands.
 
 ### Implementation Notes
 - **Module(s):** production runtime/deployment configuration

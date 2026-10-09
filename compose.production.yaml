@@ -1,0 +1,182 @@
+name: launchpad-production
+
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-api-image: &api-image
+  image: ghcr.io/sajidk25/launchpad-api@${LAUNCHPAD_API_DIGEST:?Set LAUNCHPAD_API_DIGEST to a sha256 digest}
+
+x-api-healthcheck: &api-healthcheck
+  test:
+    - CMD
+    - python
+    - -c
+    - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=3)"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 30s
+
+services:
+  postgres:
+    image: postgres@sha256:f02121de6f74d30d8a94cd1d9584125e2178d7e6c377d8130112d4e52d867995
+    env_file:
+      - /etc/launchpad/postgres.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: unless-stopped
+    logging: *bounded-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  redis:
+    image: redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0
+    env_file:
+      - /etc/launchpad/redis.env
+    command: ["sh", "-ec", "exec redis-server --appendonly yes --requirepass \"$${REDISCLI_AUTH}\""]
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    restart: unless-stopped
+    logging: *bounded-logging
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  web:
+    image: ghcr.io/sajidk25/launchpad-web@${LAUNCHPAD_WEB_DIGEST:?Set LAUNCHPAD_WEB_DIGEST to a sha256 digest}
+    ports:
+      - "127.0.0.1:${LAUNCHPAD_WEB_PORT:-18080}:8080"
+    volumes:
+      - ${LAUNCHPAD_STATE_DIR:-/srv/launchpad/state}:/run/launchpad/state:ro
+    networks:
+      - ingress
+    restart: unless-stopped
+    logging: *bounded-logging
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://127.0.0.1:8080/api/v1/health/ready
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  api:
+    <<: *api-image
+    env_file:
+      - /etc/launchpad/api.env
+    environment:
+      LAUNCHPAD_ENVIRONMENT: production
+    command:
+      - python
+      - -c
+      - >-
+        import os, socket;
+        proxy_ip = socket.gethostbyname("web");
+        os.execvp("uvicorn", ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", proxy_ip])
+    networks:
+      - ingress
+      - backend
+    depends_on:
+      web:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *bounded-logging
+    healthcheck: *api-healthcheck
+
+  worker:
+    <<: *api-image
+    env_file:
+      - /etc/launchpad/worker.env
+    environment:
+      LAUNCHPAD_ENVIRONMENT: production
+      PYTHONPATH: /workspace/apps/api
+    command: ["python", "apps/worker/worker.py"]
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *bounded-logging
+    healthcheck:
+      test: ["CMD", "python", "apps/worker/worker.py", "--health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  scheduler:
+    <<: *api-image
+    env_file:
+      - /etc/launchpad/scheduler.env
+    environment:
+      LAUNCHPAD_ENVIRONMENT: production
+      PYTHONPATH: /workspace/apps/api
+    command: ["python", "apps/worker/scheduler.py"]
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *bounded-logging
+    healthcheck:
+      test: ["CMD", "python", "apps/worker/scheduler.py", "--health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  migrate:
+    <<: *api-image
+    profiles: ["ops"]
+    env_file:
+      - /etc/launchpad/migrate.env
+    environment:
+      LAUNCHPAD_ENVIRONMENT: production
+    command: ["python", "-m", "app.migrate"]
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    logging: *bounded-logging
+
+networks:
+  ingress:
+    internal: true
+  backend:
+
+volumes:
+  postgres_data:
+    name: launchpad-production-postgres
+  redis_data:
+    name: launchpad-production-redis
