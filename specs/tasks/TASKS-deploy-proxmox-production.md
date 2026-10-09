@@ -282,7 +282,7 @@ Add an owner-authorized profile transfer operation that rechecks active account,
 
 ## Task T6: Coordinate product asset transfer
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -14,21 +15,205 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.auth.models import Account
-from app.modules.auth.staff import AuthAccessService
+from app.modules.auth.staff import AccountState, AuthAccessService
 from app.modules.products.models import Product, ProductAsset
 from app.modules.products.policies import (
     ProductConflictError,
     ProductForbiddenError,
+    ProductInfrastructureError,
     ProductNotFoundError,
+    ProductQuotaError,
 )
 from app.modules.products.repository import ProductRepository
 from app.modules.products.schemas import ProductAssetIntentInput
-from app.modules.products.service import ProductService
+from app.modules.products.service import ProductService, ProductValidationError
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.models import OutboxMessage
 from app.shared.events.outbox import OutboxRepository
-from app.shared.storage.objects import CleanPhoto, ObjectValidationError, StagingUpload
+from app.shared.storage.objects import (
+    CleanPhoto,
+    ObjectOperationError,
+    ObjectValidationError,
+    StagingUpload,
+)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("storage_failure", [False, True])
+async def test_product_transfer_locks_and_preserves_pending_asset_on_storage_failure(
+    storage_failure: bool,
+) -> None:
+    owner_id, product_id, asset_id = uuid4(), uuid4(), uuid4()
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    product = SimpleNamespace(id=product_id, founder_id=owner_id, status="draft")
+    asset = SimpleNamespace(
+        id=asset_id,
+        product_id=product_id,
+        state="pending",
+        staging_key=f"product-staging/{owner_id.hex}/{product_id.hex}/{asset_id.hex}",
+        media_type="image/png",
+        byte_count=64,
+        expires_at=now.replace(minute=5),
+    )
+
+    class Access:
+        async def current_account(self, session: Any, account_id: UUID, *, lock: bool = False):
+            assert lock is True
+            return AccountState(account_id, True, "member", None)
+
+    class Session:
+        def begin_nested(self) -> Session:
+            return self
+
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    class Repository:
+        lock_order: list[str]
+
+        def __init__(self) -> None:
+            self.lock_order = []
+
+        async def get_owned_product(self, session: Any, **values: object):
+            self.lock_order.append("product")
+            assert values["lock"] is True
+            return product
+
+        async def get_asset(self, session: Any, **values: object):
+            self.lock_order.append("asset")
+            assert values["lock"] is True
+            return asset
+
+    class Storage:
+        writes: list[dict[str, object]]
+
+        def __init__(self) -> None:
+            self.writes = []
+
+        async def put_staging(self, **values: object) -> None:
+            self.writes.append(values)
+            if storage_failure:
+                raise ObjectOperationError("storage unavailable")
+
+    repository = Repository()
+    storage = Storage()
+    service = ProductService(
+        member_access=Access(),
+        repository=repository,
+        payload_codec=EmailPayloadCodec({"asset-test": b"a" * 32}, "asset-test"),
+        clock=lambda: now,
+    )
+
+    if storage_failure:
+        with pytest.raises(ProductInfrastructureError):
+            await service.transfer_asset(
+                Session(),
+                actor_id=owner_id,
+                product_id=product_id,
+                asset_id=asset_id,
+                body=b"bounded image bytes",
+                content_type="image/png",
+                storage=storage,
+            )
+    else:
+        await service.transfer_asset(
+            Session(),
+            actor_id=owner_id,
+            product_id=product_id,
+            asset_id=asset_id,
+            body=b"bounded image bytes",
+            content_type="image/png",
+            storage=storage,
+        )
+
+    assert repository.lock_order == ["product", "asset"]
+    assert asset.state == "pending"
+    assert storage.writes == [
+        {
+            "object_key": asset.staging_key,
+            "body": b"bounded image bytes",
+            "content_type": "image/png",
+        }
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "invalid_state",
+    ["foreign_owner", "submitted", "absent_asset", "expired", "clean", "wrong_type", "oversized"],
+)
+async def test_product_transfer_refuses_ineligible_or_mismatched_intents(
+    invalid_state: str,
+) -> None:
+    owner_id, product_id, asset_id = uuid4(), uuid4(), uuid4()
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    product = SimpleNamespace(
+        id=product_id,
+        founder_id=uuid4() if invalid_state == "foreign_owner" else owner_id,
+        status="submitted" if invalid_state == "submitted" else "draft",
+    )
+    asset = SimpleNamespace(
+        id=asset_id,
+        product_id=product_id,
+        state="clean" if invalid_state == "clean" else "pending",
+        staging_key=f"product-staging/{owner_id.hex}/{product_id.hex}/{asset_id.hex}",
+        media_type="image/png",
+        byte_count=8 if invalid_state == "oversized" else 64,
+        expires_at=now.replace(minute=0) if invalid_state == "expired" else now.replace(minute=5),
+    )
+
+    class Access:
+        async def current_account(self, session: Any, account_id: UUID, *, lock: bool = False):
+            return AccountState(account_id, True, "member", None)
+
+    class Session:
+        def begin_nested(self) -> Session:
+            return self
+
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    class Repository:
+        async def get_owned_product(self, session: Any, **values: object):
+            return product
+
+        async def get_asset(self, session: Any, **values: object):
+            return None if invalid_state == "absent_asset" else asset
+
+    class Storage:
+        writes = 0
+
+        async def put_staging(self, **values: object) -> None:
+            self.writes += 1
+
+    storage = Storage()
+    service = ProductService(
+        member_access=Access(),
+        repository=Repository(),
+        payload_codec=EmailPayloadCodec({"asset-test": b"a" * 32}, "asset-test"),
+        clock=lambda: now,
+    )
+    body = b"123456789" if invalid_state == "oversized" else b"bounded image bytes"
+    content_type = "image/jpeg" if invalid_state == "wrong_type" else "image/png"
+
+    with pytest.raises((ProductConflictError, ProductNotFoundError, ProductValidationError)):
+        await service.transfer_asset(
+            Session(),
+            actor_id=owner_id,
+            product_id=product_id,
+            asset_id=asset_id,
+            body=body,
+            content_type=content_type,
+            storage=storage,
+        )
+    assert storage.writes == 0
 
 
 @pytest.mark.parametrize("size", [0, 5 * 1024 * 1024 + 1])
@@ -134,6 +319,29 @@ def test_asset_intents_are_owner_scoped_and_schedule_encrypted_cleanup() -> None
             assert result.asset.state == "pending"
             assert not hasattr(result.asset, "staging_key")
             assert storage.uploads == [(owner_id, product_id, result.asset.id)]
+            for _ in range(service.PENDING_ASSET_LIMIT - 1):
+                async with sessions() as session, session.begin():
+                    await service.create_asset_intent(
+                        session,
+                        actor_id=owner_id,
+                        product_id=product_id,
+                        intent=ProductAssetIntentInput(
+                            kind="screenshot", content_type="image/png", size=100
+                        ),
+                        storage=storage,
+                    )
+            with pytest.raises(ProductQuotaError):
+                async with sessions() as session, session.begin():
+                    await service.create_asset_intent(
+                        session,
+                        actor_id=owner_id,
+                        product_id=product_id,
+                        intent=ProductAssetIntentInput(
+                            kind="screenshot", content_type="image/png", size=100
+                        ),
+                        storage=storage,
+                    )
+            assert len(storage.uploads) == service.PENDING_ASSET_LIMIT
             async with sessions() as session:
                 cleanup = await session.scalar(
                     select(OutboxMessage).where(

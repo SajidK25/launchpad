@@ -277,6 +277,8 @@ class ProductAssetStorage(Protocol):
         expires_in: int = 300,
     ) -> StagingUpload: ...
 
+    async def put_staging(self, *, object_key: str, body: bytes, content_type: str) -> None: ...
+
     async def finalize_product_staging(
         self,
         *,
@@ -1101,6 +1103,65 @@ class ProductService:
                 session, product, event_type="product.asset_changed.v1", now=now
             )
             return _asset_view(clean_asset)
+
+    async def transfer_asset(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        product_id: UUID,
+        asset_id: UUID,
+        body: bytes,
+        content_type: str,
+        storage: ProductAssetStorage,
+    ) -> None:
+        """Recheck product eligibility and pending asset state under the completion locks."""
+
+        account = await self.member_access.current_account(session, actor_id, lock=True)
+        require_active_founder(account)
+        async with session.begin_nested():
+            product = await self.repository.get_owned_product(
+                session, product_id=product_id, founder_id=actor_id, lock=True
+            )
+            if product is None:
+                raise ProductNotFoundError("product unavailable")
+            require_product_owner(actor_id=actor_id, founder_id=product.founder_id)
+            require_editable_status(product.status)
+            asset = await self.repository.get_asset(
+                session, product_id=product.id, asset_id=asset_id, lock=True
+            )
+            if asset is None:
+                raise ProductNotFoundError("asset unavailable")
+            now = self.clock()
+            if asset.state != "pending" or asset.expires_at is None or asset.expires_at <= now:
+                raise ProductConflictError("asset upload is no longer pending")
+            supported_types = {"image/jpeg", "image/png", "image/webp"}
+            if (
+                not 1 <= asset.byte_count <= 5 * 1024 * 1024
+                or asset.media_type not in supported_types
+            ):
+                raise ProductConflictError("asset intent must be recreated")
+            if (
+                not body
+                or len(body) > asset.byte_count
+                or len(body) > 5 * 1024 * 1024
+                or content_type != asset.media_type
+            ):
+                raise ProductValidationError(
+                    "asset bytes do not match their declaration", fields=("asset",)
+                )
+            try:
+                await storage.put_staging(
+                    object_key=asset.staging_key,
+                    body=body,
+                    content_type=content_type,
+                )
+            except ObjectValidationError as error:
+                raise ProductValidationError(
+                    "asset bytes are invalid", fields=("asset",)
+                ) from error
+            except ObjectOperationError as error:
+                raise ProductInfrastructureError("asset upload could not be stored") from error
 
     async def attach_assets(
         self,
