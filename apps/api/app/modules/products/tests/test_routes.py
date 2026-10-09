@@ -55,6 +55,7 @@ def test_product_routes_are_explicit_and_require_trusted_origin() -> None:
         "/api/v1/me/products/{product_id}/withdraw",
         "/api/v1/staff/products/{product_id}/review-decisions",
         "/api/v1/me/products/{product_id}/assets",
+        "/api/v1/me/products/{product_id}/assets/{asset_id}/content",
         "/api/v1/me/products/{product_id}/assets/{asset_id}/complete",
         "/api/v1/products/{product_id}/assets/{asset_id}",
     }

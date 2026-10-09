@@ -168,6 +168,12 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
         with TestClient(app) as client:
             origin = {"Origin": "http://localhost:8080", "X-CSRF-Token": owner.csrf_token}
             cookies = {settings.session_cookie_name: owner.session_secret}
+            transfer_without_origin = client.put(
+                "/api/v1/me/products/00000000-0000-0000-0000-000000000001/"
+                "assets/00000000-0000-0000-0000-000000000002/content",
+                content=b"must not be accepted",
+            )
+            assert transfer_without_origin.status_code == 403
             missing_csrf = client.post(
                 "/api/v1/me/products", headers={"Origin": origin["Origin"]}, cookies=cookies
             )
@@ -177,6 +183,38 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
             assert created.status_code == 201
             product_id = UUID(created.json()["id"])
             assert created.json() == {"id": str(product_id), "status": "draft", "version": 0}
+
+            asset_path = f"/api/v1/me/products/{product_id}/assets"
+            minio_intent = client.post(
+                asset_path,
+                json={"kind": "logo", "content_type": "image/png", "size": 128},
+                headers=origin,
+                cookies=cookies,
+            )
+            assert minio_intent.status_code == 201
+            assert minio_intent.json()["upload_method"] == "POST"
+            assert minio_intent.json()["upload_transport"] == "storage_form"
+            assert minio_intent.json()["fields"]
+
+            r2_app = FastAPI()
+            r2_database = Database.connect(integration_settings_fixture.database_url)
+            r2_settings = settings.model_copy(update={"storage_provider": "r2"})
+            r2_app.include_router(
+                router(settings=r2_settings, database=r2_database, redis=redis, storage=storage)
+            )
+            with TestClient(r2_app) as r2_client:
+                r2_intent = r2_client.post(
+                    asset_path,
+                    json={"kind": "screenshot", "content_type": "image/webp", "size": 256},
+                    headers=origin,
+                    cookies=cookies,
+                )
+            assert r2_intent.status_code == 201
+            assert r2_intent.json()["upload_method"] == "PUT"
+            assert r2_intent.json()["upload_transport"] == "authenticated_api"
+            assert r2_intent.json()["upload_url"].endswith("/content")
+            assert r2_intent.json()["fields"] == {}
+            assert r2_intent.json()["upload_headers"] == {"Content-Type": "image/webp"}
 
             other_response = client.patch(
                 f"/api/v1/me/products/{product_id}",

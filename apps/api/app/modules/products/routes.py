@@ -2,6 +2,7 @@
 
 import base64
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Annotated, Literal, cast
 from uuid import UUID
 
@@ -20,6 +21,8 @@ from app.modules.products.policies import (
     ProductInfrastructureError,
     ProductNotFoundError,
     ProductQuotaError,
+    require_active_founder,
+    require_editable_status,
 )
 from app.modules.products.schemas import (
     ProductAssetAttachmentInput,
@@ -51,6 +54,13 @@ from app.shared.storage.objects import (
     ObjectOperationError,
     ObjectValidationError,
     PrivateObjectStore,
+)
+from app.shared.storage.uploads import (
+    DEFAULT_UPLOAD_RECEIVER,
+    UploadOverloaded,
+    UploadReceiveError,
+    UploadTimedOut,
+    UploadTooLarge,
 )
 
 
@@ -472,12 +482,129 @@ def router(
                 RedisError,
             ) as error:
                 raise map_error(error) from error
+        authenticated_api = settings.storage_provider == "r2"
         return ProductAssetIntentResponse(
             asset_id=result.asset.id,
-            upload_url=result.upload.upload_url,
-            fields=result.upload.fields,
+            upload_url=(
+                f"/api/v1/me/products/{product_id}/assets/{result.asset.id}/content"
+                if authenticated_api
+                else result.upload.upload_url
+            ),
+            fields={} if authenticated_api else result.upload.fields,
             expires_in=result.upload.expires_in,
+            upload_method="PUT" if authenticated_api else "POST",
+            upload_transport=("authenticated_api" if authenticated_api else "storage_form"),
+            upload_headers={"Content-Type": payload.content_type} if authenticated_api else {},
         )
+
+    @routes.put(
+        "/me/products/{product_id}/assets/{asset_id}/content",
+        status_code=204,
+    )
+    async def transfer_asset(
+        product_id: UUID,
+        asset_id: UUID,
+        request: Request,
+        session: DbSession,
+        x_csrf_token: str | None = Header(default=None),
+    ) -> Response:
+        require_origin(request)
+        async with session.begin():
+            member = await current_member(request, session)
+            require_member_csrf(request, member, x_csrf_token)
+            try:
+                await bound_action(request, member, "asset-transfer")
+                product_service = service()
+                require_active_founder(
+                    await product_service.member_access.current_account(
+                        session, member.account_id, lock=False
+                    )
+                )
+                product = await product_service.repository.get_owned_product(
+                    session,
+                    product_id=product_id,
+                    founder_id=member.account_id,
+                )
+                if product is None:
+                    raise ProductNotFoundError("product unavailable")
+                require_editable_status(product.status)
+                asset = await product_service.repository.get_asset(
+                    session, product_id=product_id, asset_id=asset_id
+                )
+                if asset is None:
+                    raise ProductNotFoundError("asset unavailable")
+                if asset.state != "pending" or asset.expires_at is None:
+                    raise ProductConflictError("asset upload is no longer pending")
+                if asset.expires_at <= datetime.now(UTC):
+                    raise ProductConflictError("asset upload is no longer pending")
+                if not 1 <= asset.byte_count <= 5 * 1024 * 1024 or asset.media_type not in {
+                    "image/jpeg",
+                    "image/png",
+                    "image/webp",
+                }:
+                    raise ProductConflictError("asset intent must be recreated")
+                if request.headers.get("content-type") != asset.media_type:
+                    raise HTTPException(status_code=415, detail="unsupported media type")
+                byte_limit = asset.byte_count
+            except ProductQuotaError as error:
+                raise HTTPException(status_code=429, detail="upload limit reached") from error
+            except (
+                ProductForbiddenError,
+                ProductNotFoundError,
+                ProductConflictError,
+                ProductInfrastructureError,
+                RateLimitExceeded,
+                RateLimitUnavailable,
+                SQLAlchemyError,
+                RedisError,
+            ) as error:
+                raise map_error(error) from error
+
+        try:
+            async with DEFAULT_UPLOAD_RECEIVER.receive(
+                request.stream(), byte_limit=byte_limit
+            ) as received:
+                body = received.file.read()
+        except UploadTooLarge as error:
+            raise HTTPException(
+                status_code=413, detail="upload exceeds its declared limit"
+            ) from error
+        except UploadOverloaded as error:
+            raise HTTPException(status_code=429, detail="upload capacity is busy") from error
+        except UploadTimedOut as error:
+            raise HTTPException(status_code=408, detail="upload body timed out") from error
+        except UploadReceiveError as error:
+            raise HTTPException(
+                status_code=400, detail="upload body could not be received"
+            ) from error
+
+        async with session.begin():
+            member = await current_member(request, session)
+            require_member_csrf(request, member, x_csrf_token)
+            try:
+                await service().transfer_asset(
+                    session,
+                    actor_id=member.account_id,
+                    product_id=product_id,
+                    asset_id=asset_id,
+                    body=body,
+                    content_type=request.headers.get("content-type", ""),
+                    storage=storage,
+                )
+            except (
+                ProductForbiddenError,
+                ProductNotFoundError,
+                ProductConflictError,
+                ProductInfrastructureError,
+                ProductValidationError,
+                ObjectOperationError,
+                RateLimitExceeded,
+                RateLimitUnavailable,
+                SQLAlchemyError,
+                RedisError,
+            ) as error:
+                raise map_error(error) from error
+        return Response(status_code=204)
 
     @routes.post(
         "/me/products/{product_id}/assets/{asset_id}/complete",

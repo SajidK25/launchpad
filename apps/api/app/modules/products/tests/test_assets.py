@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -10,7 +11,9 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import ValidationError
+from fastapi.routing import APIRoute
+from pydantic import SecretStr, ValidationError
+from redis import Redis
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -25,8 +28,10 @@ from app.modules.products.policies import (
     ProductQuotaError,
 )
 from app.modules.products.repository import ProductRepository
-from app.modules.products.schemas import ProductAssetIntentInput
+from app.modules.products.routes import router as product_router
+from app.modules.products.schemas import ProductAssetIntentInput, ProductAssetIntentResponse
 from app.modules.products.service import ProductService, ProductValidationError
+from app.shared.config.settings import Settings
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.models import OutboxMessage
@@ -35,8 +40,53 @@ from app.shared.storage.objects import (
     CleanPhoto,
     ObjectOperationError,
     ObjectValidationError,
+    PrivateObjectStore,
     StagingUpload,
 )
+
+
+def test_product_asset_transfer_route_is_registered() -> None:
+    settings = Settings(
+        trusted_web_origins=("http://localhost:8080",),
+        outbox_key_id="test",
+        outbox_key=SecretStr(base64.b64encode(b"x" * 32).decode("ascii")),
+    )
+    storage = PrivateObjectStore(
+        endpoint_url="http://minio:9000",
+        bucket_name="private",
+        access_key_id="key",
+        secret_access_key="secret",
+        client_factory=lambda: SimpleNamespace(),
+    )
+    routes = product_router(
+        settings=settings,
+        database=Database.connect(str(settings.database_url)),
+        redis=Redis.from_url(str(settings.redis_url)),
+        storage=storage,
+    )
+
+    assert any(
+        route.path == "/api/v1/me/products/{product_id}/assets/{asset_id}/content"
+        and "PUT" in route.methods
+        for route in routes.routes
+        if isinstance(route, APIRoute)
+    )
+
+
+def test_product_asset_instruction_response_exposes_transport_metadata() -> None:
+    intent = ProductAssetIntentResponse(
+        asset_id=uuid4(),
+        upload_url="/api/v1/me/products/product/assets/asset/content",
+        fields={},
+        expires_in=300,
+        upload_method="PUT",
+        upload_transport="authenticated_api",
+        upload_headers={"Content-Type": "image/png"},
+    )
+
+    assert intent.upload_method == "PUT"
+    assert intent.upload_transport == "authenticated_api"
+    assert intent.upload_headers == {"Content-Type": "image/png"}
 
 
 @pytest.mark.anyio

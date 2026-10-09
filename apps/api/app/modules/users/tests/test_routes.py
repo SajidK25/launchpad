@@ -9,9 +9,26 @@ from fastapi.testclient import TestClient
 from redis import Redis
 
 from app.modules.users.routes import router
+from app.modules.users.schemas import PhotoUploadResponse
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
 from app.shared.storage.objects import PrivateObjectStore
+
+
+def test_profile_upload_instruction_response_exposes_transport_metadata() -> None:
+    upload = PhotoUploadResponse(
+        upload_id=UUID(int=1),
+        upload_url="/api/v1/me/profile/photo-uploads/00000000-0000-0000-0000-000000000001/content",
+        fields={},
+        expires_in=300,
+        upload_method="PUT",
+        upload_transport="authenticated_api",
+        upload_headers={"Content-Type": "image/png"},
+    )
+
+    assert upload.upload_method == "PUT"
+    assert upload.upload_transport == "authenticated_api"
+    assert upload.upload_headers == {"Content-Type": "image/png"}
 
 
 def _router(
@@ -46,6 +63,7 @@ def test_profile_routes_are_explicit_and_unsafe_calls_require_origin() -> None:
         "/api/v1/me/profile/publish",
         "/api/v1/me/profile/unpublish",
         "/api/v1/me/profile/photo-uploads",
+        "/api/v1/me/profile/photo-uploads/{upload_id}/content",
         "/api/v1/me/profile/photo-uploads/{upload_id}/complete",
         "/api/v1/profiles/{account_id}/photo",
     } == paths
@@ -55,6 +73,12 @@ def test_profile_routes_are_explicit_and_unsafe_calls_require_origin() -> None:
     )
     assert response.status_code == 403
     assert response.json() == {"detail": "request rejected"}
+    transfer = TestClient(app).put(
+        "/api/v1/me/profile/photo-uploads/00000000-0000-0000-0000-000000000001/content",
+        content=b"not-read-without-origin",
+    )
+    assert transfer.status_code == 403
+    assert transfer.json() == {"detail": "request rejected"}
 
 
 def test_profile_mutation_rejects_untrusted_origin_with_generic_body() -> None:

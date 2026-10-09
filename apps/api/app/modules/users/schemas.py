@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -39,6 +40,9 @@ class PhotoUploadResponse(BaseModel):
     upload_url: str
     fields: dict[str, str]
     expires_in: int
+    upload_method: Literal["POST", "PUT"]
+    upload_transport: Literal["storage_form", "authenticated_api"]
+    upload_headers: dict[str, str]
 
 
 class PhotoCompleteResponse(BaseModel):

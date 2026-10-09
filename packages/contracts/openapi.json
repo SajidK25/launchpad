@@ -23,7 +23,10 @@
             "type": "string"
           }
         },
-        "required": ["email", "password"],
+        "required": [
+          "email",
+          "password"
+        ],
         "title": "EmailPasswordRequest",
         "type": "object"
       },
@@ -34,7 +37,9 @@
             "type": "string"
           }
         },
-        "required": ["email"],
+        "required": [
+          "email"
+        ],
         "title": "EmailRequest",
         "type": "object"
       },
@@ -58,7 +63,9 @@
             "type": "string"
           }
         },
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "title": "HealthStatus",
         "type": "object"
       },
@@ -74,7 +81,11 @@
             "type": "string"
           },
           "role": {
-            "enum": ["member", "reviewer", "admin"],
+            "enum": [
+              "member",
+              "reviewer",
+              "admin"
+            ],
             "title": "Role",
             "type": "string"
           },
@@ -137,7 +148,13 @@
             "title": "Read At"
           }
         },
-        "required": ["id", "product_id", "kind", "created_at", "read_at"],
+        "required": [
+          "id",
+          "product_id",
+          "kind",
+          "created_at",
+          "read_at"
+        ],
         "title": "NotificationReadResponse",
         "type": "object"
       },
@@ -153,7 +170,10 @@
             "type": "string"
           }
         },
-        "required": ["token", "new_password"],
+        "required": [
+          "token",
+          "new_password"
+        ],
         "title": "PasswordResetRequest",
         "type": "object"
       },
@@ -173,7 +193,11 @@
             "type": "string"
           }
         },
-        "required": ["upload_id", "media_type", "byte_count"],
+        "required": [
+          "upload_id",
+          "media_type",
+          "byte_count"
+        ],
         "title": "PhotoCompleteResponse",
         "type": "object"
       },
@@ -196,7 +220,11 @@
             "type": "integer"
           }
         },
-        "required": ["filename", "content_type", "size"],
+        "required": [
+          "filename",
+          "content_type",
+          "size"
+        ],
         "title": "PhotoUploadRequest",
         "type": "object"
       },
@@ -213,9 +241,32 @@
             "title": "Fields",
             "type": "object"
           },
+          "upload_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Upload Headers",
+            "type": "object"
+          },
           "upload_id": {
             "format": "uuid",
             "title": "Upload Id",
+            "type": "string"
+          },
+          "upload_method": {
+            "enum": [
+              "POST",
+              "PUT"
+            ],
+            "title": "Upload Method",
+            "type": "string"
+          },
+          "upload_transport": {
+            "enum": [
+              "storage_form",
+              "authenticated_api"
+            ],
+            "title": "Upload Transport",
             "type": "string"
           },
           "upload_url": {
@@ -223,7 +274,15 @@
             "type": "string"
           }
         },
-        "required": ["upload_id", "upload_url", "fields", "expires_in"],
+        "required": [
+          "upload_id",
+          "upload_url",
+          "fields",
+          "expires_in",
+          "upload_method",
+          "upload_transport",
+          "upload_headers"
+        ],
         "title": "PhotoUploadResponse",
         "type": "object"
       },
@@ -258,7 +317,11 @@
             "type": "integer"
           }
         },
-        "required": ["version", "logo_asset_id", "screenshot_asset_ids"],
+        "required": [
+          "version",
+          "logo_asset_id",
+          "screenshot_asset_ids"
+        ],
         "title": "ProductAssetAttachmentInput",
         "type": "object"
       },
@@ -275,22 +338,38 @@
             "type": "integer"
           },
           "kind": {
-            "enum": ["logo", "screenshot"],
+            "enum": [
+              "logo",
+              "screenshot"
+            ],
             "title": "Kind",
             "type": "string"
           },
           "media_type": {
-            "enum": ["image/jpeg", "image/png", "image/webp"],
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/webp"
+            ],
             "title": "Media Type",
             "type": "string"
           },
           "state": {
-            "enum": ["clean", "failed"],
+            "enum": [
+              "clean",
+              "failed"
+            ],
             "title": "State",
             "type": "string"
           }
         },
-        "required": ["asset_id", "kind", "media_type", "byte_count", "state"],
+        "required": [
+          "asset_id",
+          "kind",
+          "media_type",
+          "byte_count",
+          "state"
+        ],
         "title": "ProductAssetCompleteResponse",
         "type": "object"
       },
@@ -299,12 +378,19 @@
         "description": "Bounded declaration for one private logo or screenshot upload.",
         "properties": {
           "content_type": {
-            "enum": ["image/jpeg", "image/png", "image/webp"],
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/webp"
+            ],
             "title": "Content Type",
             "type": "string"
           },
           "kind": {
-            "enum": ["logo", "screenshot"],
+            "enum": [
+              "logo",
+              "screenshot"
+            ],
             "title": "Kind",
             "type": "string"
           },
@@ -315,7 +401,11 @@
             "type": "integer"
           }
         },
-        "required": ["kind", "content_type", "size"],
+        "required": [
+          "kind",
+          "content_type",
+          "size"
+        ],
         "title": "ProductAssetIntentInput",
         "type": "object"
       },
@@ -338,12 +428,43 @@
             "title": "Fields",
             "type": "object"
           },
+          "upload_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Upload Headers",
+            "type": "object"
+          },
+          "upload_method": {
+            "enum": [
+              "POST",
+              "PUT"
+            ],
+            "title": "Upload Method",
+            "type": "string"
+          },
+          "upload_transport": {
+            "enum": [
+              "storage_form",
+              "authenticated_api"
+            ],
+            "title": "Upload Transport",
+            "type": "string"
+          },
           "upload_url": {
             "title": "Upload Url",
             "type": "string"
           }
         },
-        "required": ["asset_id", "upload_url", "fields", "expires_in"],
+        "required": [
+          "asset_id",
+          "upload_url",
+          "fields",
+          "expires_in",
+          "upload_method",
+          "upload_transport",
+          "upload_headers"
+        ],
         "title": "ProductAssetIntentResponse",
         "type": "object"
       },
@@ -420,7 +541,9 @@
             "title": "Website Url"
           }
         },
-        "required": ["version"],
+        "required": [
+          "version"
+        ],
         "title": "ProductSaveInput",
         "type": "object"
       },
@@ -448,7 +571,11 @@
             "type": "integer"
           }
         },
-        "required": ["id", "status", "version"],
+        "required": [
+          "id",
+          "status",
+          "version"
+        ],
         "title": "ProductStateResponse",
         "type": "object"
       },
@@ -470,7 +597,11 @@
             "type": "string"
           }
         },
-        "required": ["submission_id", "product_id", "product_version"],
+        "required": [
+          "submission_id",
+          "product_id",
+          "product_version"
+        ],
         "title": "ProductSubmitResponse",
         "type": "object"
       },
@@ -484,7 +615,9 @@
             "type": "integer"
           }
         },
-        "required": ["version"],
+        "required": [
+          "version"
+        ],
         "title": "ProductVersionInput",
         "type": "object"
       },
@@ -503,7 +636,10 @@
             "type": "integer"
           }
         },
-        "required": ["version", "submission_id"],
+        "required": [
+          "version",
+          "submission_id"
+        ],
         "title": "ProductWithdrawInput",
         "type": "object"
       },
@@ -566,7 +702,9 @@
             "type": "integer"
           }
         },
-        "required": ["version"],
+        "required": [
+          "version"
+        ],
         "title": "ProfilePatchRequest",
         "type": "object"
       },
@@ -678,7 +816,11 @@
             "title": "Feedback"
           },
           "outcome": {
-            "enum": ["approved", "rejected", "changes_requested"],
+            "enum": [
+              "approved",
+              "rejected",
+              "changes_requested"
+            ],
             "title": "Outcome",
             "type": "string"
           },
@@ -688,7 +830,11 @@
             "type": "string"
           }
         },
-        "required": ["submission_id", "expected_version", "outcome"],
+        "required": [
+          "submission_id",
+          "expected_version",
+          "outcome"
+        ],
         "title": "ReviewDecisionInput",
         "type": "object"
       },
@@ -706,7 +852,11 @@
             "type": "string"
           },
           "status": {
-            "enum": ["approved", "rejected", "changes_requested"],
+            "enum": [
+              "approved",
+              "rejected",
+              "changes_requested"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -742,7 +892,11 @@
             "type": "string"
           },
           "role": {
-            "enum": ["member", "reviewer", "admin"],
+            "enum": [
+              "member",
+              "reviewer",
+              "admin"
+            ],
             "title": "Role",
             "type": "string"
           },
@@ -773,7 +927,9 @@
             "type": "string"
           }
         },
-        "required": ["token"],
+        "required": [
+          "token"
+        ],
         "title": "TokenRequest",
         "type": "object"
       },
@@ -809,7 +965,11 @@
             "type": "string"
           }
         },
-        "required": ["loc", "msg", "type"],
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
         "title": "ValidationError",
         "type": "object"
       }
@@ -1579,6 +1739,65 @@
         "summary": "Complete Asset"
       }
     },
+    "/api/v1/me/products/{product_id}/assets/{asset_id}/content": {
+      "put": {
+        "operationId": "transfer_asset_api_v1_me_products__product_id__assets__asset_id__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Asset"
+      }
+    },
     "/api/v1/me/products/{product_id}/submit": {
       "post": {
         "operationId": "submit_draft_api_v1_me_products__product_id__submit_post",
@@ -1877,6 +2096,55 @@
           }
         },
         "summary": "Complete Photo Upload"
+      }
+    },
+    "/api/v1/me/profile/photo-uploads/{upload_id}/content": {
+      "put": {
+        "operationId": "transfer_photo_upload_api_v1_me_profile_photo_uploads__upload_id__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Photo Upload"
       }
     },
     "/api/v1/me/profile/publish": {

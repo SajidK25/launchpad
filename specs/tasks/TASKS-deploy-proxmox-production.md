@@ -340,7 +340,7 @@ Add a product asset transfer operation using existing owner, editable-state, exp
 
 ## Task T7: Expose authenticated upload contracts
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
