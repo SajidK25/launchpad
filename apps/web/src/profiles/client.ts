@@ -1,4 +1,5 @@
 import type { components } from "@launchpad/contracts";
+import { createUploadClient } from "../uploads/client";
 import {
   PUBLIC_PROFILE_QUERY,
   type PublicProfileQuery,
@@ -22,11 +23,14 @@ export class ProfileRequestError extends Error {
 }
 
 export type ProfilePatch = Schemas["ProfilePatchRequest"];
+export type PhotoUploadInstruction = Schemas["PhotoUploadResponse"];
 
 export function createProfileClient(
   fetcher: Fetcher = globalThis.fetch.bind(globalThis),
   getCsrfToken: () => string | null = () => null,
+  ensureSession: () => Promise<unknown> = async () => undefined,
 ) {
+  const uploader = createUploadClient(fetcher, { getCsrfToken, ensureSession });
   async function rest<T>(
     path: string,
     method: "PATCH" | "POST",
@@ -118,6 +122,8 @@ export function createProfileClient(
           payload,
         ),
       ),
+    uploadPhoto: (instruction: PhotoUploadInstruction, file: File) =>
+      uploader.upload(instruction, file),
     completePhotoUpload: async (uploadId: string) =>
       assertPhotoComplete(
         await rest<Schemas["PhotoCompleteResponse"]>(
@@ -165,7 +171,14 @@ function isPhotoUploadResponse(
     typeof value.upload_url === "string" &&
     typeof value.expires_in === "number" &&
     isRecord(value.fields) &&
-    Object.values(value.fields).every((field) => typeof field === "string")
+    Object.values(value.fields).every((field) => typeof field === "string") &&
+    (value.upload_method === "POST" || value.upload_method === "PUT") &&
+    (value.upload_transport === "storage_form" ||
+      value.upload_transport === "authenticated_api") &&
+    isRecord(value.upload_headers) &&
+    Object.values(value.upload_headers).every(
+      (header) => typeof header === "string",
+    )
   );
 }
 

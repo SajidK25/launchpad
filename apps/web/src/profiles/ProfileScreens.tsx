@@ -5,6 +5,7 @@ import { navigate } from "../identity/Screens";
 import {
   createProfileClient,
   ProfileRequestError,
+  type PhotoUploadInstruction,
   type ProfilePatch,
 } from "./client";
 import {
@@ -26,7 +27,12 @@ export function ProfileRoutes({
   identityClient: IdentityClient;
 }) {
   const client = useMemo(
-    () => createProfileClient(undefined, identityClient.getCsrfToken),
+    () =>
+      createProfileClient(
+        undefined,
+        identityClient.getCsrfToken,
+        identityClient.ensureSession,
+      ),
     [identityClient],
   );
   const path = window.location.pathname;
@@ -50,6 +56,10 @@ function ProfileEditorPage({
   const [bio, setBio] = useState("");
   const [links, setLinks] = useState("");
   const [photoUploadId, setPhotoUploadId] = useState<string | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<{
+    file: File;
+    instruction: PhotoUploadInstruction;
+  } | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -138,22 +148,18 @@ function ProfileEditorPage({
     if (!PHOTO_TYPES.has(file.type) || file.size > MAX_PHOTO_BYTES)
       return setError("Use a JPEG, PNG, or WebP image up to 5 MB.");
     try {
-      const intent = await createUpload.mutateAsync({
-        filename: file.name,
-        content_type: file.type,
-        size: file.size,
-      });
-      const form = new FormData();
-      Object.entries(intent.fields).forEach(([key, value]) =>
-        form.append(key, value),
-      );
-      form.append("file", file);
-      const response = await fetch(intent.upload_url, {
-        method: "POST",
-        body: form,
-      });
-      if (!response.ok) throw new Error("staging upload failed");
+      const intent =
+        pendingPhoto && sameFile(pendingPhoto.file, file)
+          ? pendingPhoto.instruction
+          : await createUpload.mutateAsync({
+              filename: file.name,
+              content_type: file.type,
+              size: file.size,
+            });
+      setPendingPhoto({ file, instruction: intent });
+      await client.uploadPhoto(intent, file);
       const completed = await completeUpload.mutateAsync(intent.upload_id);
+      setPendingPhoto(null);
       setPhotoUploadId(completed.upload_id);
       setNotice("Photo validated. Save your profile to attach it.");
     } catch {
@@ -241,7 +247,10 @@ function ProfileEditorPage({
             aria-describedby={error ? "profile-error" : undefined}
             aria-invalid={Boolean(error) || undefined}
             id="profile-photo"
-            onChange={(event) => void handlePhoto(event.target.files?.[0])}
+            onChange={(event) => {
+              void handlePhoto(event.target.files?.[0]);
+              event.currentTarget.value = "";
+            }}
             type="file"
           />
         </label>
@@ -393,4 +402,13 @@ function isHttpsUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function sameFile(left: File, right: File): boolean {
+  return (
+    left.name === right.name &&
+    left.type === right.type &&
+    left.size === right.size &&
+    left.lastModified === right.lastModified
+  );
 }

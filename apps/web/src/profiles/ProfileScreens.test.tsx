@@ -254,7 +254,7 @@ describe("profile screens", () => {
     );
   });
 
-  it("keeps a staged upload URL out of the rendered profile", async () => {
+  it("retries a failed profile transfer with the same pending intent", async () => {
     const profile = {
       accountId: "a",
       displayName: "Member",
@@ -264,24 +264,37 @@ describe("profile screens", () => {
       visibility: "private",
       version: 1,
     };
+    let intentCount = 0;
+    let transferCount = 0;
+    let completionCount = 0;
     const fetcher = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       if (String(input) === "/api/v1/graphql")
         return Promise.resolve(
           new Response(JSON.stringify({ data: { viewerProfile: profile } })),
         );
       if (String(input) === "/api/v1/me/profile/photo-uploads")
+        intentCount += 1;
+      if (String(input) === "/api/v1/me/profile/photo-uploads")
         return Promise.resolve(
           new Response(
             JSON.stringify({
               upload_id: "upload",
               upload_url: "https://staging.example/upload",
-              fields: {},
+              fields: { key: "profile-staging/photo" },
               expires_in: 60,
+              upload_method: "POST",
+              upload_transport: "storage_form",
+              upload_headers: {},
             }),
           ),
         );
-      if (String(input) === "https://staging.example/upload")
-        return Promise.resolve(new Response(null, { status: 204 }));
+      if (String(input) === "https://staging.example/upload") {
+        transferCount += 1;
+        return Promise.resolve(
+          new Response(null, { status: transferCount === 1 ? 503 : 204 }),
+        );
+      }
+      if (String(input).endsWith("/complete")) completionCount += 1;
       return Promise.resolve(
         new Response(
           JSON.stringify({
@@ -294,14 +307,23 @@ describe("profile screens", () => {
     });
     renderProfiles("/profile", fetcher);
     const photo = await screen.findByLabelText(/Profile photo/);
+    const file = new File(["valid"], "photo.png", {
+      type: "image/png",
+      lastModified: 123,
+    });
     fireEvent.change(photo, {
       target: {
-        files: [new File(["valid"], "photo.png", { type: "image/png" })],
+        files: [file],
       },
     });
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    fireEvent.change(photo, { target: { files: [file] } });
     await waitFor(() =>
       expect(screen.getByText(/Photo validated/)).toBeTruthy(),
     );
     expect(screen.queryByText("https://staging.example/upload")).toBeNull();
+    expect(intentCount).toBe(1);
+    expect(transferCount).toBe(2);
+    expect(completionCount).toBe(1);
   });
 });

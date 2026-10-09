@@ -19,6 +19,7 @@ import {
   type ViewerProductsQueryVariables,
 } from "@launchpad/contracts/src/graphql.generated";
 import type { IdentityClient } from "../identity/client";
+import { createUploadClient } from "../uploads/client";
 
 type Schemas = components["schemas"];
 type Fetcher = (
@@ -45,6 +46,19 @@ export function createProductClient(
   fetcher: Fetcher = globalThis.fetch.bind(globalThis),
   identity: Pick<IdentityClient, "ensureSession" | "getCsrfToken">,
 ) {
+  const uploader = createUploadClient(fetcher, identity);
+  const assetUploadInstructions = new Map<
+    string,
+    Pick<
+      Schemas["ProductAssetIntentResponse"],
+      | "asset_id"
+      | "upload_url"
+      | "fields"
+      | "upload_method"
+      | "upload_transport"
+      | "upload_headers"
+    >
+  >();
   async function rest<T>(
     path: string,
     method: string,
@@ -138,38 +152,41 @@ export function createProductClient(
         `/api/v1/me/products/${encodeURIComponent(productId)}?expected_version=${encodeURIComponent(String(version))}`,
         "DELETE",
       ),
-    createAssetIntent: (
+    createAssetIntent: async (
       productId: string,
       payload: Schemas["ProductAssetIntentInput"],
-    ) =>
-      rest<Schemas["ProductAssetIntentResponse"]>(
+    ) => {
+      const instruction = await rest<Schemas["ProductAssetIntentResponse"]>(
         `/api/v1/me/products/${encodeURIComponent(productId)}/assets`,
         "POST",
         payload,
-      ),
-    completeAsset: (productId: string, assetId: string) =>
-      rest<Schemas["ProductAssetCompleteResponse"]>(
+      );
+      assetUploadInstructions.set(instruction.upload_url, instruction);
+      return instruction;
+    },
+    completeAsset: async (productId: string, assetId: string) => {
+      const result = await rest<Schemas["ProductAssetCompleteResponse"]>(
         `/api/v1/me/products/${encodeURIComponent(productId)}/assets/${encodeURIComponent(assetId)}/complete`,
         "POST",
-      ),
+      );
+      for (const [uploadUrl, instruction] of assetUploadInstructions) {
+        if (instruction.asset_id === assetId) {
+          assetUploadInstructions.delete(uploadUrl);
+          break;
+        }
+      }
+      return result;
+    },
     uploadAsset: async (
       uploadUrl: string,
       fields: Record<string, string>,
       file: File,
     ) => {
-      const form = new FormData();
-      Object.entries(fields).forEach(([key, value]) => form.append(key, value));
-      form.append("file", file);
-      const response = await fetcher(uploadUrl, {
-        method: "POST",
-        body: form,
-        credentials: "omit",
-      });
-      if (!response.ok)
-        throw new ProductRequestError(
-          response.status,
-          await safeText(response),
-        );
+      const instruction = assetUploadInstructions.get(uploadUrl);
+      if (!instruction || !sameFields(instruction.fields, fields)) {
+        throw new ProductRequestError(0, null);
+      }
+      await uploader.upload(instruction, file);
     },
     submit: async (productId: string, version: number) =>
       rest<Schemas["ProductSubmitResponse"]>(
@@ -235,17 +252,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function sameFields(left: Record<string, string>, right: Record<string, string>) {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  return (
+    leftEntries.length === rightEntries.length &&
+    leftEntries.every(([key, value]) => right[key] === value)
+  );
+}
+
 async function safeJson(response: Response): Promise<unknown> {
   try {
     return await response.json();
-  } catch {
-    return null;
-  }
-}
-
-async function safeText(response: Response): Promise<string | null> {
-  try {
-    return await response.text();
   } catch {
     return null;
   }

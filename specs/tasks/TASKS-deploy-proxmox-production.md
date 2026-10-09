@@ -455,7 +455,7 @@ Regenerate API types and add one frontend helper that executes the server-provid
 
 ## Task T9: Integrate product and profile upload clients
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high
