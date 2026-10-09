@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Literal
 
 import boto3
 from botocore.client import BaseClient, Config
@@ -45,6 +46,8 @@ class StorageClient:
     secret_access_key: str
     transport_timeout_seconds: float = 1.0
     client_factory: StorageClientFactory | None = None
+    provider: Literal["minio", "r2"] = "minio"
+    region_name: str = "us-east-1"
 
     async def probe(self, bucket_name: str, timeout_seconds: float = 2.0) -> None:
         """Confirm authenticated private-bucket access without object mutation or listing."""
@@ -61,6 +64,9 @@ class StorageClient:
 
         client = self._client()
         try:
+            if self.provider == "r2":
+                client.head_bucket(Bucket=bucket_name)
+                return
             client.get_bucket_location(Bucket=bucket_name)
             try:
                 client.get_bucket_policy(Bucket=bucket_name)
@@ -86,7 +92,7 @@ class StorageClient:
             endpoint_url=self.endpoint_url,
             aws_access_key_id=self.access_key_id,
             aws_secret_access_key=self.secret_access_key,
-            region_name="us-east-1",
+            region_name=self.region_name,
             config=Config(
                 connect_timeout=self.transport_timeout_seconds,
                 read_timeout=self.transport_timeout_seconds,

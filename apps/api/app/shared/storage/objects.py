@@ -73,6 +73,7 @@ class PrivateObjectStore:
         *,
         endpoint_url: str,
         public_endpoint_url: str | None = None,
+        region_name: str = "us-east-1",
         bucket_name: str,
         access_key_id: str,
         secret_access_key: str,
@@ -86,6 +87,7 @@ class PrivateObjectStore:
             raise ValueError("image concurrency is invalid")
         self.endpoint_url = endpoint_url
         self.public_endpoint_url = public_endpoint_url or endpoint_url
+        self.region_name = region_name
         self.bucket_name = bucket_name
         self.access_key_id = access_key_id
         self.secret_access_key = secret_access_key
@@ -129,6 +131,28 @@ class PrivateObjectStore:
             size=size,
             expires_in=expires_in,
         )
+
+    async def put_staging(self, *, object_key: str, body: bytes, content_type: str) -> None:
+        """Write bounded bytes to an owner-scoped private staging key."""
+
+        _assert_staging_key(object_key)
+        if content_type not in SUPPORTED_MEDIA_TYPES:
+            raise ObjectValidationError("unsupported image type")
+        if not body or len(body) > self.max_photo_bytes:
+            raise ObjectValidationError("image is too large or empty")
+
+        def write() -> None:
+            try:
+                self._client().put_object(
+                    Bucket=self.bucket_name,
+                    Key=object_key,
+                    Body=body,
+                    ContentType=content_type,
+                )
+            except (ClientError, BotoCoreError):
+                raise ObjectOperationError("staged image could not be stored") from None
+
+        await asyncio.to_thread(write)
 
     async def _create_staging_upload(
         self, *, key: str, content_type: str, size: int, expires_in: int
@@ -344,7 +368,7 @@ class PrivateObjectStore:
             endpoint_url=self.endpoint_url,
             aws_access_key_id=self.access_key_id,
             aws_secret_access_key=self.secret_access_key,
-            region_name="us-east-1",
+            region_name=self.region_name,
             config=Config(retries={"max_attempts": 0}),
         )
 
@@ -393,6 +417,24 @@ def _assert_private_key(object_key: str) -> None:
         or not all(_SAFE_ID.fullmatch(part) for part in parts[1:])
     ):
         raise ObjectValidationError("object key is outside the private profile prefixes")
+
+
+def _assert_staging_key(object_key: str) -> None:
+    """Accept only canonical profile or product staging keys, never clean objects."""
+
+    parts = PurePosixPath(object_key).parts
+    if len(parts) == 3 and parts[0] == STAGING_PREFIX[:-1]:
+        _assert_private_key(object_key)
+        return
+    if (
+        len(parts) == 4
+        and parts[0] == PRODUCT_STAGING_PREFIX[:-1]
+        and PurePosixPath(object_key).as_posix() == object_key
+        and all(_SAFE_ID.fullmatch(part) for part in parts[1:])
+    ):
+        _assert_product_key(object_key, account_id=parts[1], product_id=parts[2])
+        return
+    raise ObjectValidationError("object key is outside private staging prefixes")
 
 
 def _assert_product_key(

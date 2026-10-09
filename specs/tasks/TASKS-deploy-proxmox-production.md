@@ -57,7 +57,7 @@ Add explicit MinIO/R2 provider and region settings, preserving local defaults wh
 
 ## Task T2: Make shared storage R2-compatible
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

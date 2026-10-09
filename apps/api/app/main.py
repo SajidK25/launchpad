@@ -34,6 +34,8 @@ def create_app(service: HealthService | None = None) -> FastAPI:
             str(settings.storage_endpoint_url),
             settings.storage_access_key_id.get_secret_value(),
             settings.storage_secret_access_key.get_secret_value(),
+            provider=settings.storage_provider,
+            region_name=settings.storage_region,
         )
         service = HealthService(
             [
@@ -71,6 +73,7 @@ def create_app(service: HealthService | None = None) -> FastAPI:
         private_store = PrivateObjectStore(
             endpoint_url=str(settings.storage_endpoint_url),
             public_endpoint_url=str(settings.public_upload_endpoint_url),
+            region_name=settings.storage_region,
             bucket_name=settings.storage_bucket,
             access_key_id=settings.storage_access_key_id.get_secret_value(),
             secret_access_key=settings.storage_secret_access_key.get_secret_value(),

@@ -175,6 +175,8 @@ async def run_worker(health: ProgressHealth) -> None:
         str(settings.storage_endpoint_url),
         settings.storage_access_key_id.get_secret_value(),
         settings.storage_secret_access_key.get_secret_value(),
+        provider=settings.storage_provider,
+        region_name=settings.storage_region,
     )
     product_storage = PrivateObjectStore(
         endpoint_url=str(settings.storage_endpoint_url),
@@ -183,6 +185,7 @@ async def run_worker(health: ProgressHealth) -> None:
             if settings.public_upload_endpoint_url is not None
             else None
         ),
+        region_name=settings.storage_region,
         bucket_name=settings.storage_bucket,
         access_key_id=settings.storage_access_key_id.get_secret_value(),
         secret_access_key=settings.storage_secret_access_key.get_secret_value(),

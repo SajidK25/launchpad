@@ -31,6 +31,8 @@ def test_real_health_accepts_prepared_dependencies(
                             integration_settings_fixture.s3_endpoint_url,
                             integration_settings_fixture.s3_access_key_id,
                             integration_settings_fixture.s3_secret_access_key,
+                            provider="minio",
+                            region_name="us-east-1",
                         ),
                         "launchpad-private",
                     ),
