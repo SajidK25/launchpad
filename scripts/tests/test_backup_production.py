@@ -67,6 +67,8 @@ def backup_environment(tmp_path: Path) -> dict[str, str]:
                 print('17.11')
             elif 'FROM alembic_version' in joined:
                 print(os.getenv('FAKE_SCHEMA_REVISION', 'head_20261009'))
+            elif 'FROM product_assets' in joined:
+                print(os.getenv('FAKE_REFERENCE_KEYS', ''))
             elif 'pg_dump ' in joined:
                 if os.getenv('FAKE_PG_DUMP_FAIL'):
                     sys.exit(19)
@@ -100,7 +102,10 @@ def backup_environment(tmp_path: Path) -> dict[str, str]:
                 log.write(json.dumps(args) + '\\n')
             if not os.path.isfile(os.environ['RESTIC_PASSWORD_FILE']):
                 sys.exit(30)
-            if os.environ.get('RESTIC_REPOSITORY') != 's3:https://backup.invalid/db-repo':
+            expected_repository = os.environ.get(
+                'FAKE_EXPECTED_RESTIC_REPOSITORY', 's3:https://backup.invalid/db-repo'
+            )
+            if os.environ.get('RESTIC_REPOSITORY') != expected_repository:
                 sys.exit(36)
             if os.environ.get('AWS_ACCESS_KEY_ID') != 'dedicated-backup-key':
                 sys.exit(31)
@@ -108,10 +113,20 @@ def backup_environment(tmp_path: Path) -> dict[str, str]:
                 sys.exit(32)
             if os.environ.get('LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY'):
                 sys.exit(33)
+            if os.environ.get('RCLONE_CONFIG_BACKUPMEDIA_SECRET_ACCESS_KEY'):
+                sys.exit(47)
             if args[0] == 'backup':
                 if os.getenv('FAKE_RESTIC_FAIL_BACKUP'):
                     sys.exit(34)
-                dest = os.environ['FAKE_ARCHIVE_DIR']
+                root = os.environ['FAKE_ARCHIVE_DIR']
+                os.makedirs(root, exist_ok=True)
+                if 'media' in args:
+                    index = 1
+                    while os.path.exists(os.path.join(root, f'media.{index}')):
+                        index += 1
+                    dest = os.path.join(root, f'media.{index}')
+                else:
+                    dest = root
                 os.makedirs(dest, exist_ok=True)
                 for source in args:
                     if os.path.isfile(source):
@@ -132,6 +147,76 @@ def backup_environment(tmp_path: Path) -> dict[str, str]:
     )
     restic.chmod(0o755)
 
+    rclone = bin_dir / "rclone"
+    rclone.write_text(
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env python3
+            import json
+            import os
+            import shutil
+            import sys
+            from pathlib import Path
+
+            args = sys.argv[1:]
+            with open(os.environ['FAKE_RCLONE_LOG'], 'a') as log:
+                log.write(json.dumps(args) + '\\n')
+            if os.environ.get('RCLONE_CONFIG') != '/dev/null':
+                sys.exit(40)
+            if os.environ.get('RCLONE_CONFIG_BACKUPMEDIA_ACCESS_KEY_ID') != 'readonly-media-key':
+                sys.exit(45)
+            if os.environ.get('RCLONE_CONFIG_BACKUPMEDIA_SECRET_ACCESS_KEY') != (
+                'readonly-media-secret'
+            ):
+                sys.exit(46)
+            if args[0] == 'size':
+                root = Path(os.environ['FAKE_MEDIA_SOURCE'])
+                files = [path for path in root.rglob('*') if path.is_file()]
+                print(json.dumps({'bytes': sum(path.stat().st_size for path in files),
+                                  'count': len(files)}))
+            elif args[0] == 'copy':
+                if os.getenv('FAKE_RCLONE_FAIL_COPY'):
+                    sys.exit(41)
+                source = Path(os.environ['FAKE_MEDIA_SOURCE'])
+                target = Path(args[-1])
+                shutil.copytree(source, target, dirs_exist_ok=True)
+            elif args[0] == 'check':
+                if os.getenv('FAKE_RCLONE_FAIL_CHECK'):
+                    sys.exit(42)
+                source = Path(os.environ['FAKE_MEDIA_SOURCE'])
+                target = Path(args[-2])
+                for path in source.rglob('*'):
+                    if path.is_file():
+                        copied = (target / path.relative_to(source)).read_bytes()
+                        if copied != path.read_bytes():
+                            sys.exit(43)
+            else:
+                sys.exit(44)
+            """
+        )
+    )
+    rclone.chmod(0o755)
+
+    fake_df = bin_dir / "df"
+    fake_df.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys\n"
+        "if 'FAKE_DF_FREE_KB' in os.environ:\n"
+        " print('Filesystem 1024-blocks Used Available Capacity Mounted on')\n"
+        " print('fake 100 0 ' + os.environ['FAKE_DF_FREE_KB'] + ' 0% /fake')\n"
+        "else:\n"
+        " os.execv('/bin/df', ['/bin/df', *sys.argv[1:]])\n"
+    )
+    fake_df.chmod(0o755)
+
+    media_source = tmp_path / "media-source"
+    media_source.mkdir()
+    (media_source / "profile-clean" / ("a" * 32)).mkdir(parents=True)
+    (media_source / "profile-clean" / ("a" * 32) / ("b" * 32)).write_bytes(b"profile-image")
+    (media_source / "product-clean" / ("c" * 32) / ("d" * 32)).mkdir(parents=True)
+    product_object = media_source / "product-clean" / ("c" * 32) / ("d" * 32) / ("e" * 32)
+    product_object.write_bytes(b"product-image")
+
     env = os.environ.copy()
     env.update(
         {
@@ -151,6 +236,8 @@ def backup_environment(tmp_path: Path) -> dict[str, str]:
             "FAKE_RESTIC_LOG": str(tmp_path / "restic.log"),
             "FAKE_RESTIC_ARGS_LOG": str(tmp_path / "restic-args.jsonl"),
             "FAKE_ARCHIVE_DIR": str(tmp_path / "restored-snapshot"),
+            "FAKE_RCLONE_LOG": str(tmp_path / "rclone-args.jsonl"),
+            "FAKE_MEDIA_SOURCE": str(media_source),
             "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "runtime-storage-sentinel",
         }
     )
@@ -256,6 +343,86 @@ def test_database_backup_rejects_insufficient_disk_before_database_or_restic_acc
     assert "Insufficient free space" in result.stderr
     assert not Path(backup_environment["FAKE_COMPOSE_LOG"]).exists()
     assert not Path(backup_environment["FAKE_RESTIC_LOG"]).exists()
+
+
+def media_environment(backup_environment: dict[str, str]) -> dict[str, str]:
+    backup_environment.update(
+        {
+            "LAUNCHPAD_BACKUP_MEDIA_REPOSITORY": "s3:https://backup.invalid/media-repo",
+            "LAUNCHPAD_BACKUP_MEDIA_BUCKET": "launchpad-production-private",
+            "LAUNCHPAD_BACKUP_MEDIA_ENDPOINT_URL": "https://account.r2.cloudflarestorage.com",
+            "LAUNCHPAD_BACKUP_MEDIA_ACCESS_KEY_ID": "readonly-media-key",
+            "LAUNCHPAD_BACKUP_MEDIA_SECRET_ACCESS_KEY": "readonly-media-secret",
+            "LAUNCHPAD_BACKUP_MEDIA_MAX_BYTES": "1048576",
+            "FAKE_EXPECTED_RESTIC_REPOSITORY": "s3:https://backup.invalid/media-repo",
+            "FAKE_REFERENCE_KEYS": (
+                "profile-clean/"
+                + "a" * 32
+                + "/"
+                + "b" * 32
+                + "\nproduct-clean/"
+                + "c" * 32
+                + "/"
+                + "d" * 32
+                + "/"
+                + "e" * 32
+            ),
+        }
+    )
+    return backup_environment
+
+
+def test_media_snapshot_uses_read_only_configured_bucket_and_preserves_history(
+    backup_environment: dict[str, str],
+) -> None:
+    env = media_environment(backup_environment)
+    first = run_backup(env, "media", "weekly")
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert "objects=2" in first.stdout
+    first_snapshot = Path(env["FAKE_ARCHIVE_DIR"]) / "media.1"
+    first_object = next(first_snapshot.glob("media.*/objects/profile-clean/*/*"))
+    assert first_object.read_bytes() == b"profile-image"
+    (Path(env["FAKE_MEDIA_SOURCE"]) / "profile-clean" / ("a" * 32) / ("b" * 32)).unlink()
+    env["FAKE_REFERENCE_KEYS"] = "product-clean/" + "c" * 32 + "/" + "d" * 32 + "/" + "e" * 32
+
+    second = run_backup(env, "media", "weekly")
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert first_object.exists()
+    calls = [json.loads(line) for line in Path(env["FAKE_RCLONE_LOG"]).read_text().splitlines()]
+    assert all("backupmedia:launchpad-production-private" in call for call in calls)
+    assert all("sync" not in call and "--delete" not in call for call in calls)
+    assert all("backupmedia:backup-repo" not in " ".join(call) for call in calls)
+    restic_calls = Path(env["FAKE_RESTIC_LOG"]).read_text().splitlines()
+    assert restic_calls == ["backup", "forget", "backup", "forget"]
+
+
+@pytest.mark.parametrize(
+    ("override", "expected_message"),
+    [
+        ({"LAUNCHPAD_BACKUP_MEDIA_MAX_BYTES": "1"}, "exceeds the configured byte budget"),
+        (
+            {"FAKE_DF_FREE_KB": "1024", "LAUNCHPAD_BACKUP_MEDIA_MAX_BYTES": "1048576"},
+            "Insufficient free space for bounded media staging",
+        ),
+        ({"LAUNCHPAD_BACKUP_MIN_FREE_BYTES": "999999999999999"}, "Insufficient free space"),
+        ({"FAKE_RCLONE_FAIL_COPY": "1"}, "copy failed"),
+        (
+            {"FAKE_REFERENCE_KEYS": "profile-clean/" + "f" * 32 + "/" + "1" * 32},
+            "referenced production media object is missing",
+        ),
+    ],
+)
+def test_media_pre_snapshot_failures_never_create_snapshot_or_prune(
+    backup_environment: dict[str, str], override: dict[str, str], expected_message: str
+) -> None:
+    env = media_environment(backup_environment)
+    env.update(override)
+
+    result = run_backup(env, "media", "weekly")
+
+    assert result.returncode != 0
+    assert expected_message in result.stderr
+    assert not Path(env["FAKE_RESTIC_LOG"]).exists()
 
 
 def test_database_backup_rejects_schema_mismatch_before_snapshot(

@@ -767,7 +767,7 @@ Add encrypted Restic backups for a database dump and required protected runtime 
 
 ## Task T15: Implement bounded media backup snapshots
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
