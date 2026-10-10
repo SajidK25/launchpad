@@ -819,7 +819,7 @@ Extend backup tooling to copy the configured R2 media bucket into a fresh bounde
 
 ## Task T16: Install weekly backup timers
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** high
@@ -833,12 +833,12 @@ Extend backup tooling to copy the configured R2 media bucket into a fresh bounde
 Schedule database/configuration and media backups weekly with systemd timers, persistent missed-run handling, and a lock shared with deployments. Installation must leave existing staging units untouched.
 
 ### Verification Checklist
-- [ ] Validate unit syntax; expected: `systemd-analyze verify` succeeds.
-- [ ] Inspect timer schedule; expected: configurable off-peak UTC weekly schedule and persistent catch-up.
-- [ ] Start each service in dry-run/test mode; expected: correct backup kind and logs without secret values.
-- [ ] Hold deployment lock and trigger backup; expected: one operation waits/fails safely, no overlap.
-- [ ] Install/disable units in isolated systemd test; expected: only Launchpad units change.
-- [ ] Failed backup reports nonzero and triggers alert/log evidence.
+- [x] Validate unit syntax; expected: `systemd-analyze verify` succeeds.
+- [x] Inspect timer schedule; expected: configurable off-peak UTC weekly schedule and persistent catch-up.
+- [x] Start each service in dry-run/test mode; expected: correct backup kind and logs without secret values.
+- [x] Hold deployment lock and trigger backup; expected: one operation waits/fails safely, no overlap.
+- [x] Install/disable units in isolated systemd test; expected: only Launchpad units change.
+- [x] Failed backup reports nonzero and triggers alert/log evidence.
 
 ### Implementation Notes
 - **Module(s):** host systemd
