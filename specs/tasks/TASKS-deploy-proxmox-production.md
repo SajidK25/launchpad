@@ -864,7 +864,7 @@ Schedule database/configuration and media backups weekly with systemd timers, pe
 
 ## Task T17: Validate release manifests and persist deployment state
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical
