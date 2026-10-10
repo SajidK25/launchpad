@@ -1074,7 +1074,7 @@ Provide an explicit protected integration path using dedicated validation creden
 
 ## Task T21: Record deployment ADR and operator runbooks
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** high
