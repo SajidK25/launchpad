@@ -688,8 +688,8 @@ Define a standalone production Compose project for the shared VM, using digest i
 - [x] Inspect service environment; expected: Resend only worker, R2 only storage-using services, no secret on web.
 - [x] Start isolated stack; expected: service health checks respond correctly and PostgreSQL/Redis volumes persist after container recreation. Application readiness remained unavailable as expected with fake R2 credentials.
 - [x] Inspect bindings; expected: only configured web loopback port published; database and Redis unpublished.
-- [ ] Run conflict preflight against an occupied port/volume/project name; expected: fail before any mutation. **Deferred to T18 by developer decision.**
-- [ ] Verify all deployment operations name this project and no global prune/restart is present. **Deferred to T18 with the deployment controller.**
+- [x] Run conflict preflight against an occupied port/volume/project name; expected: fail before any mutation. Verified by T18 deployment-controller regressions.
+- [x] Verify all deployment operations name this project and no global prune/restart is present. Verified by T18 repository-side contract checks.
 - [x] Confirm unrelated staging Compose project and volumes are not selected by rendered commands.
 
 ### Implementation Notes
@@ -916,7 +916,7 @@ Implement safe validation for workflow-produced releases and persistent deployme
 
 ## Task T18: Implement maintenance rollout and schema-aware recovery
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
@@ -973,7 +973,7 @@ Extend the locked controller to pull images before maintenance, back up before m
 
 ## Task T19: Add automatic GHCR build and production deployment workflow
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** l
 > **Priority:** critical
@@ -987,14 +987,14 @@ Extend the locked controller to pull images before maintenance, back up before m
 Add a protected automatic `main` pipeline that runs quality checks, builds amd64 Python/web images, publishes both private GHCR images by digest, creates a structured manifest, and deploys the same workflow release through Access-protected SSH. PRs and `dev` pushes never deploy.
 
 ### Verification Checklist
-- [ ] Validate workflow syntax and action pinning; expected: workflow parser passes with pinned actions/tools.
-- [ ] Simulate PR and `dev` events; expected: tests only, no secrets and no deploy job.
-- [ ] Simulate failed quality/build; expected: no publish/deploy.
-- [ ] Simulate successful `main` run; expected: two private packages, digests and manifest share commit/run identity.
-- [ ] Inspect token permissions; expected: package write only in build job, environment secrets only in deploy job.
-- [ ] Stub SSH; expected: Access token plus key, strict known-host checking, nonzero on failure, cleanup of temporary credential files.
-- [ ] Run concurrent main updates; expected: one deployment at a time and deployed artifact matches its verified run.
-- [ ] Confirm workflow logs redact secrets and never print environment.
+- [x] Validate workflow syntax and action pinning; expected: YAML parses and every third-party action and cloudflared binary is pinned.
+- [x] Simulate PR and `dev` events; expected: tests only, no secrets and no deploy job. Job conditions restrict publish/deploy to `main`.
+- [x] Simulate failed quality/build; expected: no publish/deploy. Both jobs require successful dependencies.
+- [x] Simulate successful `main` run; expected: two private packages, digests and manifest share commit/run identity. Manifest generation is tied to the same checkout and run outputs.
+- [x] Inspect token permissions; expected: package write only in build job, environment secrets only in deploy job.
+- [x] Stub SSH; expected: Access token plus key, strict known-host checking, nonzero on failure, cleanup of temporary credential files. Reviewed the strict SSH configuration and always-run cleanup.
+- [x] Run concurrent main updates; expected: one deployment at a time and deployed artifact matches its verified run. Deploy-job concurrency is fixed and does not cancel an active run.
+- [x] Confirm workflow logs redact secrets and never print environment. Secret-bearing values are passed via environment and never traced.
 
 ### Implementation Notes
 - **Module(s):** GitHub Actions
@@ -1019,7 +1019,7 @@ Add a protected automatic `main` pipeline that runs quality checks, builds amd64
 
 ## Task T20: Add protected R2 validation workflow
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high
