@@ -21,7 +21,7 @@ The first focused integration invocation used the unit-test container and failed
 
 | Check | Missing inputs and boundary |
 | --- | --- |
-| Protected R2 validation | No isolated validation bucket or credentials are provisioned here. The protected workflow needs `LAUNCHPAD_R2_VALIDATION_BUCKET`, `LAUNCHPAD_R2_VALIDATION_ENDPOINT_URL`, `LAUNCHPAD_R2_VALIDATION_ACCESS_KEY_ID`, `LAUNCHPAD_R2_VALIDATION_SECRET_ACCESS_KEY`, and the production bucket identifier. The R2 integration test was therefore skipped; production storage was not contacted. |
+| Protected R2 validation | No isolated validation bucket or credentials are provisioned here. The protected workflow needs repository variables `LAUNCHPAD_R2_VALIDATION_BUCKET`, `LAUNCHPAD_R2_PRODUCTION_BUCKET`, and `LAUNCHPAD_R2_ACCOUNT_ID`, plus secrets `LAUNCHPAD_R2_VALIDATION_ENDPOINT_URL`, `LAUNCHPAD_R2_VALIDATION_ACCESS_KEY_ID`, and `LAUNCHPAD_R2_VALIDATION_SECRET_ACCESS_KEY`. The R2 integration test was therefore skipped; production storage was not contacted. |
 | Backup and isolated restore | No Restic repository URLs, repository passwords, backup credentials, or isolated restore target are available on this machine. Database/config and historical media restore were not run. Provision distinct backup and media repository credentials, then follow [the recovery runbook](../../docs/PRODUCTION_RECOVERY.md) in an isolated target. |
 | VM and tunnel deployment | The SSH private key is on another machine, as previously reported. The production deploy key, verified VM host key, Cloudflare Access service-token credentials, and provisioned production tunnel/SSH route are not available here. No VM preflight or production deployment was attempted. |
 
