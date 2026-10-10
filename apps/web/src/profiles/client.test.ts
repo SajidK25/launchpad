@@ -6,9 +6,15 @@ import { createProfileClient, ProfileRequestError } from "./client";
 
 describe("profile client", () => {
   it("uses the current session and CSRF token for an R2 photo transfer", async () => {
-    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
     const ensureSession = vi.fn().mockResolvedValue(undefined);
-    const client = createProfileClient(fetcher, () => "csrf-now", ensureSession);
+    const client = createProfileClient(
+      fetcher,
+      () => "csrf-now",
+      ensureSession,
+    );
     const file = new File(["photo"], "photo.png", { type: "image/png" });
 
     await client.uploadPhoto(

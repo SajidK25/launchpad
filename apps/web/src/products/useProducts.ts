@@ -85,7 +85,9 @@ export function useDecideReview(client: ProductClient, productId: string) {
     }) => client.decideReview(productId, payload, idempotencyKey),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: productKeys.reviewQueue });
-      void queryClient.invalidateQueries({ queryKey: productKeys.approvedReviews });
+      void queryClient.invalidateQueries({
+        queryKey: productKeys.approvedReviews,
+      });
       void queryClient.invalidateQueries({
         queryKey: productKeys.review(productId),
       });

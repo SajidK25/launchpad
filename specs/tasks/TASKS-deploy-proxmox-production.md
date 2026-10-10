@@ -1119,7 +1119,7 @@ Document the final production decisions, VM/tunnel prerequisites, secret provisi
 
 ## Task T22: Integrate checks and record evidence
 
-> **Status:** not started
+> **Status:** done (local evidence recorded; operator checks pending)
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** high
@@ -1133,16 +1133,16 @@ Document the final production decisions, VM/tunnel prerequisites, secret provisi
 Run the integrated local and protected provider checks, verify generated contracts/images and deployment safety, and record evidence without implying unperformed VM/R2 recovery checks passed. This task produces the implementation evidence artifact used before independent review and QA.
 
 ### Verification Checklist
-- [ ] Run `sh scripts/quality/run.sh`; expected: every configured quality category passes with local MinIO and no cloud secrets.
-- [ ] Build production Python/web images; expected: successful amd64 images with digest and no baked secrets.
-- [ ] Validate production Compose render; expected: fixed project, no MinIO/Mailpit, correct secret scopes, no unexpected published ports.
-- [ ] Run migration suite and old-data profile-photo regression; expected: forward migration and existing media preserved.
-- [ ] Exercise profile/product upload end-to-end locally via MinIO, including rejection/retry/private-read behavior.
-- [ ] Run deployment script failure injection; expected: no staging/global changes, correct maintenance and schema-aware recovery.
-- [ ] Run backup and isolated restoration evidence; expected: encrypted database/config and historical media recover with separate keys.
-- [ ] Run protected R2 validation if credentials/config are provisioned; otherwise mark it pending with exact missing operator input.
-- [ ] Run tunnel/host deployment only when operator provisioned SSH, Access, verified host key, tunnel, and VM inputs; otherwise mark pending honestly.
-- [ ] Save a dated verification record with commands, results, image digests, migration head, and unresolved external checks.
+- [x] Run `sh scripts/quality/run.sh`; expected: every configured quality category passes with local MinIO and no cloud secrets.
+- [x] Build production Python/web images; expected: successful amd64 images with digest and no baked secrets.
+- [x] Validate production Compose render; expected: fixed project, no MinIO/Mailpit, correct secret scopes, no unexpected published ports.
+- [x] Run migration suite and old-data profile-photo regression; expected: forward migration and existing media preserved.
+- [x] Exercise profile/product upload end-to-end locally via MinIO, including rejection/retry/private-read behavior.
+- [x] Run deployment script failure injection; expected: no staging/global changes, correct maintenance and schema-aware recovery.
+- [ ] Run backup and isolated restoration evidence; expected: encrypted database/config and historical media recover with separate keys. **Pending:** separate Restic repository credentials/passwords and an isolated restore target are not provisioned on this machine.
+- [x] Run protected R2 validation if credentials/config are provisioned; otherwise mark it pending with exact missing operator input. **Pending:** isolated validation bucket, endpoint/account, access key/secret, and production bucket identifier; see evidence record.
+- [x] Run tunnel/host deployment only when operator provisioned SSH, Access, verified host key, tunnel, and VM inputs; otherwise mark pending honestly. **Pending:** deployment SSH key and verified host key, Cloudflare Access service token, and provisioned VM/tunnel route; the VM key is only available on another machine.
+- [x] Save a dated verification record with commands, results, image digests, migration head, and unresolved external checks: [QA-RESULTS-2026-10-10-deploy-proxmox-production.md](../qa/QA-RESULTS-2026-10-10-deploy-proxmox-production.md).
 
 ### Implementation Notes
 - **Module(s):** project integration and operational verification

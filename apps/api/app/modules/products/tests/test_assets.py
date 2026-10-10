@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -30,7 +31,12 @@ from app.modules.products.policies import (
 from app.modules.products.repository import ProductRepository
 from app.modules.products.routes import router as product_router
 from app.modules.products.schemas import ProductAssetIntentInput, ProductAssetIntentResponse
-from app.modules.products.service import ProductService, ProductValidationError
+from app.modules.products.service import (
+    ProductAssetStorage,
+    ProductMemberAccess,
+    ProductService,
+    ProductValidationError,
+)
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
@@ -67,6 +73,7 @@ def test_product_asset_transfer_route_is_registered() -> None:
 
     assert any(
         route.path == "/api/v1/me/products/{product_id}/assets/{asset_id}/content"
+        and route.methods is not None
         and "PUT" in route.methods
         for route in routes.routes
         if isinstance(route, APIRoute)
@@ -108,9 +115,19 @@ async def test_product_transfer_locks_and_preserves_pending_asset_on_storage_fai
     )
 
     class Access:
-        async def current_account(self, session: Any, account_id: UUID, *, lock: bool = False):
+        async def current_account(
+            self, session: AsyncSession, account_id: UUID, *, lock: bool = False
+        ) -> AccountState:
             assert lock is True
             return AccountState(account_id, True, "member", None)
+
+        async def founder_states(
+            self, session: AsyncSession, account_ids: Sequence[UUID]
+        ) -> dict[UUID, AccountState]:
+            return {
+                account_id: AccountState(account_id, True, "member", None)
+                for account_id in account_ids
+            }
 
     class Session:
         def begin_nested(self) -> Session:
@@ -128,12 +145,14 @@ async def test_product_transfer_locks_and_preserves_pending_asset_on_storage_fai
         def __init__(self) -> None:
             self.lock_order = []
 
-        async def get_owned_product(self, session: Any, **values: object):
+        async def get_owned_product(
+            self, session: AsyncSession, **values: object
+        ) -> SimpleNamespace:
             self.lock_order.append("product")
             assert values["lock"] is True
             return product
 
-        async def get_asset(self, session: Any, **values: object):
+        async def get_asset(self, session: AsyncSession, **values: object) -> SimpleNamespace:
             self.lock_order.append("asset")
             assert values["lock"] is True
             return asset
@@ -149,11 +168,33 @@ async def test_product_transfer_locks_and_preserves_pending_asset_on_storage_fai
             if storage_failure:
                 raise ObjectOperationError("storage unavailable")
 
+        async def create_product_staging_upload(
+            self,
+            *,
+            account_id: UUID,
+            product_id: UUID,
+            asset_id: UUID,
+            content_type: str,
+            size: int,
+            expires_in: int = 300,
+        ) -> StagingUpload:
+            raise AssertionError("transfer test does not create upload intents")
+
+        async def finalize_product_staging(
+            self,
+            *,
+            account_id: UUID,
+            product_id: UUID,
+            asset_id: UUID,
+            declared_content_type: str | None = None,
+        ) -> CleanPhoto:
+            raise AssertionError("transfer test does not finalize upload intents")
+
     repository = Repository()
     storage = Storage()
     service = ProductService(
-        member_access=Access(),
-        repository=repository,
+        member_access=cast(ProductMemberAccess, Access()),
+        repository=cast(ProductRepository, repository),
         payload_codec=EmailPayloadCodec({"asset-test": b"a" * 32}, "asset-test"),
         clock=lambda: now,
     )
@@ -161,23 +202,23 @@ async def test_product_transfer_locks_and_preserves_pending_asset_on_storage_fai
     if storage_failure:
         with pytest.raises(ProductInfrastructureError):
             await service.transfer_asset(
-                Session(),
+                cast(AsyncSession, Session()),
                 actor_id=owner_id,
                 product_id=product_id,
                 asset_id=asset_id,
                 body=b"bounded image bytes",
                 content_type="image/png",
-                storage=storage,
+                storage=cast(ProductAssetStorage, storage),
             )
     else:
         await service.transfer_asset(
-            Session(),
+            cast(AsyncSession, Session()),
             actor_id=owner_id,
             product_id=product_id,
             asset_id=asset_id,
             body=b"bounded image bytes",
             content_type="image/png",
-            storage=storage,
+            storage=cast(ProductAssetStorage, storage),
         )
 
     assert repository.lock_order == ["product", "asset"]
@@ -217,8 +258,18 @@ async def test_product_transfer_refuses_ineligible_or_mismatched_intents(
     )
 
     class Access:
-        async def current_account(self, session: Any, account_id: UUID, *, lock: bool = False):
+        async def current_account(
+            self, session: AsyncSession, account_id: UUID, *, lock: bool = False
+        ) -> AccountState:
             return AccountState(account_id, True, "member", None)
+
+        async def founder_states(
+            self, session: AsyncSession, account_ids: Sequence[UUID]
+        ) -> dict[UUID, AccountState]:
+            return {
+                account_id: AccountState(account_id, True, "member", None)
+                for account_id in account_ids
+            }
 
     class Session:
         def begin_nested(self) -> Session:
@@ -231,10 +282,14 @@ async def test_product_transfer_refuses_ineligible_or_mismatched_intents(
             return None
 
     class Repository:
-        async def get_owned_product(self, session: Any, **values: object):
+        async def get_owned_product(
+            self, session: AsyncSession, **values: object
+        ) -> SimpleNamespace:
             return product
 
-        async def get_asset(self, session: Any, **values: object):
+        async def get_asset(
+            self, session: AsyncSession, **values: object
+        ) -> SimpleNamespace | None:
             return None if invalid_state == "absent_asset" else asset
 
     class Storage:
@@ -243,10 +298,32 @@ async def test_product_transfer_refuses_ineligible_or_mismatched_intents(
         async def put_staging(self, **values: object) -> None:
             self.writes += 1
 
+        async def create_product_staging_upload(
+            self,
+            *,
+            account_id: UUID,
+            product_id: UUID,
+            asset_id: UUID,
+            content_type: str,
+            size: int,
+            expires_in: int = 300,
+        ) -> StagingUpload:
+            raise AssertionError("transfer test does not create upload intents")
+
+        async def finalize_product_staging(
+            self,
+            *,
+            account_id: UUID,
+            product_id: UUID,
+            asset_id: UUID,
+            declared_content_type: str | None = None,
+        ) -> CleanPhoto:
+            raise AssertionError("transfer test does not finalize upload intents")
+
     storage = Storage()
     service = ProductService(
-        member_access=Access(),
-        repository=Repository(),
+        member_access=cast(ProductMemberAccess, Access()),
+        repository=cast(ProductRepository, Repository()),
         payload_codec=EmailPayloadCodec({"asset-test": b"a" * 32}, "asset-test"),
         clock=lambda: now,
     )
@@ -255,13 +332,13 @@ async def test_product_transfer_refuses_ineligible_or_mismatched_intents(
 
     with pytest.raises((ProductConflictError, ProductNotFoundError, ProductValidationError)):
         await service.transfer_asset(
-            Session(),
+            cast(AsyncSession, Session()),
             actor_id=owner_id,
             product_id=product_id,
             asset_id=asset_id,
             body=body,
             content_type=content_type,
-            storage=storage,
+            storage=cast(ProductAssetStorage, storage),
         )
     assert storage.writes == 0
 
@@ -319,6 +396,9 @@ class _Storage:
         self.uploads.append((account_id, product_id, asset_id))
         key = f"product-staging/{account_id.hex}/{product_id.hex}/{asset_id.hex}"
         return StagingUpload(key, "http://minio/upload", {"key": key}, expires_in)
+
+    async def put_staging(self, *, object_key: str, body: bytes, content_type: str) -> None:
+        raise AssertionError("integration test does not transfer staged bytes")
 
     async def finalize_product_staging(
         self,

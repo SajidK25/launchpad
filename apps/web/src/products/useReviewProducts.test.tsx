@@ -7,7 +7,11 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProductClient } from "./client";
-import { productKeys, useApprovedReviews, useDecideReview } from "./useProducts";
+import {
+  productKeys,
+  useApprovedReviews,
+  useDecideReview,
+} from "./useProducts";
 
 function setup(client: ProductClient) {
   const queryClient = new QueryClient({
@@ -77,10 +81,18 @@ describe("product review hooks", () => {
       },
       "attempt-1",
     );
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: productKeys.reviewQueue });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: productKeys.approvedReviews });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: productKeys.review("product-1") });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: productKeys.detail("product-1") });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: productKeys.reviewQueue,
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: productKeys.approvedReviews,
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: productKeys.review("product-1"),
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: productKeys.detail("product-1"),
+    });
   });
 
   it("refreshes current server details when a decision is stale", async () => {
@@ -103,8 +115,14 @@ describe("product review hooks", () => {
       ).rejects.toBe(conflict);
     });
 
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: productKeys.reviewQueue });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: productKeys.review("product-1") });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: productKeys.detail("product-1") });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: productKeys.reviewQueue,
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: productKeys.review("product-1"),
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: productKeys.detail("product-1"),
+    });
   });
 });

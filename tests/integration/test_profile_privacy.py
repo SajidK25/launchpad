@@ -186,9 +186,11 @@ def test_published_profile_edit_is_private_and_notified_atomically(
             sessions = async_sessionmaker(database.engine, expire_on_commit=False)
             async with sessions.begin() as session:
                 columns = await session.run_sync(
-                    lambda connection: {
+                    lambda sync_session: {
                         column["name"]: column["nullable"]
-                        for column in inspect(connection).get_columns("photo_uploads")
+                        for column in inspect(sync_session.connection()).get_columns(
+                            "photo_uploads"
+                        )
                     }
                 )
                 assert columns["declared_byte_count"] is True

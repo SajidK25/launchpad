@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql.dml import Insert
 
 from app.modules.users.repository import ProfileRepository
 from app.modules.users.service import (
@@ -120,7 +121,7 @@ async def test_profile_transfer_locks_and_rechecks_intent_before_staging_write()
 async def test_profile_transfer_refuses_stale_or_undeclared_intents(invalid_intent: str) -> None:
     account_id = uuid4()
     upload_id = uuid4()
-    intent = SimpleNamespace(
+    intent: SimpleNamespace | None = SimpleNamespace(
         id=upload_id,
         account_id=account_id,
         staging_key=f"profile-staging/{account_id.hex}/{upload_id.hex}",
@@ -132,10 +133,13 @@ async def test_profile_transfer_refuses_stale_or_undeclared_intents(invalid_inte
     if invalid_intent == "absent":
         intent = None
     elif invalid_intent == "expired":
+        assert intent is not None
         intent.expires_at = datetime(2025, 12, 31, 23, 59, tzinfo=UTC)
     elif invalid_intent == "completed":
+        assert intent is not None
         intent.state = "cleaned"
     else:
+        assert intent is not None
         intent.declared_byte_count = None
         intent.declared_media_type = None
 
@@ -243,9 +247,9 @@ async def test_transfer_rechecks_auth_and_preserves_pending_on_storage_failure()
 @pytest.mark.anyio
 async def test_create_photo_upload_persists_declarations_separately() -> None:
     class CaptureSession:
-        statement: object | None = None
+        statement: Insert | None = None
 
-        async def execute(self, statement: object) -> None:
+        async def execute(self, statement: Insert) -> None:
             self.statement = statement
 
     session = CaptureSession()
@@ -263,7 +267,7 @@ async def test_create_photo_upload_persists_declarations_separately() -> None:
     )
 
     assert session.statement is not None
-    params = session.statement.compile(dialect=postgresql.dialect()).params  # type: ignore[attr-defined]
+    params = session.statement.compile(dialect=postgresql.dialect()).params  # type: ignore[no-untyped-call]
     assert params["declared_byte_count"] == 2048
     assert params["declared_media_type"] == "image/png"
     assert "byte_count" not in params

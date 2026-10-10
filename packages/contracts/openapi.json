@@ -23,10 +23,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "email",
-          "password"
-        ],
+        "required": ["email", "password"],
         "title": "EmailPasswordRequest",
         "type": "object"
       },
@@ -37,9 +34,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "email"
-        ],
+        "required": ["email"],
         "title": "EmailRequest",
         "type": "object"
       },
@@ -63,9 +58,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "title": "HealthStatus",
         "type": "object"
       },
@@ -81,11 +74,7 @@
             "type": "string"
           },
           "role": {
-            "enum": [
-              "member",
-              "reviewer",
-              "admin"
-            ],
+            "enum": ["member", "reviewer", "admin"],
             "title": "Role",
             "type": "string"
           },
@@ -148,13 +137,7 @@
             "title": "Read At"
           }
         },
-        "required": [
-          "id",
-          "product_id",
-          "kind",
-          "created_at",
-          "read_at"
-        ],
+        "required": ["id", "product_id", "kind", "created_at", "read_at"],
         "title": "NotificationReadResponse",
         "type": "object"
       },
@@ -170,10 +153,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "token",
-          "new_password"
-        ],
+        "required": ["token", "new_password"],
         "title": "PasswordResetRequest",
         "type": "object"
       },
@@ -193,11 +173,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "upload_id",
-          "media_type",
-          "byte_count"
-        ],
+        "required": ["upload_id", "media_type", "byte_count"],
         "title": "PhotoCompleteResponse",
         "type": "object"
       },
@@ -220,11 +196,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "filename",
-          "content_type",
-          "size"
-        ],
+        "required": ["filename", "content_type", "size"],
         "title": "PhotoUploadRequest",
         "type": "object"
       },
@@ -254,18 +226,12 @@
             "type": "string"
           },
           "upload_method": {
-            "enum": [
-              "POST",
-              "PUT"
-            ],
+            "enum": ["POST", "PUT"],
             "title": "Upload Method",
             "type": "string"
           },
           "upload_transport": {
-            "enum": [
-              "storage_form",
-              "authenticated_api"
-            ],
+            "enum": ["storage_form", "authenticated_api"],
             "title": "Upload Transport",
             "type": "string"
           },
@@ -317,11 +283,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "version",
-          "logo_asset_id",
-          "screenshot_asset_ids"
-        ],
+        "required": ["version", "logo_asset_id", "screenshot_asset_ids"],
         "title": "ProductAssetAttachmentInput",
         "type": "object"
       },
@@ -338,38 +300,22 @@
             "type": "integer"
           },
           "kind": {
-            "enum": [
-              "logo",
-              "screenshot"
-            ],
+            "enum": ["logo", "screenshot"],
             "title": "Kind",
             "type": "string"
           },
           "media_type": {
-            "enum": [
-              "image/jpeg",
-              "image/png",
-              "image/webp"
-            ],
+            "enum": ["image/jpeg", "image/png", "image/webp"],
             "title": "Media Type",
             "type": "string"
           },
           "state": {
-            "enum": [
-              "clean",
-              "failed"
-            ],
+            "enum": ["clean", "failed"],
             "title": "State",
             "type": "string"
           }
         },
-        "required": [
-          "asset_id",
-          "kind",
-          "media_type",
-          "byte_count",
-          "state"
-        ],
+        "required": ["asset_id", "kind", "media_type", "byte_count", "state"],
         "title": "ProductAssetCompleteResponse",
         "type": "object"
       },
@@ -378,19 +324,12 @@
         "description": "Bounded declaration for one private logo or screenshot upload.",
         "properties": {
           "content_type": {
-            "enum": [
-              "image/jpeg",
-              "image/png",
-              "image/webp"
-            ],
+            "enum": ["image/jpeg", "image/png", "image/webp"],
             "title": "Content Type",
             "type": "string"
           },
           "kind": {
-            "enum": [
-              "logo",
-              "screenshot"
-            ],
+            "enum": ["logo", "screenshot"],
             "title": "Kind",
             "type": "string"
           },
@@ -401,11 +340,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "kind",
-          "content_type",
-          "size"
-        ],
+        "required": ["kind", "content_type", "size"],
         "title": "ProductAssetIntentInput",
         "type": "object"
       },
@@ -436,18 +371,12 @@
             "type": "object"
           },
           "upload_method": {
-            "enum": [
-              "POST",
-              "PUT"
-            ],
+            "enum": ["POST", "PUT"],
             "title": "Upload Method",
             "type": "string"
           },
           "upload_transport": {
-            "enum": [
-              "storage_form",
-              "authenticated_api"
-            ],
+            "enum": ["storage_form", "authenticated_api"],
             "title": "Upload Transport",
             "type": "string"
           },
@@ -541,9 +470,7 @@
             "title": "Website Url"
           }
         },
-        "required": [
-          "version"
-        ],
+        "required": ["version"],
         "title": "ProductSaveInput",
         "type": "object"
       },
@@ -571,11 +498,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "id",
-          "status",
-          "version"
-        ],
+        "required": ["id", "status", "version"],
         "title": "ProductStateResponse",
         "type": "object"
       },
@@ -597,11 +520,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "submission_id",
-          "product_id",
-          "product_version"
-        ],
+        "required": ["submission_id", "product_id", "product_version"],
         "title": "ProductSubmitResponse",
         "type": "object"
       },
@@ -615,9 +534,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "version"
-        ],
+        "required": ["version"],
         "title": "ProductVersionInput",
         "type": "object"
       },
@@ -636,10 +553,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "version",
-          "submission_id"
-        ],
+        "required": ["version", "submission_id"],
         "title": "ProductWithdrawInput",
         "type": "object"
       },
@@ -702,9 +616,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "version"
-        ],
+        "required": ["version"],
         "title": "ProfilePatchRequest",
         "type": "object"
       },
@@ -816,11 +728,7 @@
             "title": "Feedback"
           },
           "outcome": {
-            "enum": [
-              "approved",
-              "rejected",
-              "changes_requested"
-            ],
+            "enum": ["approved", "rejected", "changes_requested"],
             "title": "Outcome",
             "type": "string"
           },
@@ -830,11 +738,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "submission_id",
-          "expected_version",
-          "outcome"
-        ],
+        "required": ["submission_id", "expected_version", "outcome"],
         "title": "ReviewDecisionInput",
         "type": "object"
       },
@@ -852,11 +756,7 @@
             "type": "string"
           },
           "status": {
-            "enum": [
-              "approved",
-              "rejected",
-              "changes_requested"
-            ],
+            "enum": ["approved", "rejected", "changes_requested"],
             "title": "Status",
             "type": "string"
           },
@@ -892,11 +792,7 @@
             "type": "string"
           },
           "role": {
-            "enum": [
-              "member",
-              "reviewer",
-              "admin"
-            ],
+            "enum": ["member", "reviewer", "admin"],
             "title": "Role",
             "type": "string"
           },
@@ -927,9 +823,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "token"
-        ],
+        "required": ["token"],
         "title": "TokenRequest",
         "type": "object"
       },
@@ -965,11 +859,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError",
         "type": "object"
       }

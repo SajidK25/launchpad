@@ -5,9 +5,9 @@ import { createProductClient } from "./client";
 describe("product review client", () => {
   it("reads the approved review page through its generated GraphQL operation", async () => {
     const page = { items: [], nextCursor: "next" };
-    const fetcher = vi.fn().mockResolvedValue(
-      Response.json({ data: { approvedReviews: page } }),
-    );
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(Response.json({ data: { approvedReviews: page } }));
     const client = createProductClient(fetcher, {
       ensureSession: vi.fn().mockResolvedValue({}),
       getCsrfToken: vi.fn().mockReturnValue(null),

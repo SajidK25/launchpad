@@ -49,8 +49,8 @@ describe("product client", () => {
     ).rejects.toMatchObject({ status: 503 });
     await client.uploadAsset(created.upload_url, created.fields, file);
 
-    const transfer = fetcher.mock.calls.filter(
-      ([url]) => String(url).endsWith("/content"),
+    const transfer = fetcher.mock.calls.filter(([url]) =>
+      String(url).endsWith("/content"),
     );
     expect(transfer).toHaveLength(2);
     expect(transfer[0]?.[1]).toEqual(

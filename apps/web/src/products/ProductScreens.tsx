@@ -961,7 +961,9 @@ function LockedFounderProduct({ product }: { product: ProductDetail }) {
       <h1 id="locked-product-title">
         {product.summary.name?.trim() || "Your product"}
       </h1>
-      <span className={`product-status product-status-${product.summary.status}`}>
+      <span
+        className={`product-status product-status-${product.summary.status}`}
+      >
         {productStatusLabel(product.summary.status)}
       </span>
       <section

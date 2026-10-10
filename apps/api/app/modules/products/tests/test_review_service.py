@@ -138,13 +138,17 @@ def test_resolves_each_pending_outcome_with_decision_and_founder_notice(
                             )
                         )
                         await session.execute(
-                            delete(ProductReviewDecision).where(ProductReviewDecision.id == decision_id)
+                            delete(ProductReviewDecision).where(
+                                ProductReviewDecision.id == decision_id
+                            )
                         )
                     await session.execute(
                         delete(OutboxMessage).where(OutboxMessage.aggregate_id.in_(event_ids))
                     )
                     await session.execute(delete(Product).where(Product.id == product_id))
-                    await session.execute(delete(Account).where(Account.id.in_([staff_id, founder_id])))
+                    await session.execute(
+                        delete(Account).where(Account.id.in_([staff_id, founder_id]))
+                    )
             await database.close()
 
     asyncio.run(verify())

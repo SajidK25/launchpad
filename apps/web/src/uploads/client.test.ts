@@ -18,8 +18,7 @@ describe("shared upload client", () => {
     } satisfies components["schemas"]["PhotoUploadResponse"];
     const productIntent = {
       asset_id: "product-asset",
-      upload_url:
-        "/api/v1/me/products/product/assets/product-asset/content",
+      upload_url: "/api/v1/me/products/product/assets/product-asset/content",
       fields: {},
       expires_in: 300,
       upload_method: "PUT",
@@ -32,7 +31,9 @@ describe("shared upload client", () => {
   });
 
   it("submits MinIO form fields without browser credentials", async () => {
-    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
     const identity = {
       ensureSession: vi.fn(),
       getCsrfToken: vi.fn().mockReturnValue("csrf-current"),
@@ -65,7 +66,9 @@ describe("shared upload client", () => {
   });
 
   it("sends authenticated API bytes with the current CSRF token", async () => {
-    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
     const identity = {
       ensureSession: vi.fn().mockResolvedValue(undefined),
       getCsrfToken: vi.fn().mockReturnValue("csrf-live"),

@@ -7,9 +7,6 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, insert, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 from app.modules.auth.models import Account
 from app.modules.auth.staff import AuthAccessService
 from app.modules.notifications.models import Notification
@@ -22,12 +19,13 @@ from app.modules.products.models import (
     Topic,
 )
 from app.modules.products.policies import ProductConflictError
-from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import ProductReviewResult, ProductService
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.models import OutboxMessage
 from conftest import IntegrationSettings
+from sqlalchemy import delete, insert, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 def _account(account_id: UUID, *, role: str) -> Account:
@@ -148,7 +146,9 @@ async def _clean(
         decision_ids = list(
             await session.scalars(
                 select(ProductReviewDecision.id)
-                .join(ProductSubmission, ProductSubmission.id == ProductReviewDecision.submission_id)
+                .join(
+                    ProductSubmission, ProductSubmission.id == ProductReviewDecision.submission_id
+                )
                 .where(ProductSubmission.product_id.in_(product_ids))
             )
         )
@@ -204,7 +204,9 @@ def test_staff_can_return_approved_product_for_changes_without_erasing_approval(
             await database.ensure_compatible()
             sessions = async_sessionmaker(database.engine, expire_on_commit=False)
             async with sessions() as session, session.begin():
-                session.add_all([_account(staff_id, role="reviewer"), _account(founder_id, role="member")])
+                session.add_all(
+                    [_account(staff_id, role="reviewer"), _account(founder_id, role="member")]
+                )
             await _seed_product(
                 sessions,
                 product_id=product_id,
@@ -273,7 +275,9 @@ def test_identical_review_replay_returns_the_original_decision_and_changed_repla
             await database.ensure_compatible()
             sessions = async_sessionmaker(database.engine, expire_on_commit=False)
             async with sessions() as session, session.begin():
-                session.add_all([_account(staff_id, role="reviewer"), _account(founder_id, role="member")])
+                session.add_all(
+                    [_account(staff_id, role="reviewer"), _account(founder_id, role="member")]
+                )
             await _seed_product(
                 sessions,
                 product_id=product_id,
@@ -432,7 +436,9 @@ def test_reviewed_product_cannot_be_deleted_after_later_submission_is_withdrawn(
             await database.ensure_compatible()
             sessions = async_sessionmaker(database.engine, expire_on_commit=False)
             async with sessions() as session, session.begin():
-                session.add_all([_account(staff_id, role="reviewer"), _account(founder_id, role="member")])
+                session.add_all(
+                    [_account(staff_id, role="reviewer"), _account(founder_id, role="member")]
+                )
             await _seed_product(
                 sessions,
                 product_id=product_id,

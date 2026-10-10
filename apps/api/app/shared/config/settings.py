@@ -249,7 +249,9 @@ def _validate_identity_settings(
         )
         if value is None or value == "" or value == ()
     ]
-    if settings.environment != "production" or (require_worker_mail and not settings.resend_api_key):
+    if settings.environment != "production" or (
+        require_worker_mail and not settings.resend_api_key
+    ):
         missing.extend(
             name
             for name, value in (
@@ -289,7 +291,9 @@ def _validate_identity_settings(
     assert settings.public_upload_endpoint_url is not None
     assert settings.outbox_key is not None
     assert settings.outbox_key_id is not None
-    if settings.environment != "production" or (require_worker_mail and not settings.resend_api_key):
+    if settings.environment != "production" or (
+        require_worker_mail and not settings.resend_api_key
+    ):
         assert settings.smtp_host is not None
 
     for name, url in (

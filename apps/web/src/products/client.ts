@@ -237,11 +237,11 @@ function assertProductState(value: unknown): ProductState {
     !isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.version !== "number" ||
-    value.status !== "draft" &&
-    value.status !== "submitted" &&
-    value.status !== "changes_requested" &&
-    value.status !== "approved" &&
-    value.status !== "rejected"
+    (value.status !== "draft" &&
+      value.status !== "submitted" &&
+      value.status !== "changes_requested" &&
+      value.status !== "approved" &&
+      value.status !== "rejected")
   ) {
     throw new ProductRequestError(200, value);
   }
@@ -252,7 +252,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sameFields(left: Record<string, string>, right: Record<string, string>) {
+function sameFields(
+  left: Record<string, string>,
+  right: Record<string, string>,
+) {
   const leftEntries = Object.entries(left);
   const rightEntries = Object.entries(right);
   return (

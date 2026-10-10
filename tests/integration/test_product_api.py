@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -25,6 +26,7 @@ from app.shared.storage.objects import PrivateObjectStore
 from conftest import IntegrationSettings
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from PIL import Image
 from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import delete, func, select
@@ -199,13 +201,21 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
             r2_app = FastAPI()
             r2_database = Database.connect(integration_settings_fixture.database_url)
             r2_settings = settings.model_copy(update={"storage_provider": "r2"})
+            image = Image.new("RGB", (3, 3), (1, 2, 3))
+            image_output = io.BytesIO()
+            image.save(image_output, format="WEBP")
+            image_body = image_output.getvalue()
             r2_app.include_router(
                 router(settings=r2_settings, database=r2_database, redis=redis, storage=storage)
             )
             with TestClient(r2_app) as r2_client:
                 r2_intent = r2_client.post(
                     asset_path,
-                    json={"kind": "screenshot", "content_type": "image/webp", "size": 256},
+                    json={
+                        "kind": "screenshot",
+                        "content_type": "image/webp",
+                        "size": len(image_body),
+                    },
                     headers=origin,
                     cookies=cookies,
                 )
@@ -215,6 +225,47 @@ def test_product_http_commands_preserve_private_versions_topics_and_queue(
             assert r2_intent.json()["upload_url"].endswith("/content")
             assert r2_intent.json()["fields"] == {}
             assert r2_intent.json()["upload_headers"] == {"Content-Type": "image/webp"}
+
+            r2_upload = client.put(
+                r2_intent.json()["upload_url"],
+                content=image_body + b"too large",
+                headers={**origin, "Content-Type": "image/webp"},
+                cookies=cookies,
+            )
+            assert r2_upload.status_code == 413
+            r2_upload = client.put(
+                r2_intent.json()["upload_url"],
+                content=image_body,
+                headers={**origin, "Content-Type": "image/webp"},
+                cookies=cookies,
+            )
+            assert r2_upload.status_code == 204
+            r2_complete = client.post(
+                f"/api/v1/me/products/{product_id}/assets/{r2_intent.json()['asset_id']}/complete",
+                headers=origin,
+                cookies=cookies,
+            )
+            assert r2_complete.status_code == 200
+            assert r2_complete.json()["state"] == "clean"
+
+            async def read_completed_product_asset() -> tuple[bytes, str | None]:
+                database = Database.connect(integration_settings_fixture.database_url)
+                try:
+                    sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+                    async with sessions() as session:
+                        asset = await session.get(ProductAsset, UUID(r2_intent.json()["asset_id"]))
+                        assert asset is not None and asset.clean_key is not None
+                        return await storage.get_product_private(
+                            account_id=account_id,
+                            product_id=product_id,
+                            object_key=asset.clean_key,
+                        )
+                finally:
+                    await database.close()
+
+            stored_body, stored_type = asyncio.run(read_completed_product_asset())
+            assert stored_body == image_body
+            assert stored_type == "image/webp"
 
             other_response = client.patch(
                 f"/api/v1/me/products/{product_id}",
