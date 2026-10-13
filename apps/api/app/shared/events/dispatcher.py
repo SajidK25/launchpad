@@ -85,11 +85,40 @@ async def dispatch_due(
     now: datetime | None = None,
     limit: int = 20,
 ) -> int:
-    """Dispatch a bounded batch by allowlisted type; unknown work fails closed."""
+    """Claim and dispatch a bounded batch in the caller's transaction."""
+
+    current = now or datetime.now(UTC)
+    events = await repository.claim_due(session, now=current, limit=limit)
+    return await dispatch_claimed(
+        session,
+        events=events,
+        repository=repository,
+        codec=codec,
+        sender=sender,
+        product_handler=product_handler,
+        review_email_handler=review_email_handler,
+        notification_handler=notification_handler,
+        now=current,
+    )
+
+
+async def dispatch_claimed(
+    session: AsyncSession,
+    *,
+    events: list[OutboxMessage],
+    repository: OutboxRepository,
+    codec: EmailPayloadCodec,
+    sender: EmailSender,
+    product_handler: ProductEventHandler | None = None,
+    review_email_handler: ReviewOutcomeEmailHandler | None = None,
+    notification_handler: NotificationChangedHandler | None = None,
+    now: datetime | None = None,
+) -> int:
+    """Dispatch previously claimed events without acquiring claim locks again."""
 
     current = now or datetime.now(UTC)
     completed = 0
-    for event in await repository.claim_due(session, now=current, limit=limit):
+    for event in events:
         if event.event_type not in (
             EMAIL_EVENT_TYPES
             | REVIEW_EMAIL_EVENT_TYPES

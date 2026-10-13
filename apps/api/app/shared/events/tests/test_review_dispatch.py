@@ -69,6 +69,18 @@ class _Sender:
         self.sent.append((payload, message_id))
 
 
+class _FailOnceSender:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.sent: list[tuple[dict[str, object], str]] = []
+
+    async def send(self, payload: dict[str, object], *, message_id: str) -> None:
+        self.calls.append(message_id)
+        if len(self.calls) == 1:
+            raise OSError("temporary provider outage")
+        self.sent.append((payload, message_id))
+
+
 class _ReviewEmail:
     def __init__(self, *, error: Exception | None = None) -> None:
         self.error = error
@@ -179,6 +191,48 @@ def test_review_email_and_live_failures_return_events_to_retry() -> None:
 
         assert completed == 0
         assert repository.retried == [review.id, changed.id]
+        assert repository.dead == []
+
+    asyncio.run(verify())
+
+
+def test_review_email_retry_reuses_stable_identity_and_completes_once() -> None:
+    async def verify() -> None:
+        codec = EmailPayloadCodec({"test": b"r" * 32}, "test")
+        review = _event(
+            codec,
+            "review.outcome_email_requested.v1",
+            {"recipient": "founder@example.com", "subject": "Review complete", "body": "Sign in"},
+        )
+        repository = _Repository(review)
+        sender = _FailOnceSender()
+        handler = _ReviewEmail()
+        session = cast(AsyncSession, object())
+
+        first_completed = await dispatch_due(
+            session,
+            repository=cast(OutboxRepository, repository),
+            codec=codec,
+            sender=sender,
+            review_email_handler=handler,
+        )
+        second_completed = await dispatch_due(
+            session,
+            repository=cast(OutboxRepository, repository),
+            codec=codec,
+            sender=sender,
+            review_email_handler=handler,
+        )
+
+        expected_message_id = f"launchpad-{review.id}"
+        assert first_completed == 0
+        assert second_completed == 1
+        assert sender.calls == [expected_message_id, expected_message_id]
+        assert len(sender.sent) == 1
+        assert sender.sent[0][0]["recipient"] == "founder@example.com"
+        assert sender.sent[0][1] == expected_message_id
+        assert repository.retried == [review.id]
+        assert repository.emails == [review.id]
         assert repository.dead == []
 
     asyncio.run(verify())

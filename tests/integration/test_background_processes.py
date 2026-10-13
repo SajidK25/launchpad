@@ -62,7 +62,8 @@ def test_background_entry_points_use_durable_outbox_dispatch() -> None:
     worker = Path("apps/worker/worker.py").read_text()
     scheduler = Path("apps/worker/scheduler.py").read_text()
 
-    assert "dispatch_due" in worker
+    assert "dispatch_claimed" in worker
+    assert "release_expired_claims" in worker
     assert "OutboxRepository" in worker
     assert "OutboxMessage" in scheduler
     assert "launchpad:outbox:due" in scheduler

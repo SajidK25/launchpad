@@ -6,6 +6,7 @@ import asyncio
 import io
 import re
 import threading
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -19,6 +20,8 @@ from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image, UnidentifiedImageError
 
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
+MAX_IMAGE_PIXELS = 20_000_000
+MAX_IMAGE_DIMENSION = 12_000
 STAGING_PREFIX = "profile-staging/"
 CLEAN_PREFIX = "profile-clean/"
 PRODUCT_STAGING_PREFIX = "product-staging/"
@@ -481,24 +484,28 @@ def _validate_and_reencode(body: bytes, max_bytes: int) -> tuple[str, bytes]:
     if not body or len(body) > max_bytes:
         raise ObjectValidationError("image is too large or empty")
     try:
-        with Image.open(io.BytesIO(body)) as image:
-            actual_format = (image.format or "").upper()
-            media_type = {
-                "JPEG": "image/jpeg",
-                "PNG": "image/png",
-                "WEBP": "image/webp",
-            }.get(actual_format)
-            if media_type is None:
-                raise ObjectValidationError("unsupported image format")
-            image.verify()
-        with Image.open(io.BytesIO(body)) as image:
-            output = io.BytesIO()
-            save_format = actual_format
-            output_image: Image.Image = image
-            if save_format == "JPEG":
-                output_image = image.convert("RGB")
-            output_image.save(output, format=save_format, exif=b"")
-            encoded = output.getvalue()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(body)) as image:
+                _validate_image_dimensions(image)
+                actual_format = (image.format or "").upper()
+                media_type = {
+                    "JPEG": "image/jpeg",
+                    "PNG": "image/png",
+                    "WEBP": "image/webp",
+                }.get(actual_format)
+                if media_type is None:
+                    raise ObjectValidationError("unsupported image format")
+                image.verify()
+            with Image.open(io.BytesIO(body)) as image:
+                _validate_image_dimensions(image)
+                output = io.BytesIO()
+                save_format = actual_format
+                output_image: Image.Image = image
+                if save_format == "JPEG":
+                    output_image = image.convert("RGB")
+                output_image.save(output, format=save_format, exif=b"")
+                encoded = output.getvalue()
     except (
         Image.DecompressionBombError,
         Image.DecompressionBombWarning,
@@ -512,3 +519,15 @@ def _validate_and_reencode(body: bytes, max_bytes: int) -> tuple[str, bytes]:
     if not encoded or len(encoded) > max_bytes:
         raise ObjectValidationError("encoded image is too large")
     return media_type, encoded
+
+
+def _validate_image_dimensions(image: Image.Image) -> None:
+    width, height = image.size
+    if (
+        width <= 0
+        or height <= 0
+        or width > MAX_IMAGE_DIMENSION
+        or height > MAX_IMAGE_DIMENSION
+        or width * height > MAX_IMAGE_PIXELS
+    ):
+        raise ObjectValidationError("image dimensions exceed the supported limit")

@@ -360,12 +360,15 @@ def test_notification_uniqueness_and_read_indexes(
                 )
                 assert {
                     "ix_product_submissions_pending_queue",
+                    "ix_product_submissions_approved_page",
                     "ix_products_approved_updated",
                     "ix_product_review_decisions_submission_created",
                     "ix_notifications_recipient_created",
                     "ix_notifications_unread_recipient",
+                    "ix_notifications_product_id",
                 } <= indexes.keys()
                 assert "read_at IS NULL" in indexes["ix_notifications_unread_recipient"]
+                assert "state = 'approved'" in indexes["ix_product_submissions_approved_page"]
         finally:
             await database.close()
 

@@ -103,6 +103,12 @@ class ProductSubmission(ProductBase):
             "id",
             postgresql_where=text("state = 'pending'"),
         ),
+        Index(
+            "ix_product_submissions_approved_page",
+            text("closed_at DESC"),
+            text("product_id DESC"),
+            postgresql_where=text("state = 'approved'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)

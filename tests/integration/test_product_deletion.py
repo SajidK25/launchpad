@@ -74,6 +74,7 @@ class _RetryingStorage(_AvailableStorage):
     def __init__(self) -> None:
         self.delete_calls = 0
         self.deleted: list[str] = []
+        self.objects: set[str] = set()
 
     async def delete_product_private(
         self, *, account_id: UUID, product_id: UUID, object_key: str
@@ -83,6 +84,7 @@ class _RetryingStorage(_AvailableStorage):
         if self.delete_calls == 1:
             raise ObjectOperationError("transient purge failure")
         self.deleted.append(object_key)
+        self.objects.discard(object_key)
 
 
 class _NoopSender:
@@ -282,6 +284,9 @@ def test_delete_revokes_draft_and_schedules_delayed_asset_purge(
                 "product_id": str(product_id),
                 "staging_key": f"product-staging/{founder_id.hex}/{product_id.hex}/{asset_id.hex}",
             }
+            late_staging_key = payload["staging_key"]
+            # A still-valid signed POST may finish after the row was deleted.
+            storage.objects.add(late_staging_key)
 
             async with sessions() as session, session.begin():
                 await dispatch_due(
@@ -327,6 +332,7 @@ def test_delete_revokes_draft_and_schedules_delayed_asset_purge(
                 f"product-staging/{founder_id.hex}/{product_id.hex}/{asset_id.hex}",
                 f"product-clean/{founder_id.hex}/{product_id.hex}/{asset_id.hex}",
             ]
+            assert late_staging_key not in storage.objects
         finally:
             if "sessions" in locals():
                 async with sessions() as session, session.begin():

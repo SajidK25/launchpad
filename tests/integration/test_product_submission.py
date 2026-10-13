@@ -20,6 +20,7 @@ from app.modules.products.policies import (
     ProductConflictError,
     ProductForbiddenError,
     ProductInfrastructureError,
+    ProductQuotaError,
 )
 from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import ProductService, ProductValidationError
@@ -27,6 +28,7 @@ from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.models import OutboxMessage
 from app.shared.events.outbox import OutboxEvent, OutboxRepository
+from app.shared.storage.objects import ObjectNotFound
 from conftest import IntegrationSettings
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -58,6 +60,19 @@ class _FailAfterOutboxWrite:
     async def add(self, session: AsyncSession, event: OutboxEvent) -> UUID:
         await OutboxRepository().add(session, event)
         raise RuntimeError("simulated event failure")
+
+
+class _NoAssetsStorage:
+    async def get_product_private(
+        self, *, account_id: UUID, product_id: UUID, object_key: str
+    ) -> tuple[bytes, str | None]:
+        del account_id, product_id, object_key
+        raise ObjectNotFound("no media exists")
+
+    async def delete_product_private(
+        self, *, account_id: UUID, product_id: UUID, object_key: str
+    ) -> None:
+        del account_id, product_id, object_key
 
 
 async def _clean(
@@ -277,6 +292,156 @@ def test_submission_requires_complete_verified_draft_and_is_idempotent(
                     sessions,
                     product_ids=product_ids,
                     account_ids=[founder_id, unverified_id],
+                    topic_ids=[topic_id],
+                )
+            await database.close()
+
+    asyncio.run(verify())
+
+
+def test_concurrent_same_product_submission_creates_one_period_and_event(
+    integration_settings_fixture: IntegrationSettings,
+) -> None:
+    async def verify() -> None:
+        now = datetime(2026, 9, 29, tzinfo=UTC)
+        database = Database.connect(integration_settings_fixture.database_url)
+        founder_id, topic_id = uuid4(), uuid4()
+        product_ids: list[UUID] = []
+        try:
+            await database.ensure_compatible()
+            sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+            async with sessions() as session, session.begin():
+                session.add(_account(founder_id))
+                session.add(Topic(id=topic_id, display_name="Tools", name_key=f"t{topic_id.hex}"))
+            service = _service(now)
+            async with sessions() as session, session.begin():
+                draft = await service.create_draft(session, actor_id=founder_id)
+                product_ids.append(draft.id)
+            await _make_complete(
+                sessions,
+                service=service,
+                founder_id=founder_id,
+                product_id=draft.id,
+                topic_id=topic_id,
+                clock=now,
+            )
+            barrier = asyncio.Barrier(2)
+
+            async def submit() -> object:
+                async with sessions() as session, session.begin():
+                    await barrier.wait()
+                    return await service.submit_draft(
+                        session,
+                        actor_id=founder_id,
+                        product_id=draft.id,
+                        expected_version=1,
+                    )
+
+            results = await asyncio.gather(submit(), submit(), return_exceptions=True)
+            assert all(not isinstance(result, Exception) for result in results)
+            periods = [result for result in results if not isinstance(result, Exception)]
+            assert len({period.id for period in periods}) == 1
+            async with sessions() as session:
+                period_count = await session.scalar(
+                    select(func.count())
+                    .select_from(ProductSubmission)
+                    .where(ProductSubmission.product_id == draft.id)
+                )
+                event_count = await session.scalar(
+                    select(func.count())
+                    .select_from(OutboxMessage)
+                    .where(
+                        OutboxMessage.aggregate_id == draft.id,
+                        OutboxMessage.event_type == "product.submitted.v1",
+                    )
+                )
+            assert period_count == event_count == 1
+        finally:
+            if "sessions" in locals():
+                await _clean(
+                    sessions,
+                    product_ids=product_ids,
+                    account_ids=[founder_id],
+                    topic_ids=[topic_id],
+                )
+            await database.close()
+
+    asyncio.run(verify())
+
+
+def test_withdrawal_over_draft_cap_blocks_creation_until_slots_are_freed(
+    integration_settings_fixture: IntegrationSettings,
+) -> None:
+    async def verify() -> None:
+        now = datetime(2026, 9, 29, tzinfo=UTC)
+        database = Database.connect(integration_settings_fixture.database_url)
+        founder_id, topic_id = uuid4(), uuid4()
+        product_ids: list[UUID] = []
+        try:
+            await database.ensure_compatible()
+            sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+            async with sessions() as session, session.begin():
+                session.add(_account(founder_id))
+                session.add(Topic(id=topic_id, display_name="Tools", name_key=f"t{topic_id.hex}"))
+            service = _service(now)
+            async with sessions() as session, session.begin():
+                submitted_draft = await service.create_draft(session, actor_id=founder_id)
+                product_ids.append(submitted_draft.id)
+            await _make_complete(
+                sessions,
+                service=service,
+                founder_id=founder_id,
+                product_id=submitted_draft.id,
+                topic_id=topic_id,
+                clock=now,
+            )
+            async with sessions() as session, session.begin():
+                period = await service.submit_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=submitted_draft.id,
+                    expected_version=1,
+                )
+            for _ in range(service.DRAFT_LIMIT):
+                async with sessions() as session, session.begin():
+                    draft = await service.create_draft(session, actor_id=founder_id)
+                    product_ids.append(draft.id)
+            async with sessions() as session, session.begin():
+                withdrawn = await service.withdraw_submission(
+                    session,
+                    actor_id=founder_id,
+                    product_id=submitted_draft.id,
+                    submission_id=period.id,
+                    expected_version=2,
+                )
+            assert withdrawn.status == "draft"
+            async with sessions() as session:
+                assert await service.repository.count_drafts(session, founder_id=founder_id) == 11
+            with pytest.raises(ProductQuotaError):
+                async with sessions() as session, session.begin():
+                    await service.create_draft(session, actor_id=founder_id)
+
+            for product_id in product_ids[1:3]:
+                async with sessions() as session, session.begin():
+                    await service.delete_draft(
+                        session,
+                        actor_id=founder_id,
+                        product_id=product_id,
+                        expected_version=0,
+                        storage=_NoAssetsStorage(),
+                    )
+            async with sessions() as session:
+                assert await service.repository.count_drafts(session, founder_id=founder_id) == 9
+            async with sessions() as session, session.begin():
+                replacement = await service.create_draft(session, actor_id=founder_id)
+                product_ids.append(replacement.id)
+            assert replacement.status == "draft"
+        finally:
+            if "sessions" in locals():
+                await _clean(
+                    sessions,
+                    product_ids=product_ids,
+                    account_ids=[founder_id],
                     topic_ids=[topic_id],
                 )
             await database.close()

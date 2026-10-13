@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app.modules.auth.models import Account
@@ -30,9 +30,13 @@ from worker import NotificationChangedPublisher, ReviewOutcomeEmailHandler
 
 class _Sender:
     def __init__(self) -> None:
+        self.calls: list[str] = []
         self.sent: list[tuple[dict[str, object], str]] = []
 
     async def send(self, payload: dict[str, object], *, message_id: str) -> None:
+        self.calls.append(message_id)
+        if len(self.calls) == 1:
+            raise OSError("temporary provider outage")
         self.sent.append((payload, message_id))
 
 
@@ -196,7 +200,29 @@ def test_review_outbox_dispatches_private_email_and_owner_scoped_hint(
                     ),
                     now=now,
                 )
-                assert delivered == 2
+                assert delivered == 1
+                retryable = await session.get(OutboxMessage, email_id)
+                assert retryable is not None
+                assert retryable.state == "pending" and retryable.attempts == 1
+                assert await session.get(EmailDelivery, email_id) is None
+
+                retried = await dispatch_due(
+                    session,
+                    repository=repository,
+                    codec=codec,
+                    sender=sender,
+                    review_email_handler=ReviewOutcomeEmailHandler(
+                        member_access=AuthAccessService(),
+                        notifications=NotificationRepository(),
+                    ),
+                    notification_handler=NotificationChangedPublisher(
+                        redis=redis,
+                        notifications=NotificationRepository(),
+                    ),
+                    now=now + timedelta(minutes=1),
+                )
+                assert retried == 1
+                assert sender.calls == [f"launchpad-{email_id}", f"launchpad-{email_id}"]
                 assert len(sender.sent) == 1
                 sent_payload, message_id = sender.sent[0]
                 assert sent_payload["recipient"] == "founder@example.com"
@@ -216,7 +242,11 @@ def test_review_outbox_dispatches_private_email_and_owner_scoped_hint(
                 }
                 assert states[email_id] == states[live_id] == "completed"
                 assert states[wrong_owner_id] == "dead"
-                assert await session.get(EmailDelivery, email_id) is not None
+                delivery = await session.get(EmailDelivery, email_id)
+                completed_email = await session.get(OutboxMessage, email_id)
+                assert delivery is not None
+                assert delivery.message_id == f"launchpad-{email_id}"
+                assert completed_email is not None and completed_email.completed_at is not None
 
             hint = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
             assert hint is not None

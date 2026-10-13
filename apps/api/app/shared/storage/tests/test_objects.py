@@ -338,6 +338,19 @@ async def test_finalize_rejects_oversized_body_and_canonical_key_is_required() -
 
 
 @pytest.mark.anyio
+async def test_finalize_rejects_decoded_pixel_limit_before_reencoding() -> None:
+    image = Image.new("1", (5000, 5000), 1)
+    output = io.BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    body = output.getvalue()
+    assert len(body) < MAX_PHOTO_BYTES
+    client = _S3(body)
+    with pytest.raises(ObjectValidationError, match="dimensions"):
+        await _store(client).finalize_staging(account_id=uuid4(), upload_id=uuid4())
+    assert not any(action == "put" for action, _ in client.calls)
+
+
+@pytest.mark.anyio
 async def test_finalize_interrupted_store_does_not_delete_staging() -> None:
     client = _S3(_png_with_metadata())
     client.fail_put = True

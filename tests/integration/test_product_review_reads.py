@@ -6,11 +6,18 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+import pytest
 from app.graphql import Query
 from app.modules.auth.models import Account
 from app.modules.auth.sessions import MemberContext
 from app.modules.auth.staff import AuthAccessService
-from app.modules.products.models import Product, ProductReviewDecision, ProductSubmission
+from app.modules.products.models import (
+    Product,
+    ProductAsset,
+    ProductReviewDecision,
+    ProductSubmission,
+)
+from app.modules.products.policies import ProductNotFoundError, create_product_media_signature
 from app.modules.products.service import ProductService
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
@@ -210,11 +217,66 @@ def test_review_graphql_reads_owner_outcomes_and_pages_only_approved_products(
                 founder_id,
             )
             assert foreign.errors is None and foreign.data["viewerProduct"] is None
-            visitor = await query(
-                f'query {{ viewerProduct(id: "{product_ids[0]}") {{ summary {{ id }} }} }}',
-                None,
-            )
-            assert visitor.data["viewerProduct"] is None and visitor.errors
+            for index in (0, 2, 3):
+                for actor_id in (None, other_founder_id):
+                    hidden = await query(
+                        f'query {{ viewerProduct(id: "{product_ids[index]}") '
+                        "{ summary { id status } reviewOutcome { status feedback } } }",
+                        actor_id,
+                    )
+                    if actor_id is None:
+                        assert hidden.data["viewerProduct"] is None and hidden.errors
+                    else:
+                        assert hidden.errors is None and hidden.data["viewerProduct"] is None
+
+            asset_ids: dict[int, UUID] = {}
+            async with sessions() as session, session.begin():
+                for index in (0, 2, 3):
+                    asset_id = uuid4()
+                    asset_ids[index] = asset_id
+                    session.add(
+                        ProductAsset(
+                            id=asset_id,
+                            product_id=product_ids[index],
+                            kind="logo",
+                            state="clean",
+                            staging_key=f"product-staging/{founder_id.hex}/{asset_id.hex}",
+                            clean_key=f"product-clean/{founder_id.hex}/{asset_id.hex}",
+                            media_type="image/png",
+                            byte_count=128,
+                            position=None,
+                            expires_at=now + timedelta(days=1),
+                            attached_at=now,
+                        )
+                    )
+            service = ProductService(member_access=AuthAccessService())
+            session_secret = "not-the-owning-session"
+            signature_expiry = int(datetime.now(UTC).timestamp()) + 120
+            class _Storage:
+                async def get_product_private(
+                    self, *, account_id: UUID, product_id: UUID, object_key: str
+                ) -> tuple[bytes, str | None]:
+                    del account_id, product_id, object_key
+                    raise AssertionError("foreign media access must stop before storage")
+
+            for index, asset_id in asset_ids.items():
+                path = f"/api/v1/products/{product_ids[index]}/assets/{asset_id}"
+                signature = create_product_media_signature(
+                    session_secret, path, signature_expiry
+                )
+                for actor_id in (other_founder_id, uuid4()):
+                    with pytest.raises(ProductNotFoundError):
+                        async with sessions() as session, session.begin():
+                            await service.read_private_asset(
+                                session,
+                                actor_id=actor_id,
+                                session_secret=session_secret,
+                                product_id=product_ids[index],
+                                asset_id=asset_id,
+                                expires_at=signature_expiry,
+                                signature=signature,
+                                storage=_Storage(),
+                            )
             denied_approved_list = await query(
                 "query { approvedReviews { items { product { id } } } }", founder_id
             )

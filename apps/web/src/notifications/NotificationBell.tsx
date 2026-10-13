@@ -33,7 +33,32 @@ export function NotificationBell({
     founderSession,
   );
   const [open, setOpen] = useState(false);
+  const [countAnnouncement, setCountAnnouncement] = useState("");
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const previousUnreadCount = useRef<number | null>(null);
+  const items = notifications.inbox.data?.items ?? [];
+  const unreadCount = notifications.inbox.data?.unreadCount ?? 0;
+  const hasFounderSession = founderSession !== null;
+
+  useEffect(() => {
+    if (!hasFounderSession) {
+      previousUnreadCount.current = null;
+      setCountAnnouncement("");
+      return;
+    }
+    if (previousUnreadCount.current === null) {
+      previousUnreadCount.current = unreadCount;
+      return;
+    }
+    if (previousUnreadCount.current !== unreadCount) {
+      setCountAnnouncement(
+        unreadCount === 1
+          ? "You have 1 unread review update."
+          : `You have ${unreadCount} unread review updates.`,
+      );
+      previousUnreadCount.current = unreadCount;
+    }
+  }, [hasFounderSession, unreadCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -48,14 +73,14 @@ export function NotificationBell({
   }, [open]);
 
   if (!founderSession) return null;
-  const items = notifications.inbox.data?.items ?? [];
-  const unreadCount = notifications.inbox.data?.unreadCount ?? 0;
 
   async function openNotification(id: string, productId: string) {
     try {
       await notifications.markRead(id);
       setOpen(false);
-      navigate(`/products/${encodeURIComponent(productId)}`);
+      navigate(`/products/${encodeURIComponent(productId)}`, {
+        focusProductMain: true,
+      });
     } catch {
       // Keep the item visible and unread when its read command fails.
     }
@@ -78,6 +103,9 @@ export function NotificationBell({
           {unreadCount}
         </span>
       </button>
+      <span aria-atomic="true" aria-live="polite" className="sr-only">
+        {countAnnouncement}
+      </span>
       {open ? (
         <section
           aria-label="Notifications"

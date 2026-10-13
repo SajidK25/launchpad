@@ -1,0 +1,55 @@
+@page {
+  size: A4;
+  margin: 13mm 16mm 13mm;
+}
+
+body {
+  color: #182235;
+  font-family: "DejaVu Sans", sans-serif;
+  font-size: 9.6pt;
+  line-height: 1.36;
+}
+
+h1 {
+  color: #15264b;
+  font-size: 23pt;
+  margin: 0 0 4mm;
+}
+
+h2 {
+  border-bottom: 1px solid #d8dfeb;
+  color: #24427a;
+  font-size: 13pt;
+  margin-top: 5mm;
+  padding-bottom: 1.5mm;
+}
+
+h3 {
+  color: #182c54;
+  font-size: 10.5pt;
+  margin-bottom: 1mm;
+  margin-top: 3.5mm;
+}
+
+p {
+  margin: 1mm 0 2mm;
+}
+
+strong {
+  color: #142747;
+}
+
+hr {
+  border: 0;
+  border-top: 2px solid #526eae;
+  margin: 4mm 0;
+}
+
+li {
+  margin-bottom: 1mm;
+}
+
+@media print {
+  h2, h3 { page-break-after: avoid; }
+  p { orphans: 3; widows: 3; }
+}

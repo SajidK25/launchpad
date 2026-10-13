@@ -16,8 +16,13 @@ vi.mock("./profiles/ProfileScreens", () => ({
 }));
 vi.mock("./products/ProductScreens", () => ({
   ProductRoutes: ({ path }: { path: string }) => (
-    <div>product route: {path}</div>
+    <main id="product-main" tabIndex={-1}>
+      product route: {path}
+    </main>
   ),
+}));
+vi.mock("./notifications/NotificationBell", () => ({
+  NotificationBell: () => null,
 }));
 vi.mock("./identity/client", () => ({
   createIdentityClient: vi.fn(() => ({ getCsrfToken: () => null })),
@@ -80,7 +85,7 @@ describe("App", () => {
 
     expect(createIdentityClient).toHaveBeenCalledTimes(1);
     window.history.pushState({}, "", "/profile");
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    fireEvent(window, new PopStateEvent("popstate"));
     view.rerender(<App />);
 
     expect(createIdentityClient).toHaveBeenCalledTimes(1);
@@ -111,5 +116,25 @@ describe("App", () => {
     expect(
       screen.getByRole("link", { name: "Your product drafts" }),
     ).not.toBeNull();
+  });
+
+  it("moves focus to the product main landmark when requested by navigation", () => {
+    mockedUseConnectivity.mockReturnValue({
+      refresh: vi.fn(),
+      state: "connected",
+    });
+    window.history.pushState({}, "", "/products");
+    const view = render(<App />);
+
+    window.history.pushState(
+      { focusProductMain: true },
+      "",
+      "/products/product-1",
+    );
+    fireEvent(window, new PopStateEvent("popstate"));
+    view.rerender(<App />);
+
+    expect(document.activeElement?.id).toBe("product-main");
+    expect(window.history.state).toEqual({});
   });
 });

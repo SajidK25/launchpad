@@ -33,6 +33,12 @@ export function App() {
     return () => window.removeEventListener("popstate", update);
   }, []);
 
+  useEffect(() => {
+    if (window.history.state?.focusProductMain !== true) return;
+    document.getElementById("product-main")?.focus();
+    window.history.replaceState({}, "", window.location.href);
+  }, [path]);
+
   if (path !== "/") {
     if (path === "/products" || path.startsWith("/products/")) {
       return (

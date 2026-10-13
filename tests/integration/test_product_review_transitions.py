@@ -18,7 +18,8 @@ from app.modules.products.models import (
     ProductTopic,
     Topic,
 )
-from app.modules.products.policies import ProductConflictError
+from app.modules.products.policies import ProductConflictError, ProductQuotaError
+from app.modules.products.schemas import ProductContentInput
 from app.modules.products.service import ProductReviewResult, ProductService
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
@@ -147,7 +148,8 @@ async def _clean(
             await session.scalars(
                 select(ProductReviewDecision.id)
                 .join(
-                    ProductSubmission, ProductSubmission.id == ProductReviewDecision.submission_id
+                    ProductSubmission,
+                    ProductSubmission.id == ProductReviewDecision.submission_id,
                 )
                 .where(ProductSubmission.product_id.in_(product_ids))
             )
@@ -493,6 +495,125 @@ def test_reviewed_product_cannot_be_deleted_after_later_submission_is_withdrawn(
                     product_ids=[product_id],
                     account_ids=[staff_id, founder_id],
                 )
+            await database.close()
+
+    asyncio.run(verify())
+
+
+def test_changes_requested_correction_resubmits_at_queue_end_and_honors_pending_cap(
+    integration_settings_fixture: IntegrationSettings,
+) -> None:
+    async def verify() -> None:
+        now = datetime(2026, 10, 4, tzinfo=UTC)
+        next_time = now.replace(day=5)
+        database = Database.connect(integration_settings_fixture.database_url)
+        staff_id, founder_id = uuid4(), uuid4()
+        product_ids = [uuid4() for _ in range(4)]
+        period_ids = [uuid4() for _ in range(4)]
+        sessions: async_sessionmaker[AsyncSession] | None = None
+        try:
+            await database.ensure_compatible()
+            sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+            async with sessions() as session, session.begin():
+                session.add_all(
+                    [_account(staff_id, role="reviewer"), _account(founder_id, role="member")]
+                )
+            await _seed_product(
+                sessions,
+                product_id=product_ids[0],
+                submission_id=period_ids[0],
+                founder_id=founder_id,
+                submitted_at=now.replace(day=1),
+                complete=True,
+            )
+            for index, submitted_at in enumerate(
+                (now.replace(day=2), now.replace(day=3)), start=1
+            ):
+                await _seed_product(
+                    sessions,
+                    product_id=product_ids[index],
+                    submission_id=period_ids[index],
+                    founder_id=founder_id,
+                    submitted_at=submitted_at,
+                )
+
+            review_service = _service(now)
+            decision = await _decide(
+                review_service,
+                sessions,
+                actor_id=staff_id,
+                product_id=product_ids[0],
+                submission_id=period_ids[0],
+                expected_version=1,
+                outcome="changes_requested",
+                feedback="Please revise the pitch.",
+                idempotency_key=f"correction-{uuid4()}",
+            )
+            founder_service = _service(next_time)
+            async with sessions() as session, session.begin():
+                corrected = await founder_service.save_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=product_ids[0],
+                    expected_version=decision.version,
+                    content=ProductContentInput(pitch="A clearer revised pitch"),
+                )
+            assert corrected.status == "changes_requested"
+            assert corrected.version == decision.version + 1
+
+            await _seed_product(
+                sessions,
+                product_id=product_ids[3],
+                submission_id=period_ids[3],
+                founder_id=founder_id,
+                submitted_at=now.replace(day=4),
+            )
+            with pytest.raises(ProductQuotaError):
+                async with sessions() as session, session.begin():
+                    await founder_service.submit_draft(
+                        session,
+                        actor_id=founder_id,
+                        product_id=product_ids[0],
+                        expected_version=corrected.version,
+                    )
+
+            async with sessions() as session, session.begin():
+                await founder_service.withdraw_submission(
+                    session,
+                    actor_id=founder_id,
+                    product_id=product_ids[3],
+                    submission_id=period_ids[3],
+                    expected_version=1,
+                )
+            async with sessions() as session, session.begin():
+                replacement = await founder_service.submit_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=product_ids[0],
+                    expected_version=corrected.version,
+                )
+                pending = list(
+                    await session.scalars(
+                        select(ProductSubmission)
+                        .join(Product, Product.id == ProductSubmission.product_id)
+                        .where(
+                            Product.founder_id == founder_id,
+                            ProductSubmission.state == "pending",
+                        )
+                        .order_by(ProductSubmission.submitted_at, ProductSubmission.id)
+                    )
+                )
+                old_period = await session.get(ProductSubmission, period_ids[0])
+                old_decision = await session.get(ProductReviewDecision, decision.decision.id)
+
+            assert replacement.id != period_ids[0]
+            assert replacement.submitted_at == next_time
+            assert [item.product_id for item in pending] == product_ids[1:3] + [product_ids[0]]
+            assert old_period is not None and old_period.state == "changes_requested"
+            assert old_decision is not None and old_decision.feedback == "Please revise the pitch."
+        finally:
+            if sessions is not None:
+                await _clean(sessions, product_ids=product_ids, account_ids=[staff_id, founder_id])
             await database.close()
 
     asyncio.run(verify())

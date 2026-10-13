@@ -94,6 +94,7 @@ class _PubSub:
 class _Redis:
     def __init__(self) -> None:
         self.pubsubs: list[_PubSub] = []
+        self.connections: dict[str, dict[str, int]] = {}
 
     def pubsub(self) -> NotificationPubSub:
         pubsub = _PubSub()
@@ -107,6 +108,34 @@ class _Redis:
                 pubsub.messages.put({"type": "message", "data": message})
                 subscribers += 1
         return subscribers
+
+    async def eval(self, script: str, numkeys: int, *values: object) -> int:
+        assert numkeys == 1
+        key, token = str(values[0]), str(values[1])
+        now = int(values[2]) if len(values) > 2 else 0
+        members = self.connections.setdefault(key, {})
+        if "connection-claim" in script:
+            limit = int(values[3])
+            lease_ms = int(values[4]) * 1000
+            for expired in [
+                item for item, updated in members.items() if updated <= now - lease_ms
+            ]:
+                del members[expired]
+            if len(members) >= limit:
+                return 0
+            members[token] = now
+            return 1
+        if "connection-refresh" in script:
+            if token not in members:
+                return 0
+            members[token] = now
+            return 1
+        if "connection-release" in script:
+            members.pop(token, None)
+            if not members:
+                self.connections.pop(key, None)
+            return 1
+        raise AssertionError("unknown connection lease script")
 
 
 def _member(account_id: UUID, *, suspended: bool = False) -> MemberContext:
@@ -124,6 +153,7 @@ def _app(
     *,
     revalidate_seconds: float = 30.0,
     poll_seconds: float = 0.01,
+    max_connections_per_account: int = 5,
 ) -> FastAPI:
     settings = Settings(trusted_web_origins=(_ORIGIN,))
     app = FastAPI()
@@ -135,6 +165,7 @@ def _app(
             redis=redis,
             revalidate_seconds=revalidate_seconds,
             poll_seconds=poll_seconds,
+            max_connections_per_account=max_connections_per_account,
         )
     )
     return app
@@ -163,6 +194,25 @@ def test_websocket_subscribes_to_only_the_cookie_account_and_sends_a_generic_hin
                 assert redis.publish(notification_channel(first_id), b"secret feedback") == 1
                 assert first_socket.receive_json() == {"type": "notifications_changed"}
                 assert redis.pubsubs[1].messages.empty()
+
+
+def test_websocket_enforces_account_connection_limit_and_releases_lease() -> None:
+    account_id = uuid4()
+    redis = _Redis()
+    resolver = _Resolver({"founder-session": _member(account_id)})
+    app = _app(resolver, redis, max_connections_per_account=1)
+
+    with TestClient(app) as client:
+        with client.websocket_connect(_PATH, headers=_headers("founder-session")):
+            assert len(redis.pubsubs) == 1
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect(_PATH, headers=_headers("founder-session")):
+                    raise AssertionError("the account limit should reject a second socket")
+            assert len(redis.pubsubs) == 1
+
+        assert redis.connections == {}
+        with client.websocket_connect(_PATH, headers=_headers("founder-session")):
+            assert len(redis.pubsubs) == 2
 
 
 @pytest.mark.parametrize(

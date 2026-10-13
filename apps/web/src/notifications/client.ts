@@ -81,9 +81,9 @@ export function createNotificationClient(
         { method: "PUT", credentials: "include", headers },
       );
       const value: unknown = await response.json().catch(() => null);
-      if (!response.ok || !isRecord(value))
+      if (!response.ok || !isNotificationRead(value))
         throw new NotificationRequestError(response.status, value);
-      return value as NotificationRead;
+      return value;
     },
     subscribeToChanges: (onChange: () => void): (() => void) => {
       let socket: WebSocket | null = null;
@@ -140,4 +140,20 @@ function validateInbox(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNotificationRead(value: unknown): value is NotificationRead {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.product_id === "string" &&
+    (value.kind === "review_approved" ||
+      value.kind === "review_rejected" ||
+      value.kind === "review_changes_requested") &&
+    typeof value.created_at === "string" &&
+    !Number.isNaN(Date.parse(value.created_at)) &&
+    (value.read_at === null ||
+      (typeof value.read_at === "string" &&
+        !Number.isNaN(Date.parse(value.read_at))))
+  );
 }

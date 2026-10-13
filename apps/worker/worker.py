@@ -19,7 +19,7 @@ from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.email.resend import ResendEmailSender
 from app.shared.email.transport import EmailTransport
-from app.shared.events.dispatcher import dispatch_due
+from app.shared.events.dispatcher import dispatch_claimed
 from app.shared.events.outbox import OutboxRepository, PermanentEventError
 from app.shared.storage.client import StorageClient
 from app.shared.storage.objects import PrivateObjectStore
@@ -208,21 +208,26 @@ async def run_worker(health: ProgressHealth) -> None:
         while True:
             try:
                 async with sessions.begin() as session:
-                    await dispatch_due(
-                        session,
-                        repository=repository,
-                        codec=codec,
-                        sender=email_sender,
-                        product_handler=product_service,
-                        review_email_handler=ReviewOutcomeEmailHandler(
-                            member_access=member_access,
-                            notifications=notification_repository,
-                        ),
-                        notification_handler=NotificationChangedPublisher(
-                            redis=cast(RedisPublisher, redis),
-                            notifications=notification_repository,
-                        ),
-                    )
+                    await repository.release_expired_claims(session)
+                    claimed = await repository.claim_due(session, limit=20)
+                for event in claimed:
+                    async with sessions.begin() as session:
+                        await dispatch_claimed(
+                            session,
+                            events=[event],
+                            repository=repository,
+                            codec=codec,
+                            sender=email_sender,
+                            product_handler=product_service,
+                            review_email_handler=ReviewOutcomeEmailHandler(
+                                member_access=member_access,
+                                notifications=notification_repository,
+                            ),
+                            notification_handler=NotificationChangedPublisher(
+                                redis=cast(RedisPublisher, redis),
+                                notifications=notification_repository,
+                            ),
+                        )
                 health.tick()
                 record_progress(HEALTH_PATH)
             except Exception:

@@ -912,7 +912,7 @@ Add disabled-by-default product activation, mount product REST/GraphQL only when
 
 - **Production default off** — expected: settings validation and an API instance without LAUNCHPAD_PRODUCTS_ENABLED expose neither product routes nor product GraphQL fields.
 - **Local/check explicitly on** — expected: docker compose config for compose.yaml and compose.checks.yaml shows the product flag enabled only on intended API/check services, with no new service or secret.
-- **Compatible startup** — expected: preparation advances to 0005 and API/worker readiness succeeds against 0005; an old-head binary is not described or tested as a safe rollback.
+- **Historical compatible-startup checkpoint** — expected: T15 validated preparation/readiness at the then-current intermediate 0005 head. T19 later advanced the slice to 0006, and post-review hardening adds 0007; current rollout readiness requires exact head 0007 and matching API/worker binaries. The T15 0005 checkpoint is not a current rollout or rollback target.
 - **Generated contracts match** — run sh scripts/quality/contracts.sh --check; expected: exit 0, profile operations unchanged, product operations and expanded self-session types present.
 - **No early producer** — expected: with feature off, no browser-accessible product command can create a product outbox event even while the typed worker is deployed.
 - **Profile/health regression** — expected: existing profile GraphQL and health/integration checks still pass without relaxing schema compatibility.
@@ -921,7 +921,7 @@ Add disabled-by-default product activation, mount product REST/GraphQL only when
 
 - **Module(s):** shared settings, app composition, Compose, contracts.
 - **Pattern reference:** apps/api/app/main.py, settings.py, scripts/quality/contracts.sh.
-- **Key decisions:** A6, A9, A10; controlled cutover to compatible 0005 API/worker precedes activation.
+- **Key decisions:** A6, A9, A10; the historical T15 cutover used compatible 0005 API/worker before later schema additions.
 - **Libraries:** Pydantic, FastAPI, Strawberry, Docker Compose, OpenAPI/GraphQL generators.
 - **High-risk callouts:** Contract generation must run with the product gate on, while production remains off until the typed worker is verified.
 
@@ -1038,6 +1038,7 @@ Build the founder's mobile-first private draft/editor journey using the typed ho
 - **Topics and limits** — expected: founder can select or type 1–3 topics, and draft/pending capacity errors explain the relevant 10/3 limit without disclosing another founder's work.
 - **Deletion confirmation** — expected: confirmation precedes permanent deletion; storage failure leaves the draft on screen with a retryable message; suspended owner cannot delete but can withdraw.
 - **Keyboard and existing routes** — expected: focus order and labels work without a mouse, and existing sign-in/profile routes still navigate as before.
+- **Manual UI evidence (still pending)** — do not mark the N5 viewport/accessibility observation complete from unit tests alone. Record actual founder/staff checks at approximately 390px and 1280px, keyboard-only operation, and assistive-technology announcements in the QA results artifact before release.
 
 #### Testable Seams
 
@@ -1096,6 +1097,7 @@ Display only current pending submissions to verified unsuspended staff, with old
 - **Access and privacy** — expected: visitors, ordinary members, and suspended staff see no private queue data; withdrawn/draft content disappears from staff view.
 - **Phone and desktop operation** — expected: at approximately 390px and 1280px, list/detail remain readable without horizontal overflow and all controls work by keyboard.
 - **No premature moderation** — expected: there are no approve, reject, changes-requested, schedule, or launch controls.
+- **Manual UI evidence (still pending)** — record actual staff queue/detail checks at approximately 390px and 1280px, keyboard-only operation, and screen-reader announcements in the QA results artifact before release.
 
 #### Testable Seams
 
@@ -1148,7 +1150,7 @@ Document staff provisioning, the private-media and deletion lifecycle, feature a
 
 - **Operator instructions** — expected: docs/development.md names the restricted role/suspension command, audit trail, and withdrawal exception without suggesting a public promotion endpoint.
 - **Media and deletion instructions** — expected: docs explain private signed upload/app-gated read, immediate access revocation, delayed purge, preflight failure, and how to inspect/replay stuck purge work without logging object keys.
-- **Safe release/rollback** — expected: docs explicitly drain all pre-0006 binaries, migrate through 0006, start 0006-compatible typed worker/API with feature off, verify, then enable; rollback disables the feature on 0006-compatible images and retains the typed worker, never an old email-only worker.
+- **Safe release/rollback** — expected: current operator guidance explicitly drains all pre-0007 binaries, migrates through 0007, starts 0007-compatible typed worker/API with `LAUNCHPAD_PRODUCTS_ENABLED=false`, verifies, then enables; rollback turns the flag off but retains compatible images and schema, never an old email-only worker.
 - **Full quality command** — run sh scripts/quality/run.sh with an isolated Compose project; expected: formatter, Ruff, mypy, pytest, web format/lint/types/tests, migrations, contracts, builds, security, and browser categories pass.
 - **Regression surfaces** — expected: existing auth/profile/storage/email/scheduler/health suites pass unchanged, and no public route, resolver, log, or storage URL exposes unpublished product/topic/media data.
 - **Observability** — expected: action IDs/state/error classes and queue/purge health are diagnosable; private content, signatures, object keys, and token values are absent from logs.
@@ -1175,7 +1177,7 @@ Document staff provisioning, the private-media and deletion lifecycle, feature a
 - docs/development.md (operator, media, rollout, and troubleshooting guide).
 - scripts/quality/run.sh (prepare database before integration tests; rebuild formatter image).
 - infra/docker/web.Dockerfile (include the formatter ignore file in its image).
-- specs/tasks/TASKS-add-product-draft-submission.md (migration-0006 rollout wording and T19 evidence).
+- specs/tasks/TASKS-add-product-draft-submission.md (migration-0007 rollout wording and T19 evidence).
 
 **Must NOT modify:**
 - apps/api/app/shared/db/database.py; apps/api/alembic/env.py; apps/api/app/modules/health/* (exact-head readiness is preserved).

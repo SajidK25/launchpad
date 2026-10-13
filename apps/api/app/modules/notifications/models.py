@@ -33,6 +33,7 @@ class Notification(NotificationBase):
             "recipient_account_id",
             postgresql_where=text("read_at IS NULL"),
         ),
+        Index("ix_notifications_product_id", "product_id"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)

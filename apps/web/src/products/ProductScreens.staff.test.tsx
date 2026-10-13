@@ -94,7 +94,7 @@ function reviewProduct(
           id: "shot-1",
           kind: "screenshot",
           mediaType: "image/webp",
-          byteCount: 4096,
+          byteCount: 1_442_463,
           url: "/api/v1/products/product-1/assets/shot-1?signature=test",
         },
       ],
@@ -268,6 +268,10 @@ describe("staff review screens", () => {
       screen.getByRole("link", { name: "https://product.example" }),
     ).not.toBeNull();
     expect(screen.getByText("AI Tools")).not.toBeNull();
+    expect(screen.getByText("Logo · image/png · 2 KB")).not.toBeNull();
+    expect(
+      screen.getByText("Screenshot · image/webp · 1.4 MB"),
+    ).not.toBeNull();
     expect(
       screen.getByRole("img", { name: "Product logo" }).getAttribute("src"),
     ).toContain("/api/v1/products/product-1/assets/logo-1");

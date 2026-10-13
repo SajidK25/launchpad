@@ -552,9 +552,13 @@ class ProductRepository:
             )
         )
         if after is not None:
-            statement = statement.where(tuple_(ProductSubmission.closed_at, Product.id) < after)
+            statement = statement.where(
+                tuple_(ProductSubmission.closed_at, ProductSubmission.product_id) < after
+            )
         rows = await session.execute(
-            statement.order_by(ProductSubmission.closed_at.desc(), Product.id.desc()).limit(limit)
+            statement.order_by(
+                ProductSubmission.closed_at.desc(), ProductSubmission.product_id.desc()
+            ).limit(limit)
         )
         return [(period, product) for period, product in rows.tuples()]
 

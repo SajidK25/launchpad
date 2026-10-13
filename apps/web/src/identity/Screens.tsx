@@ -19,8 +19,8 @@ type Screen =
   | "reset"
   | "profile";
 
-export function navigate(path: string) {
-  window.history.pushState({}, "", path);
+export function navigate(path: string, state: Record<string, unknown> = {}) {
+  window.history.pushState(state, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 

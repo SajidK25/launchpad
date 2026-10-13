@@ -843,7 +843,7 @@ Provide typed inbox paging, unread count, one-item read command, and session-sco
 > **Priority:** high
 > **Depends on:** T14
 > **Satisfies REQs:** R6, R9, N2, N3, N4
-> **Footprint slice:** New notification bell component; modified authenticated app shell.
+> **Footprint slice:** New notification bell component; modified authenticated app shell and navigation focus handling; consumes the persisted, recipient-scoped product destination added to notification API contracts.
 > **High-risk areas touched:** Notifications and WebSockets; frontend and contracts; private reads and media.
 
 ### Description
@@ -852,7 +852,7 @@ Mount the notification bell on authenticated founder pages, showing persistent o
 
 ### Verification Checklist
 
-- **Visible state at 390px and 1280px** — inspect bell with zero, one, and many unread notices; expected: count and list fit without horizontal overflow and remain perceivable _(verifies R9, N2)_.
+- **Visible state at 390px and 1280px** — inspect bell with zero, one, and many unread notices; expected: count and list fit without horizontal overflow and remain perceivable _(verifies R9, N2)_. Record viewport observations in a QA results artifact.
 - **Keyboard and screen reader** — tab, enter/space, Escape, and focus return work; expected: button name, count, list items, and outcome updates are announced appropriately _(verifies N2)_.
 - **Open without reading** — open and close the bell; expected: no mark-read request and unchanged unread count _(verifies R9; REQ edge case)_.
 - **Open one outcome** — select one item; expected: only it is marked read, count falls, and owner product detail opens with the full authorized explanation _(verifies R6, R9)_.
@@ -868,7 +868,7 @@ Mount the notification bell on authenticated founder pages, showing persistent o
 
 - **Module(s):** notification UI and shared React app shell.
 - **Pattern reference:** `apps/web/src/App.tsx`, product navigation, existing profile shell and styles.
-- **Key decisions:** A5, A7; one-item read only and live hint triggers authoritative refetch.
+- **Key decisions:** A5, A7, A11; one-item read only, the notice carries only its owner-scoped product destination, and live hints trigger authoritative refetch.
 - **Libraries:** React, TanStack Query, existing styling system, Testing Library.
 - **High-risk callouts:** Authenticated shell placement must not expose notices on public/profile pages for another account.
 
@@ -883,7 +883,11 @@ Mount the notification bell on authenticated founder pages, showing persistent o
 - `apps/web/src/notifications/NotificationBell.tsx`, `NotificationBell.test.tsx` (bell and component seams, following product/profile screens).
 
 **Modified files:**
-- `apps/web/src/App.tsx` (session-scoped bell/live mount).
+- `apps/web/src/App.tsx`, `apps/web/src/identity/Screens.tsx` (session-scoped bell/live mount and destination focus).
+- `apps/api/app/modules/notifications/{models,schemas,repository,service,routes,graphql}.py` (persist and return recipient-scoped `product_id` without product details).
+- `apps/api/alembic/versions/0009_notification_product_link.py`, `apps/api/alembic/versions/0010_review_read_indexes.py` (notification destination FK and read indexes).
+- `packages/contracts/{openapi.json,schema.graphql,operations.graphql}`, `packages/contracts/src/{generated.ts,graphql.generated.ts}` (notification destination contracts).
+- `apps/web/src/notifications/client.ts` (validate mark-read response before updating cache).
 
 **Must NOT modify:**
 - `apps/web/src/profiles/ProfileScreens.tsx` (existing route and profile UI are regression guards).

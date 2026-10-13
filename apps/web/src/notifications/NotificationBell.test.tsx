@@ -84,7 +84,9 @@ describe("notification bell", () => {
 
     await waitFor(() => expect(markRead).toHaveBeenCalledWith("notice-1"));
     expect(markRead).toHaveBeenCalledOnce();
-    expect(navigate).toHaveBeenCalledWith("/products/product-1");
+    expect(navigate).toHaveBeenCalledWith("/products/product-1", {
+      focusProductMain: true,
+    });
   });
 
   it("does not show private notices outside an active founder session", () => {
@@ -117,7 +119,7 @@ describe("notification bell", () => {
     expect(screen.getByText("No review updates yet.")).not.toBeNull();
   });
 
-  it("announces an updated unread count after a live refresh", () => {
+  it("announces an updated unread count after a live refresh", async () => {
     sessionHook.mockReturnValue({ data: memberSession } as never);
     inboxHook.mockReturnValue({
       inbox: { data: { items: [notice], unreadCount: 1, nextCursor: null } },
@@ -151,6 +153,9 @@ describe("notification bell", () => {
     expect(
       screen.getByRole("button", { name: "Notifications, 4 unread" }),
     ).not.toBeNull();
+    await waitFor(() =>
+      expect(screen.getByText("You have 4 unread review updates.")).not.toBeNull(),
+    );
   });
 });
 
