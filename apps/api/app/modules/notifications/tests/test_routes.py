@@ -46,6 +46,9 @@ class _PubSubClient:
     def pubsub(self) -> NotificationPubSub:
         return cast(NotificationPubSub, SimpleNamespace())
 
+    async def eval(self, script: str, numkeys: int, *values: object) -> object:
+        raise AssertionError("notification websocket is not used in this HTTP test")
+
 
 def _client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, UUID, UUID]:
     owner_id = uuid4()

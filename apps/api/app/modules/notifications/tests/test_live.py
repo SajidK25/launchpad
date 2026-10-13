@@ -112,11 +112,11 @@ class _Redis:
     async def eval(self, script: str, numkeys: int, *values: object) -> int:
         assert numkeys == 1
         key, token = str(values[0]), str(values[1])
-        now = int(values[2]) if len(values) > 2 else 0
+        now = cast(int, values[2]) if len(values) > 2 else 0
         members = self.connections.setdefault(key, {})
         if "connection-claim" in script:
-            limit = int(values[3])
-            lease_ms = int(values[4]) * 1000
+            limit = cast(int, values[3])
+            lease_ms = cast(int, values[4]) * 1000
             for expired in [item for item, updated in members.items() if updated <= now - lease_ms]:
                 del members[expired]
             if len(members) >= limit:
