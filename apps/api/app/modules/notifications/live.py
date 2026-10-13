@@ -186,9 +186,7 @@ def notification_live_router(
                 except Exception:
                     pass
             try:
-                await _release_connection(
-                    redis, key=connection_key, connection_id=connection_id
-                )
+                await _release_connection(redis, key=connection_key, connection_id=connection_id)
             except Exception:
                 # The Redis lease expires automatically if release cannot reach Redis.
                 pass
@@ -228,9 +226,7 @@ async def _claim_connection(
     return result == 1 or result == b"1"
 
 
-async def _refresh_connection(
-    redis: NotificationRedis, *, key: str, connection_id: str
-) -> bool:
+async def _refresh_connection(redis: NotificationRedis, *, key: str, connection_id: str) -> bool:
     result = await redis.eval(
         _REFRESH_CONNECTION,
         1,
@@ -242,7 +238,5 @@ async def _refresh_connection(
     return result == 1 or result == b"1"
 
 
-async def _release_connection(
-    redis: NotificationRedis, *, key: str, connection_id: str
-) -> None:
+async def _release_connection(redis: NotificationRedis, *, key: str, connection_id: str) -> None:
     await redis.eval(_RELEASE_CONNECTION, 1, key, connection_id)

@@ -31,9 +31,7 @@ def test_review_mappings_expose_required_private_constraints() -> None:
 
     review_indexes = {index.name for index in cast(Table, ProductReviewDecision.__table__).indexes}
     notice_indexes = {index.name for index in cast(Table, Notification.__table__).indexes}
-    submission_indexes = {
-        index.name for index in cast(Table, ProductSubmission.__table__).indexes
-    }
+    submission_indexes = {index.name for index in cast(Table, ProductSubmission.__table__).indexes}
     assert {
         "uq_product_review_decisions_submission_from",
         "uq_product_review_decisions_actor_key",

@@ -252,6 +252,7 @@ def test_review_graphql_reads_owner_outcomes_and_pages_only_approved_products(
             service = ProductService(member_access=AuthAccessService())
             session_secret = "not-the-owning-session"
             signature_expiry = int(datetime.now(UTC).timestamp()) + 120
+
             class _Storage:
                 async def get_product_private(
                     self, *, account_id: UUID, product_id: UUID, object_key: str
@@ -261,9 +262,7 @@ def test_review_graphql_reads_owner_outcomes_and_pages_only_approved_products(
 
             for index, asset_id in asset_ids.items():
                 path = f"/api/v1/products/{product_ids[index]}/assets/{asset_id}"
-                signature = create_product_media_signature(
-                    session_secret, path, signature_expiry
-                )
+                signature = create_product_media_signature(session_secret, path, signature_expiry)
                 for actor_id in (other_founder_id, uuid4()):
                     with pytest.raises(ProductNotFoundError):
                         async with sessions() as session, session.begin():

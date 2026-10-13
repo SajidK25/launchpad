@@ -526,9 +526,7 @@ def test_changes_requested_correction_resubmits_at_queue_end_and_honors_pending_
                 submitted_at=now.replace(day=1),
                 complete=True,
             )
-            for index, submitted_at in enumerate(
-                (now.replace(day=2), now.replace(day=3)), start=1
-            ):
+            for index, submitted_at in enumerate((now.replace(day=2), now.replace(day=3)), start=1):
                 await _seed_product(
                     sessions,
                     product_id=product_ids[index],

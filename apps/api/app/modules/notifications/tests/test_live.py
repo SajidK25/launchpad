@@ -117,9 +117,7 @@ class _Redis:
         if "connection-claim" in script:
             limit = int(values[3])
             lease_ms = int(values[4]) * 1000
-            for expired in [
-                item for item, updated in members.items() if updated <= now - lease_ms
-            ]:
+            for expired in [item for item, updated in members.items() if updated <= now - lease_ms]:
                 del members[expired]
             if len(members) >= limit:
                 return 0
