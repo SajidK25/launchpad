@@ -249,7 +249,7 @@ def test_review_graphql_reads_owner_outcomes_and_pages_only_approved_products(
                             attached_at=now,
                         )
                     )
-            service = ProductService(member_access=AuthAccessService())
+            service = ProductService(member_access=AuthAccessService(), payload_codec=codec)
             session_secret = "not-the-owning-session"
             signature_expiry = int(datetime.now(UTC).timestamp()) + 120
 
