@@ -62,9 +62,11 @@ describe("notification client", () => {
   });
 
   it("rejects malformed mark-read responses before returning typed state", async () => {
-    const fetcher = vi.fn().mockResolvedValue(
-      Response.json({ id: "notice-3", kind: "review_approved" }),
-    );
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ id: "notice-3", kind: "review_approved" }),
+      );
     const client = createNotificationClient(fetcher, identity);
 
     await expect(client.markRead("notice-3")).rejects.toMatchObject({

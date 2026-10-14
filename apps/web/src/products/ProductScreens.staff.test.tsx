@@ -269,9 +269,7 @@ describe("staff review screens", () => {
     ).not.toBeNull();
     expect(screen.getByText("AI Tools")).not.toBeNull();
     expect(screen.getByText("Logo · image/png · 2 KB")).not.toBeNull();
-    expect(
-      screen.getByText("Screenshot · image/webp · 1.4 MB"),
-    ).not.toBeNull();
+    expect(screen.getByText("Screenshot · image/webp · 1.4 MB")).not.toBeNull();
     expect(
       screen.getByRole("img", { name: "Product logo" }).getAttribute("src"),
     ).toContain("/api/v1/products/product-1/assets/logo-1");

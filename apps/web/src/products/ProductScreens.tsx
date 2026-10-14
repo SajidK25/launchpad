@@ -3,10 +3,7 @@ import type { ViewerProductQuery } from "@launchpad/contracts/src/graphql.genera
 import { useCurrentSession, useLogout } from "../identity/useIdentity";
 import type { IdentityClient } from "../identity/client";
 import { navigate } from "../identity/Screens";
-import {
-  ProductRequestError,
-  type ProductClient,
-} from "./client";
+import { ProductRequestError, type ProductClient } from "./client";
 import {
   StaffReviewDetail,
   StaffReviewQueue,

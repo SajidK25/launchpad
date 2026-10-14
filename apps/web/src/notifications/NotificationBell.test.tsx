@@ -154,7 +154,9 @@ describe("notification bell", () => {
       screen.getByRole("button", { name: "Notifications, 4 unread" }),
     ).not.toBeNull();
     await waitFor(() =>
-      expect(screen.getByText("You have 4 unread review updates.")).not.toBeNull(),
+      expect(
+        screen.getByText("You have 4 unread review updates."),
+      ).not.toBeNull(),
     );
   });
 });

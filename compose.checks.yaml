@@ -177,20 +177,6 @@ services:
       dockerfile: infra/docker/web.Dockerfile
       target: tooling
     working_dir: /workspace
-    volumes:
-      - type: bind
-        source: ./apps/web
-        target: /workspace/apps/web
-        read_only: true
-      - type: bind
-        source: ./packages/contracts
-        target: /workspace/packages/contracts
-      - type: bind
-        source: ./scripts/quality
-        target: /workspace/scripts/quality
-        read_only: true
-    tmpfs:
-      - /workspace/apps/web/node_modules:mode=1777
     command: ["npm", "--version"]
 
   quality:

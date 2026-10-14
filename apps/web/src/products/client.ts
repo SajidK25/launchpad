@@ -252,7 +252,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sameFields(left: Record<string, string>, right: Record<string, string>) {
+function sameFields(
+  left: Record<string, string>,
+  right: Record<string, string>,
+) {
   const leftEntries = Object.entries(left);
   const rightEntries = Object.entries(right);
   return (
