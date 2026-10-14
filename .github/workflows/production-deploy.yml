@@ -140,7 +140,6 @@ jobs:
           set -euo pipefail
           install_dir="$RUNNER_TEMP/launchpad-deploy"
           install -d -m 0700 "$install_dir"
-          trap 'rm -rf "$install_dir"' EXIT
           curl --fail --location --silent --show-error https://github.com/cloudflare/cloudflared/releases/download/2026.10.0/cloudflared-linux-amd64 --output "$install_dir/cloudflared"
           printf '%s  %s\n' 'd33ff2d14475178d2012c2c56beba87389ac5ded27649519f198a7d3134a99db' "$install_dir/cloudflared" | sha256sum --check --status
           chmod 0700 "$install_dir/cloudflared"
