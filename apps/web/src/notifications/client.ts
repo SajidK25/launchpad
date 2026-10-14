@@ -36,6 +36,7 @@ export class NotificationRequestError extends Error {
     readonly body: unknown,
   ) {
     super(`Notification request failed with status ${status}.`);
+    this.name = "NotificationRequestError";
   }
 }
 
