@@ -53,7 +53,7 @@ jobs:
       - name: Build and publish API image
         id: api
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/launchpad-api
+          IMAGE: ghcr.io/sajidk25/launchpad-api
         run: |
           set -euo pipefail
           metadata="$RUNNER_TEMP/api-image.json"
@@ -64,7 +64,7 @@ jobs:
       - name: Build and publish production web image
         id: web
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/launchpad-web
+          IMAGE: ghcr.io/sajidk25/launchpad-web
         run: |
           set -euo pipefail
           metadata="$RUNNER_TEMP/web-image.json"
