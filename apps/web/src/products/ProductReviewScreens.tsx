@@ -1,5 +1,4 @@
 import { useRef, useState, type FormEvent } from "react";
-import type { ViewerProductQuery } from "@launchpad/contracts/src/graphql.generated";
 import type { IdentityClient } from "../identity/client";
 import { navigate } from "../identity/Screens";
 import {
@@ -15,8 +14,6 @@ import {
   useReviewQueue,
 } from "./useProducts";
 import { formatBytes } from "./format";
-
-type ProductDetail = NonNullable<ViewerProductQuery["viewerProduct"]>;
 
 export function StaffReviewQueue({ client }: { client: ProductClient }) {
   const [cursors, setCursors] = useState<Array<string | null>>([null]);
