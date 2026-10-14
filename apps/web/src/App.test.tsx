@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
@@ -12,6 +13,16 @@ vi.mock("./identity/Screens", () => ({
 }));
 vi.mock("./profiles/ProfileScreens", () => ({
   ProfileRoutes: () => <div>profile routes</div>,
+}));
+vi.mock("./products/ProductScreens", () => ({
+  ProductRoutes: ({ path }: { path: string }) => (
+    <main id="product-main" tabIndex={-1}>
+      product route: {path}
+    </main>
+  ),
+}));
+vi.mock("./notifications/NotificationBell", () => ({
+  NotificationBell: () => null,
 }));
 vi.mock("./identity/client", () => ({
   createIdentityClient: vi.fn(() => ({ getCsrfToken: () => null })),
@@ -74,9 +85,56 @@ describe("App", () => {
 
     expect(createIdentityClient).toHaveBeenCalledTimes(1);
     window.history.pushState({}, "", "/profile");
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    fireEvent(window, new PopStateEvent("popstate"));
     view.rerender(<App />);
 
     expect(createIdentityClient).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the founder workspace without replacing identity and profile routes", () => {
+    mockedUseConnectivity.mockReturnValue({
+      refresh: vi.fn(),
+      state: "connected",
+    });
+    window.history.pushState({}, "", "/products/one");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(<App />, {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    });
+    expect(screen.getByText("product route: /products/one")).not.toBeNull();
+
+    window.history.pushState({}, "", "/profile");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    view.rerender(<App />);
+    expect(screen.getByText("profile routes")).not.toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Your product drafts" }),
+    ).not.toBeNull();
+  });
+
+  it("moves focus to the product main landmark when requested by navigation", () => {
+    mockedUseConnectivity.mockReturnValue({
+      refresh: vi.fn(),
+      state: "connected",
+    });
+    window.history.pushState({}, "", "/products");
+    const view = render(<App />);
+
+    window.history.pushState(
+      { focusProductMain: true },
+      "",
+      "/products/product-1",
+    );
+    fireEvent(window, new PopStateEvent("popstate"));
+    view.rerender(<App />);
+
+    expect(document.activeElement?.id).toBe("product-main");
+    expect(window.history.state).toEqual({});
   });
 });

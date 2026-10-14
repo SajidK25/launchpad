@@ -11,6 +11,7 @@ import boto3
 import pytest
 from app.modules.auth.repository import AuthRepository
 from app.modules.users.models import PhotoUpload, Profile
+from app.modules.users.repository import ProfileRepository
 from app.modules.users.service import MemberIdentity, ProfileService
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
@@ -23,7 +24,8 @@ from botocore.client import BaseClient, Config
 from botocore.exceptions import ClientError
 from conftest import StorageCredentials
 from PIL import Image
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, inspect, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 
@@ -183,6 +185,16 @@ def test_published_profile_edit_is_private_and_notified_atomically(
             await database.prepare()
             sessions = async_sessionmaker(database.engine, expire_on_commit=False)
             async with sessions.begin() as session:
+                columns = await session.run_sync(
+                    lambda sync_session: {
+                        column["name"]: column["nullable"]
+                        for column in inspect(sync_session.connection()).get_columns(
+                            "photo_uploads"
+                        )
+                    }
+                )
+                assert columns["declared_byte_count"] is True
+                assert columns["declared_media_type"] is True
                 account = await AuthRepository().create_account(
                     session,
                     email_display="member@example.com",
@@ -208,6 +220,21 @@ def test_published_profile_edit_is_private_and_notified_atomically(
                         media_type="image/png",
                     )
                 )
+                # Legacy completed rows retain null declarations while validated media stays usable.
+                assert await ProfileRepository().has_validated_photo(session, owner_id, photo_key)
+                with pytest.raises(IntegrityError):
+                    async with session.begin_nested():
+                        await session.execute(
+                            insert(PhotoUpload).values(
+                                id=uuid4(),
+                                account_id=owner_id,
+                                staging_key=f"invalid/{uuid4().hex}",
+                                expires_at=now,
+                                state="pending",
+                                declared_byte_count=5 * 1024 * 1024 + 1,
+                                declared_media_type="image/png",
+                            )
+                        )
                 access.owner_id = owner_id
             async with sessions.begin() as session:
                 service = ProfileService(

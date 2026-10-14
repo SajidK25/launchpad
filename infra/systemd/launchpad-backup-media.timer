@@ -1,0 +1,13 @@
+[Unit]
+Description=Weekly Launchpad private media backup
+
+[Timer]
+# Override OnCalendar with a timer drop-in for another off-peak UTC schedule.
+OnCalendar=Sun *-*-* 04:00:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+AccuracySec=1min
+Unit=launchpad-backup-media.service
+
+[Install]
+WantedBy=timers.target

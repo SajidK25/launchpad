@@ -100,6 +100,16 @@ class PhotoUpload(UsersBase):
             "media_type IS NULL OR media_type IN ('image/jpeg', 'image/png', 'image/webp')",
             name="ck_photo_uploads_media_type",
         ),
+        CheckConstraint(
+            "declared_byte_count IS NULL OR "
+            "(declared_byte_count > 0 AND declared_byte_count <= 5242880)",
+            name="ck_photo_uploads_declared_byte_count",
+        ),
+        CheckConstraint(
+            "declared_media_type IS NULL OR declared_media_type IN "
+            "('image/jpeg', 'image/png', 'image/webp')",
+            name="ck_photo_uploads_declared_media_type",
+        ),
         Index("ix_photo_uploads_account_id", "account_id"),
         Index(
             "ix_photo_uploads_pending_expiry",
@@ -120,3 +130,5 @@ class PhotoUpload(UsersBase):
     state: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     byte_count: Mapped[int | None] = mapped_column(Integer)
     media_type: Mapped[str | None] = mapped_column(Text)
+    declared_byte_count: Mapped[int | None] = mapped_column(Integer)
+    declared_media_type: Mapped[str | None] = mapped_column(Text)

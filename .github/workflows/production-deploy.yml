@@ -1,0 +1,178 @@
+name: Production deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Run the shared quality gate
+        env:
+          COMPOSE_PROJECT_NAME: launchpad-production-ci
+        run: sh scripts/quality/run.sh
+
+  build:
+    needs: quality
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api_digest: ${{ steps.api.outputs.digest }}
+      web_digest: ${{ steps.web.outputs.digest }}
+      schema_revision: ${{ steps.schema.outputs.revision }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive migration head from the built API image
+        id: schema
+        run: |
+          set -euo pipefail
+          docker buildx build --platform linux/amd64 --load --file infra/docker/python.Dockerfile --tag launchpad-api-schema:${GITHUB_SHA} .
+          revision="$(docker run --rm launchpad-api-schema:${GITHUB_SHA} python -c 'from alembic.config import Config; from alembic.script import ScriptDirectory; c=Config("/workspace/apps/api/alembic.ini"); c.set_main_option("script_location", "/workspace/apps/api/alembic"); print(ScriptDirectory.from_config(c).get_current_head())')"
+          [[ "$revision" =~ ^[A-Za-z0-9_.-]{1,128}$ ]]
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+      - name: Build and publish API image
+        id: api
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/launchpad-api
+        run: |
+          set -euo pipefail
+          metadata="$RUNNER_TEMP/api-image.json"
+          docker buildx build --platform linux/amd64 --file infra/docker/python.Dockerfile --tag "$IMAGE:sha-${GITHUB_SHA}" --push --metadata-file "$metadata" .
+          digest="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$metadata")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+      - name: Build and publish production web image
+        id: web
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/launchpad-web
+        run: |
+          set -euo pipefail
+          metadata="$RUNNER_TEMP/web-image.json"
+          docker buildx build --platform linux/amd64 --file infra/docker/web.Dockerfile --target production --tag "$IMAGE:sha-${GITHUB_SHA}" --push --metadata-file "$metadata" .
+          digest="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$metadata")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+      - name: Create verified release manifest
+        env:
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+          SCHEMA_REVISION: ${{ steps.schema.outputs.revision }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          sha = os.environ["GITHUB_SHA"]
+          run_id = int(os.environ["GITHUB_RUN_ID"])
+          attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+          schema = os.environ["SCHEMA_REVISION"]
+          owner_repo = os.environ["GITHUB_REPOSITORY"]
+          platform = "linux/amd64"
+          packages = {"api": "ghcr.io/sajidk25/launchpad-api", "web": "ghcr.io/sajidk25/launchpad-web"}
+          images = {}
+          for name in ("api", "web"):
+              digest = os.environ[f"{name.upper()}_DIGEST"]
+              if not digest.startswith("sha256:") or len(digest) != 71:
+                  raise SystemExit("published image digest is malformed")
+              images[name] = {"package": packages[name], "digest": digest, "commit": sha, "schema_revision": schema, "platform": platform}
+          manifest = {
+              "manifest_version": 1,
+              "repository": "SajidK25/launchpad",
+              "commit": sha,
+              "release_id": f"{run_id}-{attempt}-{sha}",
+              "platform": platform,
+              "schema_revision": schema,
+              "workflow": {"repository": owner_repo, "run_id": run_id, "run_attempt": attempt, "event": os.environ["GITHUB_EVENT_NAME"], "ref": os.environ["GITHUB_REF"], "head_sha": sha, "conclusion": "success"},
+              "verification": {"quality": "success", "images": "success"},
+              "images": images,
+          }
+          Path("release-manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+      - name: Upload release manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: production-release-manifest
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: [quality, build]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    environment: production
+    concurrency:
+      group: launchpad-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Download verified manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: production-release-manifest
+      - name: Install pinned cloudflared and prepare strict SSH
+        env:
+          PRODUCTION_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          PRODUCTION_SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/launchpad-deploy"
+          install -d -m 0700 "$install_dir"
+          trap 'rm -rf "$install_dir"' EXIT
+          curl --fail --location --silent --show-error https://github.com/cloudflare/cloudflared/releases/download/2026.10.0/cloudflared-linux-amd64 --output "$install_dir/cloudflared"
+          printf '%s  %s\n' 'd33ff2d14475178d2012c2c56beba87389ac5ded27649519f198a7d3134a99db' "$install_dir/cloudflared" | sha256sum --check --status
+          chmod 0700 "$install_dir/cloudflared"
+          printf '%s\n' "$PRODUCTION_SSH_PRIVATE_KEY" > "$install_dir/id_ed25519"
+          printf '%s\n' "$PRODUCTION_SSH_KNOWN_HOSTS" > "$install_dir/known_hosts"
+          chmod 0600 "$install_dir/id_ed25519" "$install_dir/known_hosts"
+          cat > "$install_dir/ssh_config" <<EOF
+          Host launchpad-ssh.t99ltd.com
+            HostName launchpad-ssh.t99ltd.com
+            User deploy
+            BatchMode yes
+            IdentitiesOnly yes
+            IdentityFile $install_dir/id_ed25519
+            UserKnownHostsFile $install_dir/known_hosts
+            StrictHostKeyChecking yes
+            ProxyCommand $install_dir/cloudflared access ssh --hostname %h
+          EOF
+          chmod 0600 "$install_dir/ssh_config"
+          echo "LAUNCHPAD_DEPLOY_DIR=$install_dir" >> "$GITHUB_ENV"
+      - name: Send verified release to the provisioned VM controller
+        env:
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ -s release-manifest.json ]]
+          remote="/srv/launchpad/incoming/${GITHUB_SHA}.json"
+          ssh -F "$LAUNCHPAD_DEPLOY_DIR/ssh_config" launchpad-ssh.t99ltd.com "install -d -m 0700 /srv/launchpad/incoming"
+          scp -F "$LAUNCHPAD_DEPLOY_DIR/ssh_config" release-manifest.json "launchpad-ssh.t99ltd.com:$remote"
+          ssh -F "$LAUNCHPAD_DEPLOY_DIR/ssh_config" launchpad-ssh.t99ltd.com "/srv/launchpad/bin/deploy_production.sh $remote"
+      - name: Remove temporary SSH credentials
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/launchpad-deploy"

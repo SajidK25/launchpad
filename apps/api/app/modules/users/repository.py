@@ -102,6 +102,8 @@ class ProfileRepository:
         account_id: UUID,
         upload_id: UUID,
         staging_key: str,
+        declared_byte_count: int,
+        declared_media_type: str,
         expires_in: int,
         now: datetime | None = None,
     ) -> None:
@@ -110,10 +112,30 @@ class ProfileRepository:
                 id=upload_id,
                 account_id=account_id,
                 staging_key=staging_key,
+                declared_byte_count=declared_byte_count,
+                declared_media_type=declared_media_type,
                 expires_at=(now or datetime.now(UTC)) + timedelta(seconds=expires_in),
                 state="pending",
             )
         )
+
+    async def get_photo_upload_for_transfer(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: UUID,
+        upload_id: UUID,
+        lock: bool = False,
+    ) -> PhotoUpload | None:
+        """Load one owner's upload intent, optionally serializing finalization and transfer."""
+
+        query = select(PhotoUpload).where(
+            PhotoUpload.id == upload_id,
+            PhotoUpload.account_id == account_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return cast(PhotoUpload | None, await session.scalar(query))
 
     async def complete_photo_upload(
         self,

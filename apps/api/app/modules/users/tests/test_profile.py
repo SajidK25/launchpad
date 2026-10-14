@@ -4,7 +4,10 @@ from typing import Any, cast
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql.dml import Insert
 
+from app.modules.users.repository import ProfileRepository
 from app.modules.users.service import (
     MemberIdentity,
     ProfileConflictError,
@@ -13,6 +16,7 @@ from app.modules.users.service import (
     ProfileService,
     ProfileValidationError,
 )
+from app.shared.storage.objects import ObjectOperationError
 
 
 class FakeRepository:
@@ -46,6 +50,228 @@ class FakeRepository:
         self, session: Any, account_id: object, photo_key: str, *, lock: bool = False
     ) -> bool:
         return bool(account_id == self.profile.account_id and photo_key == self.profile.photo_key)
+
+
+@pytest.mark.anyio
+async def test_profile_transfer_locks_and_rechecks_intent_before_staging_write() -> None:
+    account_id = uuid4()
+    upload_id = uuid4()
+    intent = SimpleNamespace(
+        id=upload_id,
+        account_id=account_id,
+        staging_key=f"profile-staging/{account_id.hex}/{upload_id.hex}",
+        state="pending",
+        expires_at=datetime(2026, 1, 1, 0, 10, tzinfo=UTC),
+        declared_byte_count=32,
+        declared_media_type="image/png",
+    )
+
+    class TransferRepository(FakeRepository):
+        lock_requested = False
+
+        async def get_photo_upload_for_transfer(
+            self, session: Any, *, account_id: object, upload_id: object, lock: bool = False
+        ) -> SimpleNamespace | None:
+            self.lock_requested = lock
+            if account_id == intent.account_id and upload_id == intent.id:
+                return intent
+            return None
+
+    class StagingStorage:
+        writes: list[dict[str, object]]
+
+        def __init__(self) -> None:
+            self.writes = []
+
+        async def put_staging(self, **values: object) -> None:
+            self.writes.append(values)
+
+    repository = TransferRepository(_profile(account_id))
+    storage = StagingStorage()
+    service = ProfileService(
+        repository=repository,
+        member_access=FakeMemberAccess(MemberIdentity(account_id, "member@example.com", True)),
+        outbox_repository=FakeOutbox(),
+        payload_codec=FakeCodec(),
+        mail_web_origin="https://launchpad.example",
+        clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    await service.transfer_photo_upload(
+        None,
+        actor_id=account_id,
+        upload_id=upload_id,
+        body=b"bounded image bytes",
+        content_type="image/png",
+        storage=storage,
+    )
+
+    assert repository.lock_requested is True
+    assert storage.writes == [
+        {
+            "object_key": intent.staging_key,
+            "body": b"bounded image bytes",
+            "content_type": "image/png",
+        }
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("invalid_intent", ["absent", "expired", "completed", "legacy"])
+async def test_profile_transfer_refuses_stale_or_undeclared_intents(invalid_intent: str) -> None:
+    account_id = uuid4()
+    upload_id = uuid4()
+    intent: SimpleNamespace | None = SimpleNamespace(
+        id=upload_id,
+        account_id=account_id,
+        staging_key=f"profile-staging/{account_id.hex}/{upload_id.hex}",
+        state="pending",
+        expires_at=datetime(2026, 1, 1, 0, 10, tzinfo=UTC),
+        declared_byte_count=32,
+        declared_media_type="image/png",
+    )
+    if invalid_intent == "absent":
+        intent = None
+    elif invalid_intent == "expired":
+        assert intent is not None
+        intent.expires_at = datetime(2025, 12, 31, 23, 59, tzinfo=UTC)
+    elif invalid_intent == "completed":
+        assert intent is not None
+        intent.state = "cleaned"
+    else:
+        assert intent is not None
+        intent.declared_byte_count = None
+        intent.declared_media_type = None
+
+    class TransferRepository(FakeRepository):
+        async def get_photo_upload_for_transfer(
+            self, session: Any, *, account_id: object, upload_id: object, lock: bool = False
+        ) -> SimpleNamespace | None:
+            if intent is None or account_id != intent.account_id or upload_id != intent.id:
+                return None
+            return intent
+
+    class StagingStorage:
+        writes = 0
+
+        async def put_staging(self, **values: object) -> None:
+            self.writes += 1
+
+    storage = StagingStorage()
+    service = ProfileService(
+        repository=TransferRepository(_profile(account_id)),
+        member_access=FakeMemberAccess(MemberIdentity(account_id, "member@example.com", True)),
+        outbox_repository=FakeOutbox(),
+        payload_codec=FakeCodec(),
+        mail_web_origin="https://launchpad.example",
+        clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    with pytest.raises(ProfileConflictError):
+        await service.transfer_photo_upload(
+            None,
+            actor_id=account_id,
+            upload_id=upload_id,
+            body=b"bounded image bytes",
+            content_type="image/png",
+            storage=storage,
+        )
+    assert storage.writes == 0
+
+
+@pytest.mark.anyio
+async def test_transfer_rechecks_auth_and_preserves_pending_on_storage_failure() -> None:
+    account_id = uuid4()
+    upload_id = uuid4()
+    intent = SimpleNamespace(
+        id=upload_id,
+        account_id=account_id,
+        staging_key=f"profile-staging/{account_id.hex}/{upload_id.hex}",
+        state="pending",
+        expires_at=datetime(2026, 1, 1, 0, 10, tzinfo=UTC),
+        declared_byte_count=32,
+        declared_media_type="image/png",
+    )
+
+    class TransferRepository(FakeRepository):
+        async def get_photo_upload_for_transfer(
+            self, session: Any, *, account_id: object, upload_id: object, lock: bool = False
+        ) -> SimpleNamespace | None:
+            return intent if account_id == intent.account_id and upload_id == intent.id else None
+
+    class MutableMemberAccess(FakeMemberAccess):
+        async def get_member(
+            self, session: Any, account_id: object, *, lock: bool = False
+        ) -> MemberIdentity | None:
+            return self.member if self.member.account_id == account_id else None
+
+    class StagingStorage:
+        async def put_staging(self, **values: object) -> None:
+            raise ObjectOperationError("storage unavailable")
+
+    access = MutableMemberAccess(MemberIdentity(account_id, "member@example.com", True))
+    repository = TransferRepository(_profile(account_id))
+    service = ProfileService(
+        repository=repository,
+        member_access=access,
+        outbox_repository=FakeOutbox(),
+        payload_codec=FakeCodec(),
+        mail_web_origin="https://launchpad.example",
+        clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    access.member = MemberIdentity(uuid4(), "changed@example.com", True)
+    with pytest.raises(ProfileForbiddenError):
+        await service.transfer_photo_upload(
+            None,
+            actor_id=account_id,
+            upload_id=upload_id,
+            body=b"bounded image bytes",
+            content_type="image/png",
+            storage=StagingStorage(),
+        )
+
+    access.member = MemberIdentity(account_id, "member@example.com", True)
+    with pytest.raises(ProfileInfrastructureError):
+        await service.transfer_photo_upload(
+            None,
+            actor_id=account_id,
+            upload_id=upload_id,
+            body=b"bounded image bytes",
+            content_type="image/png",
+            storage=StagingStorage(),
+        )
+    assert intent.state == "pending"
+
+
+@pytest.mark.anyio
+async def test_create_photo_upload_persists_declarations_separately() -> None:
+    class CaptureSession:
+        statement: Insert | None = None
+
+        async def execute(self, statement: Insert) -> None:
+            self.statement = statement
+
+    session = CaptureSession()
+    account_id = uuid4()
+    upload_id = uuid4()
+
+    await ProfileRepository().create_photo_upload(
+        session,  # type: ignore[arg-type]
+        account_id=account_id,
+        upload_id=upload_id,
+        staging_key=f"profile-staging/{account_id.hex}/{upload_id.hex}",
+        declared_byte_count=2048,
+        declared_media_type="image/png",
+        expires_in=600,
+    )
+
+    assert session.statement is not None
+    params = session.statement.compile(dialect=postgresql.dialect()).params  # type: ignore[no-untyped-call]
+    assert params["declared_byte_count"] == 2048
+    assert params["declared_media_type"] == "image/png"
+    assert "byte_count" not in params
+    assert "media_type" not in params
 
 
 class FakeMemberAccess:

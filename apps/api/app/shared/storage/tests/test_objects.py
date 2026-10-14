@@ -5,14 +5,97 @@ import pytest
 from botocore.exceptions import ClientError
 from PIL import Image, PngImagePlugin
 
+from app.shared.storage.client import StorageAccessDenied, StorageClient, StorageUnavailable
 from app.shared.storage.objects import (
     CLEAN_PREFIX,
     MAX_PHOTO_BYTES,
+    PRODUCT_CLEAN_PREFIX,
     STAGING_PREFIX,
     ObjectOperationError,
     ObjectValidationError,
     PrivateObjectStore,
 )
+
+
+def test_r2_client_uses_account_endpoint_and_auto_signing_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: dict[str, object] = {}
+
+    def create_client(service: str, **kwargs: object) -> object:
+        created.update(service=service, **kwargs)
+        return object()
+
+    monkeypatch.setattr("app.shared.storage.client.boto3.client", create_client)
+    client = StorageClient(
+        endpoint_url="https://account123.r2.cloudflarestorage.com",
+        access_key_id="runtime",
+        secret_access_key="secret",
+        provider="r2",
+        region_name="auto",
+    )
+
+    client._client()
+
+    assert created["service"] == "s3"
+    assert created["endpoint_url"] == "https://account123.r2.cloudflarestorage.com"
+    assert created["region_name"] == "auto"
+
+
+@pytest.mark.anyio
+async def test_r2_probe_uses_head_bucket_without_policy_operations() -> None:
+    class R2Client:
+        def __init__(self) -> None:
+            self.operations: list[str] = []
+
+        def head_bucket(self, *, Bucket: str) -> None:
+            self.operations.append("HeadBucket")
+
+        def get_bucket_policy(self, *, Bucket: str) -> None:
+            raise AssertionError("R2 readiness must not request bucket policy")
+
+        def get_bucket_location(self, *, Bucket: str) -> None:
+            raise AssertionError("R2 readiness uses the supported HeadBucket probe")
+
+    client = R2Client()
+    storage = StorageClient(
+        endpoint_url="https://account123.r2.cloudflarestorage.com",
+        access_key_id="runtime",
+        secret_access_key="secret",
+        provider="r2",
+        region_name="auto",
+        client_factory=lambda: client,
+    )
+
+    await storage.probe("private")
+
+    assert client.operations == ["HeadBucket"]
+
+
+@pytest.mark.anyio
+async def test_r2_probe_denial_and_missing_bucket_remain_unhealthy() -> None:
+    class DeniedClient:
+        def head_bucket(self, *, Bucket: str) -> None:
+            raise ClientError({"Error": {"Code": "AccessDenied"}}, "HeadBucket")
+
+    class MissingBucketClient:
+        def head_bucket(self, *, Bucket: str) -> None:
+            raise ClientError({"Error": {"Code": "NoSuchBucket"}}, "HeadBucket")
+
+    def r2(client: object) -> StorageClient:
+        return StorageClient(
+            endpoint_url="https://account123.r2.cloudflarestorage.com",
+            access_key_id="runtime",
+            secret_access_key="secret",
+            provider="r2",
+            region_name="auto",
+            client_factory=lambda: client,
+        )
+
+    with pytest.raises(StorageAccessDenied):
+        await r2(DeniedClient()).probe("private")
+    with pytest.raises(StorageUnavailable):
+        await r2(MissingBucketClient()).probe("private")
 
 
 class _Body:
@@ -149,6 +232,7 @@ async def test_signed_upload_uses_browser_reachable_public_endpoint() -> None:
 
     assert upload.upload_url == "http://localhost:9000/upload"
 
+
 @pytest.mark.anyio
 async def test_finalize_reencodes_image_and_removes_metadata() -> None:
     client = _S3(_png_with_metadata())
@@ -172,6 +256,62 @@ async def test_finalize_reencodes_image_and_removes_metadata() -> None:
 
 
 @pytest.mark.anyio
+async def test_staging_write_read_and_delete_preserve_private_object_bytes() -> None:
+    body = _png_with_metadata()
+    client = _S3(body)
+    storage = StorageClient(
+        endpoint_url="https://account123.r2.cloudflarestorage.com",
+        access_key_id="runtime",
+        secret_access_key="secret",
+        provider="r2",
+        region_name="auto",
+        client_factory=lambda: client,
+    )
+    store = PrivateObjectStore(
+        endpoint_url="https://account123.r2.cloudflarestorage.com",
+        region_name="auto",
+        bucket_name="private",
+        access_key_id="runtime",
+        secret_access_key="secret",
+        client_factory=storage._client,
+    )
+    account_id = uuid4()
+    upload_id = uuid4()
+    object_key = f"{STAGING_PREFIX}{account_id.hex}/{upload_id.hex}"
+
+    await store.put_staging(object_key=object_key, body=body, content_type="image/png")
+    stored, media_type = await store.get_private(object_key=object_key)
+    await store.delete_staging(account_id=account_id, upload_id=upload_id)
+
+    assert stored == body
+    assert media_type == "image/png"
+    assert client.puts[object_key] == body
+    assert ("delete", object_key) in client.calls
+
+
+@pytest.mark.anyio
+async def test_staging_write_rejects_clean_and_unscoped_keys() -> None:
+    client = _S3()
+    store = _store(client)
+    account_id = uuid4()
+    upload_id = uuid4()
+    invalid_keys = (
+        f"{CLEAN_PREFIX}{account_id.hex}/{upload_id.hex}",
+        f"private/{account_id.hex}/{upload_id.hex}",
+    )
+
+    for object_key in invalid_keys:
+        with pytest.raises(ObjectValidationError):
+            await store.put_staging(
+                object_key=object_key,
+                body=b"bounded bytes",
+                content_type="image/png",
+            )
+
+    assert client.calls == []
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("format_name", "media_type"), [("JPEG", "image/jpeg"), ("WEBP", "image/webp")]
 )
@@ -191,6 +331,23 @@ async def test_finalize_rejects_oversized_body_and_canonical_key_is_required() -
         await store.finalize_staging(account_id=uuid4(), upload_id=uuid4())
     with pytest.raises(ObjectValidationError):
         await store.get_private(object_key=f"{CLEAN_PREFIX}{uuid4().hex}/not-a-uuid")
+    with pytest.raises(ObjectValidationError):
+        await store.get_private(
+            object_key=f"{PRODUCT_CLEAN_PREFIX}{uuid4().hex}/{uuid4().hex}/{uuid4().hex}"
+        )
+
+
+@pytest.mark.anyio
+async def test_finalize_rejects_decoded_pixel_limit_before_reencoding() -> None:
+    image = Image.new("1", (5000, 5000), 1)
+    output = io.BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    body = output.getvalue()
+    assert len(body) < MAX_PHOTO_BYTES
+    client = _S3(body)
+    with pytest.raises(ObjectValidationError, match="dimensions"):
+        await _store(client).finalize_staging(account_id=uuid4(), upload_id=uuid4())
+    assert not any(action == "put" for action, _ in client.calls)
 
 
 @pytest.mark.anyio

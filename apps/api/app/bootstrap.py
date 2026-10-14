@@ -14,7 +14,13 @@ from app.shared.storage.provision import StorageProvisioner, StorageProvisioning
 async def prepare() -> None:
     """Validate configuration, then serialize database and private-storage preparation."""
 
+    if os.environ.get("LAUNCHPAD_ENVIRONMENT") == "production":
+        raise ConfigurationError(
+            "Production bootstrap is disabled; run the database-only migration command."
+        )
     settings = load_settings()
+    if settings.storage_provider != "minio":
+        raise ConfigurationError("Local bootstrap requires LAUNCHPAD_STORAGE_PROVIDER=minio")
     bootstrap_access_key_id = settings.bootstrap_storage_access_key_id
     bootstrap_secret_access_key = settings.bootstrap_storage_secret_access_key
     runtime_access_key_id = settings.storage_access_key_id
@@ -34,11 +40,7 @@ async def prepare() -> None:
             bootstrap_secret_access_key=bootstrap_secret_access_key.get_secret_value(),
             runtime_access_key_id=runtime_access_key_id.get_secret_value(),
             runtime_secret_access_key=runtime_secret_access_key.get_secret_value(),
-            # The local MinIO image used by checks does not implement PutBucketCors;
-            # production preparation must apply the exact configured web origin.
-            upload_origin=(
-                str(settings.mail_web_origin) if settings.environment == "production" else None
-            ),
+            upload_origin=None,
         )
         bucket_name = os.environ.get("LAUNCHPAD_STORAGE_BUCKET", "launchpad-private")
         await database.prepare_with(lambda: provisioner.prepare(bucket_name))

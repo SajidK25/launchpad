@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+RoleName = Literal["member", "reviewer", "admin"]
 
 
 class EmailPasswordRequest(BaseModel):
@@ -32,10 +35,14 @@ class AcceptedResponse(BaseModel):
 class LoginResponse(BaseModel):
     account_id: UUID
     verified: bool
+    role: RoleName
+    suspended: bool
     csrf_token: str
 
 
 class SessionResponse(BaseModel):
     account_id: UUID
     verified: bool
+    role: RoleName
+    suspended: bool
     csrf_token: str

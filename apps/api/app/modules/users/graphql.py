@@ -31,33 +31,36 @@ class ViewerProfile(PublicProfile):
     version: int
 
 
+@strawberry.type
+class ProfileQuery:
+    """Profile fields exported for the single composed application query root."""
+
+    @strawberry.field
+    async def viewer_profile(self, info: strawberry.Info) -> ViewerProfile:
+        context = info.context
+        member = context.get("member")
+        if member is None:
+            raise PermissionError("authentication required")
+        async with context["session_factory"]() as session:
+            service = context["service_factory"](member)
+            result = await service.get_owner(
+                session, actor_id=member.account_id, account_id=member.account_id
+            )
+        return _viewer(result)
+
+    @strawberry.field
+    async def public_profile(self, info: strawberry.Info, account_id: UUID) -> PublicProfile | None:
+        context = info.context
+        async with context["session_factory"]() as session:
+            service: ProfileService = context["service_factory"](context.get("member"))
+            result = await service.get_public(session, account_id=account_id)
+        return _public(result)
+
+
 def build_router(context_getter: Any) -> GraphQLRouter:
-    @strawberry.type
-    class Query:
-        @strawberry.field
-        async def viewer_profile(self, info: strawberry.Info) -> ViewerProfile:
-            context = info.context
-            member = context.get("member")
-            if member is None:
-                raise PermissionError("authentication required")
-            async with context["session_factory"]() as session:
-                service = context["service_factory"](member)
-                result = await service.get_owner(
-                    session, actor_id=member.account_id, account_id=member.account_id
-                )
-            return _viewer(result)
+    """Compatibility profile-only router for existing isolated profile consumers."""
 
-        @strawberry.field
-        async def public_profile(
-            self, info: strawberry.Info, account_id: UUID
-        ) -> PublicProfile | None:
-            context = info.context
-            async with context["session_factory"]() as session:
-                service: ProfileService = context["service_factory"](context.get("member"))
-                result = await service.get_public(session, account_id=account_id)
-            return _public(result)
-
-    schema = strawberry.Schema(query=Query)
+    schema = strawberry.Schema(query=ProfileQuery)
     return GraphQLRouter(
         schema,
         path="/graphql",

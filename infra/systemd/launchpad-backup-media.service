@@ -1,0 +1,32 @@
+[Unit]
+Description=Launchpad encrypted private media backup
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+SupplementaryGroups=docker
+WorkingDirectory=/srv/launchpad
+EnvironmentFile=/etc/launchpad/backup-media.env
+Environment=XDG_CACHE_HOME=/var/lib/launchpad/backups/cache
+UMask=0077
+ExecStart=/usr/bin/flock --exclusive --wait 86400 /srv/launchpad/state/deployment.lock /srv/launchpad/bin/backup_production.sh media weekly
+TimeoutStartSec=26h
+SyslogIdentifier=launchpad-backup-media
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/srv/launchpad/state /var/lib/launchpad/backups

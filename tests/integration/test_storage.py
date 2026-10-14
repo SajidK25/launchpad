@@ -173,6 +173,8 @@ def test_probe_is_read_only_and_timeout_does_not_block_the_event_loop(
             endpoint_url=storage_credentials.endpoint_url,
             access_key_id=storage_credentials.runtime_access_key_id,
             secret_access_key=storage_credentials.runtime_secret_access_key,
+            provider="minio",
+            region_name="us-east-1",
             client_factory=lambda: runtime,
         ).probe(storage_bucket)
         assert operations == ["GetBucketLocation", "GetBucketPolicy"]

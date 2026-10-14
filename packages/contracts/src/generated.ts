@@ -191,6 +191,144 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/notifications/{notification_id}/read": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Mark Notification Read */
+    put: operations["mark_notification_read_api_v1_me_notifications__notification_id__read_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/me/products": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Draft */
+    post: operations["create_draft_api_v1_me_products_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/me/products/{product_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete Draft */
+    delete: operations["delete_draft_api_v1_me_products__product_id__delete"];
+    options?: never;
+    head?: never;
+    /** Save Product */
+    patch: operations["save_product_api_v1_me_products__product_id__patch"];
+    trace?: never;
+  };
+  "/api/v1/me/products/{product_id}/assets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Attach Product Assets */
+    put: operations["attach_product_assets_api_v1_me_products__product_id__assets_put"];
+    /** Create Asset Intent */
+    post: operations["create_asset_intent_api_v1_me_products__product_id__assets_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/me/products/{product_id}/assets/{asset_id}/complete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Complete Asset */
+    post: operations["complete_asset_api_v1_me_products__product_id__assets__asset_id__complete_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/me/products/{product_id}/assets/{asset_id}/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Transfer Asset */
+    put: operations["transfer_asset_api_v1_me_products__product_id__assets__asset_id__content_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/me/products/{product_id}/submit": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Submit Draft */
+    post: operations["submit_draft_api_v1_me_products__product_id__submit_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/me/products/{product_id}/withdraw": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Withdraw Submission */
+    post: operations["withdraw_submission_api_v1_me_products__product_id__withdraw_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me/profile": {
     parameters: {
       query?: never;
@@ -242,6 +380,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/profile/photo-uploads/{upload_id}/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Transfer Photo Upload */
+    put: operations["transfer_photo_upload_api_v1_me_profile_photo_uploads__upload_id__content_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me/profile/publish": {
     parameters: {
       query?: never;
@@ -276,6 +431,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/products/{product_id}/assets/{asset_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Private Product Asset */
+    get: operations["get_private_product_asset_api_v1_products__product_id__assets__asset_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/profiles/{account_id}/photo": {
     parameters: {
       query?: never;
@@ -287,6 +459,23 @@ export interface paths {
     get: operations["profile_photo_api_v1_profiles__account_id__photo_get"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/staff/products/{product_id}/review-decisions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Review Decision */
+    post: operations["create_review_decision_api_v1_staff_products__product_id__review_decisions_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -336,8 +525,43 @@ export interface components {
       account_id: string;
       /** Csrf Token */
       csrf_token: string;
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: "member" | "reviewer" | "admin";
+      /** Suspended */
+      suspended: boolean;
       /** Verified */
       verified: boolean;
+    };
+    /**
+     * NotificationReadResponse
+     * @description Safe result of marking one notification read.
+     */
+    NotificationReadResponse: {
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "review_approved" | "review_rejected" | "review_changes_requested";
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
+      /** Read At */
+      read_at: string | null;
     };
     /** PasswordResetRequest */
     PasswordResetRequest: {
@@ -375,13 +599,198 @@ export interface components {
       fields: {
         [key: string]: string;
       };
+      /** Upload Headers */
+      upload_headers: {
+        [key: string]: string;
+      };
       /**
        * Upload Id
        * Format: uuid
        */
       upload_id: string;
+      /**
+       * Upload Method
+       * @enum {string}
+       */
+      upload_method: "POST" | "PUT";
+      /**
+       * Upload Transport
+       * @enum {string}
+       */
+      upload_transport: "storage_form" | "authenticated_api";
       /** Upload Url */
       upload_url: string;
+    };
+    /**
+     * ProductAssetAttachmentInput
+     * @description Full versioned replacement for a draft's ordered private media selection.
+     */
+    ProductAssetAttachmentInput: {
+      /** Logo Asset Id */
+      logo_asset_id: string | null;
+      /** Screenshot Asset Ids */
+      screenshot_asset_ids: string[];
+      /** Version */
+      version: number;
+    };
+    /**
+     * ProductAssetCompleteResponse
+     * @description Safe status of an image that passed byte-level validation.
+     */
+    ProductAssetCompleteResponse: {
+      /**
+       * Asset Id
+       * Format: uuid
+       */
+      asset_id: string;
+      /** Byte Count */
+      byte_count: number;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "logo" | "screenshot";
+      /**
+       * Media Type
+       * @enum {string}
+       */
+      media_type: "image/jpeg" | "image/png" | "image/webp";
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "clean" | "failed";
+    };
+    /**
+     * ProductAssetIntentInput
+     * @description Bounded declaration for one private logo or screenshot upload.
+     */
+    ProductAssetIntentInput: {
+      /**
+       * Content Type
+       * @enum {string}
+       */
+      content_type: "image/jpeg" | "image/png" | "image/webp";
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "logo" | "screenshot";
+      /** Size */
+      size: number;
+    };
+    /**
+     * ProductAssetIntentResponse
+     * @description Short-lived upload capability; never includes a storage object key.
+     */
+    ProductAssetIntentResponse: {
+      /**
+       * Asset Id
+       * Format: uuid
+       */
+      asset_id: string;
+      /** Expires In */
+      expires_in: number;
+      /** Fields */
+      fields: {
+        [key: string]: string;
+      };
+      /** Upload Headers */
+      upload_headers: {
+        [key: string]: string;
+      };
+      /**
+       * Upload Method
+       * @enum {string}
+       */
+      upload_method: "POST" | "PUT";
+      /**
+       * Upload Transport
+       * @enum {string}
+       */
+      upload_transport: "storage_form" | "authenticated_api";
+      /** Upload Url */
+      upload_url: string;
+    };
+    /**
+     * ProductSaveInput
+     * @description Versioned partial content update with optional full topic replacement.
+     */
+    ProductSaveInput: {
+      /** Description */
+      description?: string | null;
+      /** Name */
+      name?: string | null;
+      /** Pitch */
+      pitch?: string | null;
+      /** Topic Names */
+      topic_names?: string[] | null;
+      /** Version */
+      version: number;
+      /** Website Url */
+      website_url?: string | null;
+    };
+    /**
+     * ProductStateResponse
+     * @description Owner-safe product identity and optimistic version.
+     */
+    ProductStateResponse: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status:
+        | "draft"
+        | "submitted"
+        | "changes_requested"
+        | "approved"
+        | "rejected";
+      /** Version */
+      version: number;
+    };
+    /**
+     * ProductSubmitResponse
+     * @description Owner-safe current queue period without private content.
+     */
+    ProductSubmitResponse: {
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
+      /** Product Version */
+      product_version: number;
+      /**
+       * Submission Id
+       * Format: uuid
+       */
+      submission_id: string;
+    };
+    /**
+     * ProductVersionInput
+     * @description Expected version for an explicit state transition.
+     */
+    ProductVersionInput: {
+      /** Version */
+      version: number;
+    };
+    /**
+     * ProductWithdrawInput
+     * @description Target the exact active queue period being withdrawn.
+     */
+    ProductWithdrawInput: {
+      /**
+       * Submission Id
+       * Format: uuid
+       */
+      submission_id: string;
+      /** Version */
+      version: number;
     };
     /** ProfilePatchRequest */
     ProfilePatchRequest: {
@@ -423,6 +832,54 @@ export interface components {
       /** Visibility */
       visibility: string;
     };
+    /**
+     * ReviewDecisionInput
+     * @description Version-bound staff decision request with an outcome-specific feedback contract.
+     */
+    ReviewDecisionInput: {
+      /** Expected Version */
+      expected_version: number;
+      /** Feedback */
+      feedback?: string | null;
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: "approved" | "rejected" | "changes_requested";
+      /**
+       * Submission Id
+       * Format: uuid
+       */
+      submission_id: string;
+    };
+    /**
+     * ReviewDecisionResponse
+     * @description Safe result of a staff review command.
+     */
+    ReviewDecisionResponse: {
+      /**
+       * Decision Id
+       * Format: uuid
+       */
+      decision_id: string;
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "approved" | "rejected" | "changes_requested";
+      /**
+       * Submission Id
+       * Format: uuid
+       */
+      submission_id: string;
+      /** Version */
+      version: number;
+    };
     /** SessionResponse */
     SessionResponse: {
       /**
@@ -432,6 +889,13 @@ export interface components {
       account_id: string;
       /** Csrf Token */
       csrf_token: string;
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: "member" | "reviewer" | "admin";
+      /** Suspended */
+      suspended: boolean;
       /** Verified */
       verified: boolean;
     };
@@ -765,6 +1229,354 @@ export interface operations {
       };
     };
   };
+  mark_notification_read_api_v1_me_notifications__notification_id__read_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        notification_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NotificationReadResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_draft_api_v1_me_products_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProductStateResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delete_draft_api_v1_me_products__product_id__delete: {
+    parameters: {
+      query: {
+        expected_version: number;
+      };
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_product_api_v1_me_products__product_id__patch: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProductSaveInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProductStateResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  attach_product_assets_api_v1_me_products__product_id__assets_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProductAssetAttachmentInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProductStateResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_asset_intent_api_v1_me_products__product_id__assets_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProductAssetIntentInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProductAssetIntentResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  complete_asset_api_v1_me_products__product_id__assets__asset_id__complete_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+        asset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProductAssetCompleteResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  transfer_asset_api_v1_me_products__product_id__assets__asset_id__content_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+        asset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  submit_draft_api_v1_me_products__product_id__submit_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProductVersionInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProductSubmitResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  withdraw_submission_api_v1_me_products__product_id__withdraw_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProductWithdrawInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProductStateResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   update_profile_api_v1_me_profile_patch: {
     parameters: {
       query?: never;
@@ -868,6 +1680,37 @@ export interface operations {
       };
     };
   };
+  transfer_photo_upload_api_v1_me_profile_photo_uploads__upload_id__content_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        upload_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   publish_profile_api_v1_me_profile_publish_post: {
     parameters: {
       query?: never;
@@ -938,6 +1781,41 @@ export interface operations {
       };
     };
   };
+  get_private_product_asset_api_v1_products__product_id__assets__asset_id__get: {
+    parameters: {
+      query: {
+        expires: number;
+        signature: string;
+      };
+      header?: never;
+      path: {
+        product_id: string;
+        asset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   profile_photo_api_v1_profiles__account_id__photo_get: {
     parameters: {
       query?: never;
@@ -956,6 +1834,44 @@ export interface operations {
         };
         content: {
           "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_review_decision_api_v1_staff_products__product_id__review_decisions_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReviewDecisionInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReviewDecisionResponse"];
         };
       };
       /** @description Validation Error */

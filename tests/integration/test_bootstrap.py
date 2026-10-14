@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from app.bootstrap import prepare
+from app.shared.config.settings import ConfigurationError
 from app.shared.db.database import Database, migration_head
 from conftest import IntegrationSettings
 
@@ -41,3 +43,14 @@ def test_bootstrap_prepares_database_and_private_storage(
             await database.close()
 
     asyncio.run(verify())
+
+
+def test_production_bootstrap_refuses_storage_provisioning(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LAUNCHPAD_ENVIRONMENT", "production")
+    monkeypatch.delenv("LAUNCHPAD_BOOTSTRAP_STORAGE_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("LAUNCHPAD_BOOTSTRAP_STORAGE_SECRET_ACCESS_KEY", raising=False)
+
+    with pytest.raises(ConfigurationError, match="Production bootstrap is disabled"):
+        asyncio.run(prepare())

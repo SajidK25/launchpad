@@ -2,7 +2,7 @@
 
 import base64
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from redis import Redis
@@ -16,6 +16,7 @@ from app.modules.auth.schemas import (
     EmailRequest,
     LoginResponse,
     PasswordResetRequest,
+    RoleName,
     SessionResponse,
     TokenRequest,
 )
@@ -181,6 +182,8 @@ def router(
         return LoginResponse(
             account_id=result.member.account_id,
             verified=result.member.verified,
+            role=cast(RoleName, result.member.role),
+            suspended=result.member.suspended_at is not None,
             csrf_token=result.csrf_token,
         )
 
@@ -195,6 +198,8 @@ def router(
         return SessionResponse(
             account_id=member.account_id,
             verified=member.verified,
+            role=cast(RoleName, member.role),
+            suspended=member.suspended_at is not None,
             csrf_token=derive_csrf_token(secret),
         )
 

@@ -1,3 +1,78 @@
+type ApprovedReviewEntry {
+  product: ProductSummary!
+  submission: Submission!
+  approvedAt: DateTime!
+}
+
+type ApprovedReviewPage {
+  items: [ApprovedReviewEntry!]!
+  nextCursor: String
+}
+
+"""
+Date with time (isoformat)
+"""
+scalar DateTime
+
+type NotificationEntry {
+  id: UUID!
+  productId: UUID!
+  kind: NotificationKindEnum!
+  createdAt: DateTime!
+  readAt: DateTime
+}
+
+type NotificationInbox {
+  items: [NotificationEntry!]!
+  unreadCount: Int!
+  nextCursor: String
+}
+
+enum NotificationKindEnum {
+  REVIEW_APPROVED
+  REVIEW_REJECTED
+  REVIEW_CHANGES_REQUESTED
+}
+
+type ProductAsset {
+  id: UUID!
+  kind: String!
+  mediaType: String!
+  byteCount: Int!
+  url: String!
+}
+
+type ProductDetail {
+  summary: ProductSummary!
+  description: String
+  websiteUrl: String
+  topics: [ProductTopic!]!
+  assets: [ProductAsset!]!
+  submission: Submission
+  reviewOutcome: ReviewOutcome
+}
+
+type ProductPage {
+  items: [ProductSummary!]!
+  nextCursor: String
+}
+
+type ProductSummary {
+  id: UUID!
+  status: String!
+  version: Int!
+  name: String
+  pitch: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ProductTopic {
+  id: UUID!
+  displayName: String!
+  position: Int!
+}
+
 type PublicProfile {
   accountId: UUID!
   displayName: String!
@@ -9,6 +84,51 @@ type PublicProfile {
 type Query {
   viewerProfile: ViewerProfile!
   publicProfile(accountId: UUID!): PublicProfile
+  viewerProducts(first: Int! = 20, after: String = null): ProductPage!
+  viewerProduct(id: UUID!): ProductDetail
+  reviewQueue(first: Int! = 20, after: String = null): ReviewPage!
+  reviewProduct(id: UUID!): ReviewDetail
+  approvedReviews(first: Int! = 20, after: String = null): ApprovedReviewPage!
+  topicChoices(first: Int! = 20, query: String = null): [TopicChoice!]!
+  viewerNotificationInbox(
+    first: Int! = 20
+    after: String = null
+  ): NotificationInbox!
+}
+
+type ReviewDetail {
+  product: ProductDetail!
+  submission: Submission!
+  possibleDuplicate: Boolean!
+  founderSuspended: Boolean!
+}
+
+type ReviewEntry {
+  product: ProductSummary!
+  submission: Submission!
+  possibleDuplicate: Boolean!
+  founderSuspended: Boolean!
+}
+
+type ReviewOutcome {
+  status: String!
+  feedback: String
+}
+
+type ReviewPage {
+  items: [ReviewEntry!]!
+  nextCursor: String
+}
+
+type Submission {
+  id: UUID!
+  submittedAt: DateTime!
+  productVersion: Int!
+}
+
+type TopicChoice {
+  id: UUID!
+  displayName: String!
 }
 
 scalar UUID

@@ -14,8 +14,25 @@ def test_documented_local_defaults_need_no_external_credentials() -> None:
     )
 
     assert settings.environment == "development"
+    assert settings.products_enabled is False
     assert "@postgres:" in str(settings.database_url)
     assert settings.storage_endpoint_url.host == "minio"
+    assert settings.storage_provider == "minio"
+    assert settings.storage_region == "us-east-1"
+    assert settings.review_writes_enabled is True
+
+
+def test_local_review_writes_can_be_disabled_independently() -> None:
+    settings = load_settings(
+        {
+            "LAUNCHPAD_REVIEW_WRITES_ENABLED": "false",
+            "LAUNCHPAD_PRODUCTS_ENABLED": "true",
+            "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "http://localhost:8080",
+        }
+    )
+
+    assert settings.review_writes_enabled is False
+    assert settings.products_enabled is True
 
 
 def test_trusted_web_origins_parse_into_canonical_values() -> None:
@@ -71,6 +88,9 @@ def test_production_does_not_inject_local_origins() -> None:
     settings = load_settings(
         {
             "LAUNCHPAD_ENVIRONMENT": "production",
+            "LAUNCHPAD_STORAGE_PROVIDER": "r2",
+            "LAUNCHPAD_STORAGE_REGION": "auto",
+            "LAUNCHPAD_STORAGE_ENDPOINT_URL": "https://account123.r2.cloudflarestorage.com",
             "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "runtime-user",
             "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "runtime-secret",
             "LAUNCHPAD_MAIL_WEB_ORIGIN": "https://launchpad.example",
@@ -86,6 +106,172 @@ def test_production_does_not_inject_local_origins() -> None:
     )
 
     assert settings.trusted_web_origins == ("https://launchpad.example",)
+    assert settings.storage_provider == "r2"
+    assert settings.storage_region == "auto"
+    assert settings.products_enabled is False
+    assert settings.review_writes_enabled is False
+
+
+def test_production_requires_explicit_r2_provider_region_and_endpoint() -> None:
+    environment = {
+        "LAUNCHPAD_ENVIRONMENT": "production",
+        "LAUNCHPAD_STORAGE_PROVIDER": "r2",
+        "LAUNCHPAD_STORAGE_REGION": "auto",
+        "LAUNCHPAD_STORAGE_ENDPOINT_URL": "https://account123.r2.cloudflarestorage.com",
+        "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "runtime-user",
+        "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "runtime-secret",
+        "LAUNCHPAD_MAIL_WEB_ORIGIN": "https://launchpad.example",
+        "LAUNCHPAD_MAIL_SENDER": "noreply@launchpad.example",
+        "LAUNCHPAD_SMTP_HOST": "smtp.example",
+        "LAUNCHPAD_SMTP_PORT": "587",
+        "LAUNCHPAD_SMTP_USE_TLS": "true",
+        "LAUNCHPAD_OUTBOX_KEY_ID": "production-v1",
+        "LAUNCHPAD_OUTBOX_KEY": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
+        "LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL": "https://uploads.example",
+        "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "https://launchpad.example",
+    }
+
+    invalid_storage = (
+        (
+            {
+                key: value
+                for key, value in environment.items()
+                if key != "LAUNCHPAD_STORAGE_PROVIDER"
+            },
+            "LAUNCHPAD_STORAGE_PROVIDER",
+        ),
+        (
+            {key: value for key, value in environment.items() if key != "LAUNCHPAD_STORAGE_REGION"},
+            "LAUNCHPAD_STORAGE_REGION",
+        ),
+        (
+            {
+                key: value
+                for key, value in environment.items()
+                if key != "LAUNCHPAD_STORAGE_ENDPOINT_URL"
+            },
+            "LAUNCHPAD_STORAGE_ENDPOINT_URL",
+        ),
+        ({**environment, "LAUNCHPAD_STORAGE_PROVIDER": "minio"}, "LAUNCHPAD_STORAGE_PROVIDER"),
+        ({**environment, "LAUNCHPAD_STORAGE_REGION": "us-east-1"}, "LAUNCHPAD_STORAGE_REGION"),
+        (
+            {
+                **environment,
+                "LAUNCHPAD_STORAGE_ENDPOINT_URL": "http://account123.r2.cloudflarestorage.com",
+            },
+            "LAUNCHPAD_STORAGE_ENDPOINT_URL",
+        ),
+        (
+            {**environment, "LAUNCHPAD_STORAGE_ENDPOINT_URL": "https://uploads.example"},
+            "LAUNCHPAD_STORAGE_ENDPOINT_URL",
+        ),
+    )
+    for invalid_environment, field_name in invalid_storage:
+        with pytest.raises(ConfigurationError, match=field_name) as error:
+            load_settings(invalid_environment)
+        assert "account123" not in str(error.value)
+
+
+def test_production_worker_requires_resend_key_but_api_does_not() -> None:
+    environment = {
+        "LAUNCHPAD_ENVIRONMENT": "production",
+        "LAUNCHPAD_STORAGE_PROVIDER": "r2",
+        "LAUNCHPAD_STORAGE_REGION": "auto",
+        "LAUNCHPAD_STORAGE_ENDPOINT_URL": "https://account123.r2.cloudflarestorage.com",
+        "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "runtime-user",
+        "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "runtime-secret",
+        "LAUNCHPAD_MAIL_WEB_ORIGIN": "https://launchpad.example",
+        "LAUNCHPAD_MAIL_SENDER": "noreply@launchpad.example",
+        "LAUNCHPAD_OUTBOX_KEY_ID": "production-v1",
+        "LAUNCHPAD_OUTBOX_KEY": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
+        "LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL": "https://uploads.example",
+        "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "https://launchpad.example",
+    }
+
+    api_settings = load_settings(environment)
+    assert api_settings.resend_api_key is None
+
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_RESEND_API_KEY"):
+        load_settings(environment, require_worker_mail=True)
+
+    worker_settings = load_settings(
+        {**environment, "LAUNCHPAD_RESEND_API_KEY": "re_test_key"},
+        require_worker_mail=True,
+    )
+    assert worker_settings.resend_api_key is not None
+
+
+def test_production_resend_key_is_rejected_outside_worker_configuration() -> None:
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_RESEND_API_KEY"):
+        load_settings(
+            {
+                "LAUNCHPAD_ENVIRONMENT": "production",
+                "LAUNCHPAD_STORAGE_PROVIDER": "r2",
+                "LAUNCHPAD_STORAGE_REGION": "auto",
+                "LAUNCHPAD_STORAGE_ENDPOINT_URL": "https://account123.r2.cloudflarestorage.com",
+                "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "runtime-user",
+                "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "runtime-secret",
+                "LAUNCHPAD_MAIL_WEB_ORIGIN": "https://launchpad.example",
+                "LAUNCHPAD_MAIL_SENDER": "noreply@launchpad.example",
+                "LAUNCHPAD_OUTBOX_KEY_ID": "production-v1",
+                "LAUNCHPAD_OUTBOX_KEY": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
+                "LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL": "https://uploads.example",
+                "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "https://launchpad.example",
+                "LAUNCHPAD_RESEND_API_KEY": "re_test_key",
+            }
+        )
+
+
+def test_production_worker_rejects_blank_resend_key_and_invalid_sender() -> None:
+    base = {
+        "LAUNCHPAD_ENVIRONMENT": "production",
+        "LAUNCHPAD_STORAGE_PROVIDER": "r2",
+        "LAUNCHPAD_STORAGE_REGION": "auto",
+        "LAUNCHPAD_STORAGE_ENDPOINT_URL": "https://account123.r2.cloudflarestorage.com",
+        "LAUNCHPAD_STORAGE_ACCESS_KEY_ID": "runtime-user",
+        "LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY": "runtime-secret",
+        "LAUNCHPAD_MAIL_WEB_ORIGIN": "https://launchpad.example",
+        "LAUNCHPAD_OUTBOX_KEY_ID": "production-v1",
+        "LAUNCHPAD_OUTBOX_KEY": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
+        "LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL": "https://uploads.example",
+        "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "https://launchpad.example",
+        "LAUNCHPAD_RESEND_API_KEY": " ",
+    }
+
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_RESEND_API_KEY"):
+        load_settings(
+            {**base, "LAUNCHPAD_MAIL_SENDER": "noreply@launchpad.example"},
+            require_worker_mail=True,
+        )
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_RESEND_API_KEY"):
+        load_settings(
+            {
+                **base,
+                "LAUNCHPAD_RESEND_API_KEY": "invalid-key",
+                "LAUNCHPAD_MAIL_SENDER": "noreply@launchpad.example",
+            },
+            require_worker_mail=True,
+        )
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_MAIL_SENDER"):
+        load_settings(
+            {
+                **base,
+                "LAUNCHPAD_RESEND_API_KEY": "re_test_key",
+                "LAUNCHPAD_MAIL_SENDER": "invalid sender",
+            },
+            require_worker_mail=True,
+        )
+
+
+def test_products_feature_can_be_enabled_explicitly() -> None:
+    settings = load_settings(
+        {
+            "LAUNCHPAD_PRODUCTS_ENABLED": "true",
+            "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "http://localhost:8080",
+        }
+    )
+
+    assert settings.products_enabled is True
 
 
 def test_missing_runtime_credentials_outside_development_are_actionable_and_safe() -> None:

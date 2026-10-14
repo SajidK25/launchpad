@@ -25,6 +25,7 @@ from app.modules.users.policies import (
 )
 from app.modules.users.repository import ProfileRepository
 from app.shared.events.outbox import OutboxEvent
+from app.shared.storage.objects import ObjectOperationError, ObjectValidationError
 
 _UNSET = object()
 
@@ -231,6 +232,54 @@ class ProfileService:
         if key is None:
             raise ProfileValidationError("photo upload is not ready")
         return key
+
+    async def transfer_photo_upload(
+        self,
+        session: Any,
+        *,
+        actor_id: UUID,
+        upload_id: UUID,
+        body: bytes,
+        content_type: str,
+        storage: Any,
+    ) -> None:
+        """Recheck an owner's pending intent under lock before writing bounded staging bytes."""
+
+        await self._require_member(session, actor_id, lock=True)
+        intent = await self.repository.get_photo_upload_for_transfer(
+            session,
+            account_id=actor_id,
+            upload_id=upload_id,
+            lock=True,
+        )
+        if intent is None:
+            raise ProfileConflictError("photo upload is unavailable")
+        now = self.clock()
+        if intent.state != "pending" or intent.expires_at <= now:
+            raise ProfileConflictError("photo upload is no longer pending")
+        if (
+            intent.declared_byte_count is None
+            or not 1 <= intent.declared_byte_count <= 5 * 1024 * 1024
+            or intent.declared_media_type not in {"image/jpeg", "image/png", "image/webp"}
+        ):
+            raise ProfileConflictError("photo upload intent must be recreated")
+        if (
+            not body
+            or len(body) > intent.declared_byte_count
+            or len(body) > 5 * 1024 * 1024
+            or content_type != intent.declared_media_type
+        ):
+            raise ProfileValidationError("photo upload does not match its declared limits")
+        try:
+            await storage.put_staging(
+                object_key=intent.staging_key,
+                body=body,
+                content_type=content_type,
+            )
+        except ObjectValidationError as error:
+            raise ProfileValidationError("photo upload is invalid") from error
+        except ObjectOperationError as error:
+            raise ProfileInfrastructureError("photo upload could not be stored") from error
 
     async def _require_member(
         self, session: Any, account_id: UUID, *, lock: bool = False

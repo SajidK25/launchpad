@@ -1,22 +1,21 @@
 """Thin REST transport for private profile actions and gated photos."""
 
 import base64
-import json
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-from graphql import GraphQLError
 from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from uuid6 import uuid7
 
+from app.graphql import build_router, context_getter
 from app.modules.auth.sessions import MemberContext, SessionService, UnauthenticatedError
-from app.modules.users.graphql import build_router, validate_read_query
 from app.modules.users.policies import (
     ProfileConflictError,
     ProfileForbiddenError,
@@ -36,12 +35,20 @@ from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.outbox import OutboxRepository
 from app.shared.security.csrf import RequestSecurityError, require_csrf, validate_origin
+from app.shared.security.rate_limit import RateLimiter, RateLimitExceeded, RateLimitUnavailable
 from app.shared.storage.objects import (
     CleanPhoto,
     ObjectNotFound,
     ObjectOperationError,
     ObjectValidationError,
     PrivateObjectStore,
+)
+from app.shared.storage.uploads import (
+    DEFAULT_UPLOAD_RECEIVER,
+    UploadOverloaded,
+    UploadReceiveError,
+    UploadTimedOut,
+    UploadTooLarge,
 )
 
 
@@ -71,6 +78,7 @@ def router(
     session_service = SessionService()
     session_factory = async_sessionmaker(database.engine, expire_on_commit=False)
     routes = APIRouter(prefix="/api/v1")
+    upload_limiter = RateLimiter(redis, limit=60, window_seconds=60)
 
     async def db_session() -> AsyncIterator[AsyncSession]:
         async with session_factory() as session:
@@ -111,6 +119,18 @@ def router(
             )
         except RequestSecurityError as error:
             raise HTTPException(status_code=403, detail="request rejected") from error
+
+    async def limit_upload(request: Request, member: MemberContext) -> None:
+        source = request.client.host if request.client else "unknown"
+        try:
+            await upload_limiter.check(
+                address_key=f"profile-upload:account:{member.account_id.hex}",
+                source_key=f"profile-upload:source:{source}",
+            )
+        except RateLimitExceeded as error:
+            raise HTTPException(status_code=429, detail="try again later") from error
+        except RateLimitUnavailable as error:
+            raise HTTPException(status_code=503, detail="service unavailable") from error
 
     def map_profile_error(error: Exception) -> HTTPException:
         if isinstance(error, ProfileForbiddenError):
@@ -244,6 +264,8 @@ def router(
                     account_id=member.account_id,
                     upload_id=upload_id,
                     staging_key=upload.object_key,
+                    declared_byte_count=payload.size,
+                    declared_media_type=payload.content_type,
                     expires_in=upload.expires_in,
                 )
             except (
@@ -255,12 +277,96 @@ def router(
                 RedisError,
             ) as error:
                 raise _map_storage_error(error) from error
+        authenticated_api = settings.storage_provider == "r2"
         return PhotoUploadResponse(
             upload_id=upload_id,
-            upload_url=upload.upload_url,
-            fields=upload.fields,
+            upload_url=(
+                f"/api/v1/me/profile/photo-uploads/{upload_id}/content"
+                if authenticated_api
+                else upload.upload_url
+            ),
+            fields={} if authenticated_api else upload.fields,
             expires_in=upload.expires_in,
+            upload_method="PUT" if authenticated_api else "POST",
+            upload_transport=("authenticated_api" if authenticated_api else "storage_form"),
+            upload_headers={"Content-Type": payload.content_type} if authenticated_api else {},
         )
+
+    @routes.put("/me/profile/photo-uploads/{upload_id}/content", status_code=204)
+    async def transfer_photo_upload(
+        upload_id: UUID,
+        request: Request,
+        session: DbSession,
+        x_csrf_token: str | None = Header(default=None),
+    ) -> Response:
+        check_origin(request)
+        async with session.begin():
+            member = await current_member(request, session)
+            check_csrf(request, member, x_csrf_token)
+            await limit_upload(request, member)
+            try:
+                intent = await service_for(member).repository.get_photo_upload_for_transfer(
+                    session,
+                    account_id=member.account_id,
+                    upload_id=upload_id,
+                )
+            except SQLAlchemyError as error:
+                raise HTTPException(status_code=503, detail="service unavailable") from error
+            if intent is None:
+                raise HTTPException(status_code=404, detail="upload unavailable")
+            if intent.state != "pending" or intent.expires_at <= datetime.now(UTC):
+                raise HTTPException(status_code=409, detail="upload is no longer pending")
+            if (
+                intent.declared_byte_count is None
+                or not 1 <= intent.declared_byte_count <= 5 * 1024 * 1024
+                or intent.declared_media_type not in {"image/jpeg", "image/png", "image/webp"}
+            ):
+                raise HTTPException(status_code=409, detail="upload intent must be recreated")
+            if request.headers.get("content-type") != intent.declared_media_type:
+                raise HTTPException(status_code=415, detail="unsupported media type")
+            byte_limit = intent.declared_byte_count
+
+        try:
+            async with DEFAULT_UPLOAD_RECEIVER.receive(
+                request.stream(), byte_limit=byte_limit
+            ) as received:
+                body = received.file.read()
+        except UploadTooLarge as error:
+            raise HTTPException(
+                status_code=413, detail="upload exceeds its declared limit"
+            ) from error
+        except UploadOverloaded as error:
+            raise HTTPException(status_code=429, detail="upload capacity is busy") from error
+        except UploadTimedOut as error:
+            raise HTTPException(status_code=408, detail="upload body timed out") from error
+        except UploadReceiveError as error:
+            raise HTTPException(
+                status_code=400, detail="upload body could not be received"
+            ) from error
+
+        async with session.begin():
+            member = await current_member(request, session)
+            check_csrf(request, member, x_csrf_token)
+            try:
+                await service_for(member).transfer_photo_upload(
+                    session,
+                    actor_id=member.account_id,
+                    upload_id=upload_id,
+                    body=body,
+                    content_type=request.headers.get("content-type", ""),
+                    storage=storage,
+                )
+            except (
+                ProfileForbiddenError,
+                ProfileConflictError,
+                ProfileValidationError,
+                ProfileInfrastructureError,
+                ObjectOperationError,
+                SQLAlchemyError,
+                RedisError,
+            ) as error:
+                raise map_profile_error(error) from error
+        return Response(status_code=204)
 
     @routes.post(
         "/me/profile/photo-uploads/{upload_id}/complete",
@@ -285,8 +391,28 @@ def router(
                     return PhotoCompleteResponse(
                         upload_id=upload_id, media_type=media_type, byte_count=byte_count
                     )
+                declared_media_type: str | None = None
+                if settings.storage_provider == "r2":
+                    intent = await service_for(member).repository.get_photo_upload_for_transfer(
+                        session,
+                        account_id=member.account_id,
+                        upload_id=upload_id,
+                        lock=True,
+                    )
+                    if intent is None:
+                        raise ProfileConflictError("photo upload is no longer pending")
+                    if (
+                        intent.state != "pending"
+                        or intent.expires_at <= datetime.now(UTC)
+                        or intent.declared_byte_count is None
+                        or intent.declared_media_type is None
+                    ):
+                        raise ProfileConflictError("photo upload is no longer pending")
+                    declared_media_type = intent.declared_media_type
                 photo: CleanPhoto = await storage.finalize_staging(
-                    account_id=member.account_id, upload_id=upload_id
+                    account_id=member.account_id,
+                    upload_id=upload_id,
+                    declared_content_type=declared_media_type,
                 )
                 completed = await service_for(member).repository.complete_photo_upload(
                     session,
@@ -343,33 +469,16 @@ def router(
         image.headers["X-Content-Type-Options"] = "nosniff"
         return image
 
-    async def graphql_context(request: Request) -> dict[str, object]:
-        if request.method != "POST":
-            raise HTTPException(status_code=405, detail="POST required")
-        body = await request.body()
-        try:
-            payload = json.loads(body)
-            query = payload.get("query") if isinstance(payload, dict) else None
-            if not isinstance(query, str):
-                raise ValueError("query is required")
-            validate_read_query(query)
-        except (GraphQLError, TypeError, ValueError, json.JSONDecodeError) as error:
-            raise HTTPException(status_code=400, detail="query is not allowed") from error
-        async with session_factory() as session:
-            member: MemberContext | None = None
-            secret = request.cookies.get(settings.session_cookie_name)
-            if secret:
-                try:
-                    member = await session_service.resolve(session, session_secret=secret)
-                except UnauthenticatedError:
-                    member = None
-        return {
-            "member": member,
-            "session_factory": session_factory,
-            "service_factory": service_for,
-        }
-
-    graphql_routes = build_router(graphql_context)
+    graphql_routes = build_router(
+        context_getter(
+            settings=settings,
+            session_factory=session_factory,
+            session_service=session_service,
+            profile_service_factory=service_for,
+            payload_codec=codec,
+        ),
+        include_products=settings.products_enabled,
+    )
     return routes, graphql_routes
 
 

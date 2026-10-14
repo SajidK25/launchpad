@@ -19,8 +19,8 @@ type Screen =
   | "reset"
   | "profile";
 
-export function navigate(path: string) {
-  window.history.pushState({}, "", path);
+export function navigate(path: string, state: Record<string, unknown> = {}) {
+  window.history.pushState(state, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
@@ -433,6 +433,17 @@ function PrivateProfileLanding({ client }: { client: IdentityClient }) {
       <p className="identity-intro">
         You’re signed in. Profile editing will be available here.
       </p>
+      <nav aria-label="Your Launchpad workspace" className="identity-links">
+        <a
+          href="/products"
+          onClick={(event) => {
+            event.preventDefault();
+            navigate("/products");
+          }}
+        >
+          Your product drafts
+        </a>
+      </nav>
       <button
         className="secondary-button"
         disabled={logout.isPending}
