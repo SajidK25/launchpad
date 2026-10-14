@@ -177,6 +177,10 @@ services:
       dockerfile: infra/docker/web.Dockerfile
       target: tooling
     working_dir: /workspace
+    volumes:
+      - type: bind
+        source: ./packages/contracts
+        target: /workspace/packages/contracts
     command: ["npm", "--version"]
 
   quality:
