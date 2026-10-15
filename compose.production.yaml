@@ -64,6 +64,7 @@ services:
       - ${LAUNCHPAD_STATE_DIR:-/srv/launchpad/state}:/run/launchpad/state:ro
     networks:
       - ingress
+      - host-publish
     restart: unless-stopped
     logging: *bounded-logging
     healthcheck:
@@ -173,6 +174,8 @@ services:
 networks:
   ingress:
     internal: true
+  host-publish:
+    name: launchpad-production_host-publish
   backend:
 
 volumes:

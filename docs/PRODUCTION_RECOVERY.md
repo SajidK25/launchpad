@@ -69,6 +69,8 @@ Use the encrypted configuration and recorded immutable image digests from the sa
 
 For an application-only failure, the deployment controller can restore previous images only when the database schema still matches the previous release. If the schema changed, keep writers stopped and prefer a forward-compatible fix. Database restoration is a separate operator-led operation because it can discard writes made after the snapshot. The controller deliberately does not downgrade the database.
 
+For an interrupted initial deployment, the controller supports a narrow resume path: the maintenance marker and failed deployment record must remain intact, the prior attempt must be in `maintenance_recovery_required` after a readiness failure, and the verified incoming image manifest must name the exact schema already present in PostgreSQL. The controller then skips migration and retries startup/readiness; it does not fabricate a previous release or restore a database. If any condition is missing or the schema differs, stop and use an operator-led recovery plan instead. Install the reviewed controller and Compose changes on the VM before submitting a new verified deployment.
+
 ## Evidence to retain
 
 Record date, operator, isolated target identifier, snapshot IDs/timestamps, repository types, release commit, schema revision, restore commands, PostgreSQL and media reconciliation results, readiness and worker/scheduler outcomes, elapsed time, data-loss window, and follow-up actions. Never record secrets, private keys, raw environment-file contents, signed URLs, session values, or object credentials. An untested procedure or a successful backup alone is not a completed recovery exercise.
