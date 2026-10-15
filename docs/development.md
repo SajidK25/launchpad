@@ -158,12 +158,61 @@ manually replaying; do not blindly resend, since the original email may already 
 
 ### Review workflow rollout
 
-Keep `LAUNCHPAD_REVIEW_WRITES_ENABLED=false` during rollout. Drain pre-review API and worker
-processes, apply migrations through `0010_review_read_indexes`, then deploy compatible API and worker
-processes with the Resend key provisioned to the worker. Check readiness, worker health, and pending
-outbox behavior before enabling review writes. If writes need to be disabled, turn the flag off and
-keep the compatible binaries and schema in place so committed decisions and queued events remain
-readable and dispatchable. Do not downgrade immutable review history as part of rollback.
+Keep `LAUNCHPAD_REVIEW_WRITES_ENABLED=false` during rollout. Apply forward migrations through the
+target release's declared schema head (including `0010_review_read_indexes` for the original review
+release); then start a compatible worker with the Resend key before any API can write review events.
+Deploy the compatible API with review writes still disabled, drain all old API and worker processes,
+and verify API readiness, worker health, and outbox processing. Only then enable review writes. If
+writes need to be disabled, turn the flag off and keep the compatible binaries and schema in place so
+committed decisions and queued events remain readable and dispatchable. Do not downgrade immutable
+review history as part of rollback.
+
+For local review development, use only the development values in `.env.example` with the
+`launchpad-dev` Compose project. The API, worker, and scheduler use the local Redis service for
+queues and account-scoped notification hints; Mailpit receives transactional messages at
+http://localhost:8025. Do not add a production Resend key or production database/storage settings to
+the local environment. Keep the review write flag enabled only in development/check environments;
+the production value is an explicit operator-controlled rollout setting.
+
+#### Review outcome delivery incidents
+
+A successful staff decision is committed together with its immutable decision row and founder inbox
+item. An email delay or failure does not reverse that decision. First confirm the decision and inbox
+item in the application, then inspect worker logs for the outbox event ID, event type, failure class,
+and `dead_lettered` flag. Logs must not include feedback, recipient addresses, tokens, payloads, or
+provider keys.
+
+An authorized operator can inspect delivery state using metadata only:
+
+```sql
+SELECT o.id, o.event_type, o.state, o.attempts, o.available_at,
+       o.claimed_at, o.completed_at, d.message_id, d.sent_at
+FROM outbox_messages AS o
+LEFT JOIN email_deliveries AS d ON d.event_id = o.id
+WHERE o.event_type = 'review.outcome_email_requested.v1'
+  AND o.state IN ('pending', 'claimed', 'dead', 'completed')
+ORDER BY o.available_at, o.id;
+```
+
+`pending` means the bounded retry schedule can still process the notice; `claimed` means a worker
+currently owns it; `completed` with an `email_deliveries` row means the worker recorded provider
+acceptance. A `dead` event does not tell you whether Resend accepted the message before the worker
+failed. Preserve the event ID and inspect the Resend receipt using the idempotency key
+`launchpad-<event-id>` through the authorized provider console. Never copy recipient details or
+provider payloads into shared logs or tickets.
+
+Resend retains idempotency keys for 24 hours. Within that window, retrying the exact event with its
+original ID and payload is protected by the provider key. After that window, do not automatically or
+blindly replay: if Resend confirms acceptance, record the reconciliation and do not send again; if
+acceptance is unclear, leave the event for operator follow-up; if Resend definitively confirms no
+acceptance, have an authorized operator coordinate a controlled recovery that preserves the original
+event ID. There is no supported public replay command. Do not edit ciphertext, generate a new event
+ID, or bypass the review transaction. The durable decision and inbox remain available while the mail
+incident is resolved.
+
+For metrics and incident notes, use event type, event ID, failure class, attempt count, and whether
+the event is pending or dead. Do not record review feedback, email address, authentication/session
+tokens, encrypted payload, Resend key, signed media URL, or private object key.
 
 ## Private media and deletion operations
 

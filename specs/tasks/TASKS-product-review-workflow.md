@@ -896,7 +896,7 @@ Mount the notification bell on authenticated founder pages, showing persistent o
 
 ## Task T16: Record Review Decisions and Operating Procedure
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** medium
@@ -933,7 +933,7 @@ Record the approved state/audit, notification, privacy, Resend, and rollout deci
 ### Files Expected
 
 **New files:**
-- `docs/adr/0007-product-review-notifications.md` (decision record, following existing ADRs).
+- `docs/adr/0008-product-review-notifications.md` (decision record; `0007` is already assigned to production deployment).
 
 **Modified files:**
 - `docs/development.md` (Resend/local config, rollout, retry/replay, rollback).
