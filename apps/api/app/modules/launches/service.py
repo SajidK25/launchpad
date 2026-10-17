@@ -7,7 +7,7 @@ import hmac
 import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime, timedelta
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +32,9 @@ class LaunchOutboxAccess(Protocol):
 
 class LaunchPayloadCodec(Protocol):
     def encode(self, payload: Mapping[str, object]) -> tuple[str, bytes]: ...
+
+
+LaunchPublicationOutcome = Literal["launched", "missed_day", "suspension_blocked"]
 
 
 class LaunchMemberAccess(Protocol):
@@ -115,6 +118,33 @@ class LaunchBookingService:
         self.outbox_repository = outbox_repository or OutboxRepository()
         self.payload_codec = payload_codec
         self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def booking_by_id(
+        self, session: AsyncSession, *, booking_id: UUID, lock: bool = False
+    ) -> LaunchBooking | None:
+        """Load a durable booking for worker relevance checks through this feature."""
+
+        return await self.repository.get_by_id(session, booking_id=booking_id, lock=lock)
+
+    async def record_publication_outcome(
+        self,
+        session: AsyncSession,
+        *,
+        booking_id: UUID,
+        outcome: LaunchPublicationOutcome,
+        now: datetime,
+    ) -> LaunchBooking | None:
+        """Close one still-active booking after the product transition in the same transaction."""
+
+        if outcome not in {"launched", "missed_day", "suspension_blocked"}:
+            raise LaunchConflictError("invalid publication outcome")
+        return await self.repository.record_publication_outcome(
+            session,
+            booking_id=booking_id,
+            state=outcome,
+            failure_reason=None if outcome == "launched" else outcome,
+            closed_at=utc_now(now),
+        )
 
     async def book(
         self,

@@ -442,7 +442,7 @@ Connect bookings and publication outcomes to durable outbox work and inbox notic
 
 ## Task T8: Dispatch launch events and verify delivery relevance
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** M
 > **Priority:** high
@@ -495,6 +495,8 @@ Dispatch launch events through the encrypted outbox worker. Recheck booking stat
 **Modified files:**
 - `apps/api/app/shared/events/dispatcher.py` (launch event registry/handler routing)
 - `apps/worker/worker.py` (launch handler construction)
+- `apps/api/app/modules/launches/repository.py` (locked booking lookup and terminal outcome)
+- `apps/api/app/modules/launches/service.py` (worker-facing booking outcome boundary)
 
 **Must NOT modify:**
 - `shared/events/outbox.py` claim/retry implementation

@@ -6,13 +6,18 @@ import asyncio
 import base64
 import os
 import sys
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 from uuid import UUID
 
 from app.modules.auth.staff import AuthAccessService
+from app.modules.launches.repository import LaunchBookingRepository
+from app.modules.launches.service import LaunchBookingService
 from app.modules.notifications.live import notification_channel
 from app.modules.notifications.repository import NotificationRepository
+from app.modules.notifications.service import NotificationService
 from app.modules.products.service import ProductService
 from app.shared.config.settings import Settings, load_settings
 from app.shared.db.database import Database
@@ -112,6 +117,173 @@ class ReviewOutcomeEmailHandler:
         }
 
 
+class LaunchEventWorker:
+    """Recheck booking, product, and founder state before reminder or publication work."""
+
+    def __init__(
+        self,
+        *,
+        bookings: LaunchBookingService,
+        products: ProductService,
+        notifications: NotificationService,
+        member_access: AuthAccessService,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.bookings = bookings
+        self.products = products
+        self.notifications = notifications
+        self.member_access = member_access
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def handle_launch_event(
+        self,
+        session: AsyncSession,
+        *,
+        event_type: str,
+        aggregate_id: UUID,
+        payload: dict[str, object],
+    ) -> None:
+        booking_id = _event_uuid(payload, "launch_booking_id")
+        product_id = _event_uuid(payload, "product_id")
+        if booking_id != aggregate_id:
+            raise PermanentEventError("launch event aggregate does not match booking")
+        now = self.clock().astimezone(UTC)
+        booking = await self.bookings.booking_by_id(session, booking_id=booking_id, lock=True)
+        if booking is None or booking.product_id != product_id:
+            raise PermanentEventError("launch event does not identify a booking")
+        if booking.state != "scheduled":
+            return
+
+        if event_type == "launch.reminder_requested.v1":
+            if now >= booking.launch_at.astimezone(UTC):
+                return
+            product = await self.products.get_scheduled_product(
+                session,
+                founder_id=booking.founder_id,
+                product_id=booking.product_id,
+                lock=True,
+            )
+            account = await self.member_access.current_account(session, booking.founder_id)
+            if product is None or account is None or account.suspended_at is not None:
+                return
+            await self.notifications.record_launch_notice(
+                session, booking=booking, kind="launch_reminder"
+            )
+            return
+
+        if event_type != "launch.publish_requested.v1":
+            raise PermanentEventError("unrecognized launch event")
+
+        product = await self.products.publish_scheduled_product(
+            session,
+            product_id=booking.product_id,
+            launch_at=booking.launch_at,
+            now=now,
+        )
+        if product.status == "launched":
+            outcome = "launched"
+            notice_kind = "launch_live"
+        elif product.launch_failure_reason in {"missed_day", "suspension_blocked"}:
+            outcome = product.launch_failure_reason
+            notice_kind = "launch_failed"
+        else:
+            raise PermanentEventError("launch product returned an invalid outcome")
+
+        closed = await self.bookings.record_publication_outcome(
+            session,
+            booking_id=booking.id,
+            outcome=cast(Literal["launched", "missed_day", "suspension_blocked"], outcome),
+            now=now,
+        )
+        if closed is None:
+            raise PermanentEventError("launch booking disappeared during publication")
+        await self.notifications.record_launch_notice(session, booking=closed, kind=notice_kind)
+
+
+class LaunchNoticeEmailHandler:
+    """Prepare only still-relevant launch email for the current verified recipient."""
+
+    def __init__(
+        self,
+        *,
+        bookings: LaunchBookingService,
+        member_access: AuthAccessService,
+        notifications: NotificationRepository,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.bookings = bookings
+        self.member_access = member_access
+        self.notifications = notifications
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def prepare_email(
+        self,
+        session: AsyncSession,
+        *,
+        aggregate_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        booking_id = _event_uuid(payload, "launch_booking_id")
+        recipient_id = _event_uuid(payload, "recipient_account_id")
+        notification_id = _event_uuid(payload, "notification_id")
+        kind = payload.get("kind")
+        if booking_id != aggregate_id or kind not in {
+            "launch_reminder",
+            "launch_live",
+            "launch_failed",
+        }:
+            raise PermanentEventError("launch email metadata is invalid")
+        booking = await self.bookings.booking_by_id(session, booking_id=booking_id)
+        if booking is None or booking.founder_id != recipient_id:
+            raise PermanentEventError("launch email recipient does not own the booking")
+        prefix = {
+            "launch_reminder": "reminder",
+            "launch_live": "live",
+            "launch_failed": "failure",
+        }[kind]
+        preference = await self.notifications.find_launch_preferences(
+            session, account_id=recipient_id
+        )
+        if preference is not None and not bool(getattr(preference, f"{prefix}_email")):
+            raise PermanentEventError("launch email channel is disabled")
+        now = self.clock().astimezone(UTC)
+        if kind == "launch_reminder" and (
+            booking.state != "scheduled" or now >= booking.launch_at.astimezone(UTC)
+        ):
+            raise PermanentEventError("launch reminder is no longer relevant")
+        if kind == "launch_live" and booking.state != "launched":
+            raise PermanentEventError("launch notice is no longer relevant")
+        if kind == "launch_failed" and (
+            booking.state not in {"missed_day", "suspension_blocked"}
+            or booking.failure_reason != booking.state
+        ):
+            raise PermanentEventError("launch failure notice is no longer relevant")
+        if notification_id != booking.id:
+            notification = await self.notifications.get_for_recipient(
+                session, recipient_id=recipient_id, notification_id=notification_id
+            )
+            if (
+                notification is None
+                or notification.launch_booking_id != booking.id
+                or notification.kind != kind
+            ):
+                raise PermanentEventError("launch email notification is no longer available")
+        recipient = await self.member_access.verified_recipient_email(session, recipient_id)
+        if recipient is None:
+            raise PermanentEventError("launch email recipient is no longer verified")
+        subjects = {
+            "launch_reminder": "Your Launchpad launch is coming up",
+            "launch_live": "Your product is live on Launchpad",
+            "launch_failed": "There is an update about your launch",
+        }
+        body = {
+            "launch_reminder": "Your scheduled launch is coming up. Sign in to review its status.",
+            "launch_live": "Your product is now live. Sign in to view your launch dashboard.",
+            "launch_failed": "Your launch could not be completed. Sign in to view the reason.",
+        }
+        return {"recipient": recipient, "subject": subjects[kind], "body": body[kind]}
+
+
 class NotificationChangedPublisher:
     """Publish only a generic hint to the verified notification owner's channel."""
 
@@ -126,7 +298,6 @@ class NotificationChangedPublisher:
         aggregate_id: UUID,
         payload: dict[str, object],
     ) -> None:
-        del aggregate_id
         recipient_id = _event_uuid(payload, "recipient_account_id")
         notification_id = _event_uuid(payload, "notification_id")
         notification = await self.notifications.get_for_recipient(
@@ -139,6 +310,13 @@ class NotificationChangedPublisher:
             decision_id = _event_uuid(payload, "review_decision_id")
             if notification.review_decision_id != decision_id:
                 raise PermanentEventError("notification event decision does not match the item")
+        booking_value = payload.get("launch_booking_id")
+        if booking_value is not None:
+            booking_id = _event_uuid(payload, "launch_booking_id")
+            if booking_id != aggregate_id or notification.launch_booking_id != booking_id:
+                raise PermanentEventError("notification event booking does not match the item")
+        elif notification.launch_booking_id is not None:
+            raise PermanentEventError("launch notification event is missing its booking")
         kind = payload.get("kind")
         if kind is not None and kind != notification.kind:
             raise PermanentEventError("notification event kind does not match the item")
@@ -202,6 +380,29 @@ async def run_worker(health: ProgressHealth) -> None:
         payload_codec=codec,
         event_storage=product_storage,
     )
+    launch_bookings = LaunchBookingService(
+        member_access=member_access,
+        product_access=product_service,
+        repository=LaunchBookingRepository(),
+        outbox_repository=repository,
+        payload_codec=codec,
+    )
+    notification_service = NotificationService(
+        outbox_repository=repository,
+        payload_codec=codec,
+        member_access=member_access,
+    )
+    launch_event_handler = LaunchEventWorker(
+        bookings=launch_bookings,
+        products=product_service,
+        notifications=notification_service,
+        member_access=member_access,
+    )
+    launch_email_handler = LaunchNoticeEmailHandler(
+        bookings=launch_bookings,
+        member_access=member_access,
+        notifications=notification_repository,
+    )
     sessions = async_sessionmaker(database.engine, expire_on_commit=False)
     try:
         await database.ensure_compatible()
@@ -219,6 +420,8 @@ async def run_worker(health: ProgressHealth) -> None:
                             codec=codec,
                             sender=email_sender,
                             product_handler=product_service,
+                            launch_email_handler=launch_email_handler,
+                            launch_event_handler=launch_event_handler,
                             review_email_handler=ReviewOutcomeEmailHandler(
                                 member_access=member_access,
                                 notifications=notification_repository,

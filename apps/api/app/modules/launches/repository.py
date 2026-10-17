@@ -6,14 +6,44 @@ from datetime import date, datetime
 from typing import cast
 from uuid import UUID
 
-from app.modules.launches.models import LaunchBooking
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
 
+from app.modules.launches.models import LaunchBooking
+
 
 class LaunchBookingRepository:
     """Keep booking queries and mutations inside the launches feature."""
+
+    async def get_by_id(
+        self, session: AsyncSession, *, booking_id: UUID, lock: bool = False
+    ) -> LaunchBooking | None:
+        statement = select(LaunchBooking).where(LaunchBooking.id == booking_id)
+        if lock:
+            statement = statement.with_for_update()
+        return cast(LaunchBooking | None, await session.scalar(statement))
+
+    async def record_publication_outcome(
+        self,
+        session: AsyncSession,
+        *,
+        booking_id: UUID,
+        state: str,
+        failure_reason: str | None,
+        closed_at: datetime,
+    ) -> LaunchBooking | None:
+        """Close only an active booking; return the persisted row for safe replay."""
+
+        saved = await session.scalar(
+            update(LaunchBooking)
+            .where(LaunchBooking.id == booking_id, LaunchBooking.state == "scheduled")
+            .values(state=state, failure_reason=failure_reason, closed_at=closed_at)
+            .returning(LaunchBooking)
+        )
+        if saved is not None:
+            return saved
+        return await self.get_by_id(session, booking_id=booking_id)
 
     async def find_booking_by_founder_key(
         self, session: AsyncSession, *, founder_id: UUID, idempotency_key: str

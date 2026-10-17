@@ -24,6 +24,8 @@ EMAIL_EVENT_TYPES = frozenset(
     }
 )
 REVIEW_EMAIL_EVENT_TYPES = frozenset({"review.outcome_email_requested.v1"})
+LAUNCH_EMAIL_EVENT_TYPES = frozenset({"launch.notice_email_requested.v1"})
+LAUNCH_EVENT_TYPES = frozenset({"launch.reminder_requested.v1", "launch.publish_requested.v1"})
 NOTIFICATION_EVENT_TYPES = frozenset({"notification.changed.v1"})
 PRODUCT_EVENT_TYPES = frozenset(
     {
@@ -73,6 +75,27 @@ class NotificationChangedHandler(Protocol):
     ) -> None: ...
 
 
+class LaunchNoticeEmailHandler(Protocol):
+    async def prepare_email(
+        self,
+        session: AsyncSession,
+        *,
+        aggregate_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]: ...
+
+
+class LaunchEventHandler(Protocol):
+    async def handle_launch_event(
+        self,
+        session: AsyncSession,
+        *,
+        event_type: str,
+        aggregate_id: UUID,
+        payload: dict[str, object],
+    ) -> None: ...
+
+
 async def dispatch_due(
     session: AsyncSession,
     *,
@@ -81,6 +104,8 @@ async def dispatch_due(
     sender: EmailSender,
     product_handler: ProductEventHandler | None = None,
     review_email_handler: ReviewOutcomeEmailHandler | None = None,
+    launch_email_handler: LaunchNoticeEmailHandler | None = None,
+    launch_event_handler: LaunchEventHandler | None = None,
     notification_handler: NotificationChangedHandler | None = None,
     now: datetime | None = None,
     limit: int = 20,
@@ -97,6 +122,8 @@ async def dispatch_due(
         sender=sender,
         product_handler=product_handler,
         review_email_handler=review_email_handler,
+        launch_email_handler=launch_email_handler,
+        launch_event_handler=launch_event_handler,
         notification_handler=notification_handler,
         now=current,
     )
@@ -111,6 +138,8 @@ async def dispatch_claimed(
     sender: EmailSender,
     product_handler: ProductEventHandler | None = None,
     review_email_handler: ReviewOutcomeEmailHandler | None = None,
+    launch_email_handler: LaunchNoticeEmailHandler | None = None,
+    launch_event_handler: LaunchEventHandler | None = None,
     notification_handler: NotificationChangedHandler | None = None,
     now: datetime | None = None,
 ) -> int:
@@ -122,6 +151,8 @@ async def dispatch_claimed(
         if event.event_type not in (
             EMAIL_EVENT_TYPES
             | REVIEW_EMAIL_EVENT_TYPES
+            | LAUNCH_EMAIL_EVENT_TYPES
+            | LAUNCH_EVENT_TYPES
             | NOTIFICATION_EVENT_TYPES
             | PRODUCT_EVENT_TYPES
         ):
@@ -133,7 +164,9 @@ async def dispatch_claimed(
             continue
         try:
             payload = codec.decode(event.key_id, event.encrypted_payload or b"")
-            if event.event_type in EMAIL_EVENT_TYPES | REVIEW_EMAIL_EVENT_TYPES:
+            if event.event_type in (
+                EMAIL_EVENT_TYPES | REVIEW_EMAIL_EVENT_TYPES | LAUNCH_EMAIL_EVENT_TYPES
+            ):
                 if _is_expired_challenge(event, payload, current):
                     await repository.dead_letter(session, event.id, clear_payload=True)
                     continue
@@ -142,6 +175,14 @@ async def dispatch_claimed(
                     if review_email_handler is None:
                         raise RuntimeError("review email handler is not configured")
                     email_payload = await review_email_handler.prepare_email(
+                        session,
+                        aggregate_id=event.aggregate_id,
+                        payload=payload,
+                    )
+                elif event.event_type in LAUNCH_EMAIL_EVENT_TYPES:
+                    if launch_email_handler is None:
+                        raise RuntimeError("launch email handler is not configured")
+                    email_payload = await launch_email_handler.prepare_email(
                         session,
                         aggregate_id=event.aggregate_id,
                         payload=payload,
@@ -158,6 +199,16 @@ async def dispatch_claimed(
                     raise RuntimeError("notification event handler is not configured")
                 await notification_handler.publish_changed(
                     session,
+                    aggregate_id=event.aggregate_id,
+                    payload=payload,
+                )
+                await repository.complete_non_email(session, event.id, completed_at=current)
+            elif event.event_type in LAUNCH_EVENT_TYPES:
+                if launch_event_handler is None:
+                    raise RuntimeError("launch event handler is not configured")
+                await launch_event_handler.handle_launch_event(
+                    session,
+                    event_type=event.event_type,
                     aggregate_id=event.aggregate_id,
                     payload=payload,
                 )
