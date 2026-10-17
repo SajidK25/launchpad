@@ -326,13 +326,18 @@ function ProductEditor({
   session: Awaited<ReturnType<IdentityClient["currentSession"]>>;
 }) {
   const product = useViewerProduct(client, productId);
+  async function reloadProduct() {
+    const result = await product.refetch();
+    if (result.isError) throw result.error;
+    return result;
+  }
   if (product.isPending)
     return (
       <section className="product-panel">
         <p role="status">Loading your private draft…</p>
       </section>
     );
-  if (product.isError)
+  if (product.isError && !product.data)
     return (
       <section className="product-panel">
         <h1>Product unavailable</h1>
@@ -373,7 +378,7 @@ function ProductEditor({
       client={client}
       identityClient={identityClient}
       product={product.data}
-      reload={product.refetch}
+      reload={reloadProduct}
       session={session}
     />
   );

@@ -12,7 +12,7 @@ import { createElement } from "react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { IdentityClient } from "../identity/client";
+import { IdentityRequestError, type IdentityClient } from "../identity/client";
 import { ProductRoutes } from "./ProductScreens";
 import { ProductRequestError, type ProductClient } from "./client";
 
@@ -33,9 +33,11 @@ if (!URL.createObjectURL)
 function fixture(
   initialStatus: "draft" | "submitted" = "draft",
   sessionOverrides: Partial<typeof session> = {},
+  sessionError?: Error,
 ) {
   let version = 1;
   let productStatus = initialStatus;
+  let viewerProductReadFails = false;
   const assets: Array<{
     id: string;
     kind: "logo" | "screenshot";
@@ -71,7 +73,10 @@ function fixture(
     fetchViewerProducts: vi
       .fn()
       .mockResolvedValue({ items: [], nextCursor: null }),
-    fetchViewerProduct: vi.fn().mockImplementation(async () => detail()),
+    fetchViewerProduct: vi.fn().mockImplementation(async () => {
+      if (viewerProductReadFails) throw new Error("GraphQL refresh failed.");
+      return detail();
+    }),
     fetchTopicChoices: vi
       .fn()
       .mockResolvedValue([{ id: "topic-1", displayName: "AI Tools" }]),
@@ -163,7 +168,11 @@ function fixture(
   const identity = {
     currentSession: vi
       .fn()
-      .mockResolvedValue({ ...session, ...sessionOverrides }),
+      .mockImplementation(() =>
+        sessionError
+          ? Promise.reject(sessionError)
+          : Promise.resolve({ ...session, ...sessionOverrides }),
+      ),
     logout: vi.fn().mockResolvedValue(undefined),
   } as unknown as IdentityClient;
   const queryClient = new QueryClient({
@@ -175,6 +184,9 @@ function fixture(
     client,
     identity,
     submittedVersion: () => submittedVersion,
+    failViewerProductRefresh() {
+      viewerProductReadFails = true;
+    },
     advanceServerVersion() {
       version += 1;
     },
@@ -193,6 +205,24 @@ afterEach(() => {
 });
 
 describe("founder product screens", () => {
+  it.each(["/products/private-product", "/products/review"])(
+    "shows the sign-in state for %s when the current session returns 401",
+    async (path) => {
+      const app = fixture(
+        "draft",
+        {},
+        new IdentityRequestError(401, { detail: "not authenticated" }),
+      );
+      app.view(path);
+
+      expect(
+        await screen.findByRole("alert").then((alert) => alert.textContent),
+      ).toContain("Sign in to view or edit your private product drafts.");
+      expect(screen.getByRole("button", { name: "Sign in" })).not.toBeNull();
+      expect(screen.queryByText("Checking your account…")).toBeNull();
+    },
+  );
+
   it("creates a private draft from the owner list", async () => {
     const app = fixture();
     app.view("/products");
@@ -255,6 +285,7 @@ describe("founder product screens", () => {
     fireEvent.change(screen.getByLabelText(/Topics/), {
       target: { value: "AI Tools" },
     });
+    app.failViewerProductRefresh();
     fireEvent.click(
       screen.getByRole("button", { name: "Submit for staff review" }),
     );
@@ -264,6 +295,17 @@ describe("founder product screens", () => {
     );
     expect(app.client.saveProduct).toHaveBeenCalled();
     expect(app.submittedVersion()).toBe(3);
+    expect(
+      await screen.findByText(
+        "Your product was submitted. The latest view could not be refreshed.",
+      ),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Launchpad Studio" }),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Product unavailable" }),
+    ).toBeNull();
   });
 
   it("associates required submission errors with controls and keeps the alert actionable", async () => {

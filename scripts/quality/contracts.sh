@@ -5,20 +5,24 @@ graphql_schema="packages/contracts/schema.graphql"
 graphql_types="packages/contracts/src/graphql.generated.ts"
 graphql_operations="packages/contracts/operations.graphql"
 
+compose() {
+    docker compose --progress quiet -p "${COMPOSE_PROJECT_NAME:-launchpad-quality}" -f compose.checks.yaml "$@"
+}
+
 generate_graphql_schema() {
-    docker compose -p "${COMPOSE_PROJECT_NAME:-launchpad-quality}" -f compose.checks.yaml run --rm --no-deps -e LAUNCHPAD_PRODUCTS_ENABLED=true -e LAUNCHPAD_REVIEW_WRITES_ENABLED=false python-checks \
+    compose run --rm --no-deps -e LAUNCHPAD_PRODUCTS_ENABLED=true -e LAUNCHPAD_REVIEW_WRITES_ENABLED=false python-checks \
         python -c 'import strawberry; from app.graphql import Query; print(strawberry.Schema(query=Query).as_str())' \
         > "$graphql_schema"
 }
 
 generate_graphql_types() {
-    docker compose -p "${COMPOSE_PROJECT_NAME:-launchpad-quality}" -f compose.checks.yaml run --rm --no-deps -e LAUNCHPAD_PRODUCTS_ENABLED=true -e LAUNCHPAD_REVIEW_WRITES_ENABLED=false python-checks \
+    compose run --rm --no-deps -e LAUNCHPAD_PRODUCTS_ENABLED=true -e LAUNCHPAD_REVIEW_WRITES_ENABLED=false python-checks \
         python scripts/quality/generate_graphql_types.py --schema "$graphql_schema" --operations "$graphql_operations" \
         > "$graphql_types"
 }
 
 generate_openapi() {
-    docker compose -p "${COMPOSE_PROJECT_NAME:-launchpad-quality}" -f compose.checks.yaml run --rm --no-deps -e LAUNCHPAD_PRODUCTS_ENABLED=true -e LAUNCHPAD_REVIEW_WRITES_ENABLED=false python-checks \
+    compose run --rm --no-deps -e LAUNCHPAD_PRODUCTS_ENABLED=true -e LAUNCHPAD_REVIEW_WRITES_ENABLED=false python-checks \
         python -c 'import json; from app.main import app; print(json.dumps(app.openapi(), indent=2, sort_keys=True))' \
         > packages/contracts/openapi.json
 }
@@ -48,7 +52,7 @@ if [ "${1:-}" = "--check" ]; then
     generate_openapi
     generate_graphql_schema
     generate_graphql_types
-    docker compose -p "${COMPOSE_PROJECT_NAME:-launchpad-quality}" -f compose.checks.yaml run --rm --no-deps web-checks npm run contracts:generate
+    compose run --rm --no-deps web-checks npm run contracts:generate
     cmp -s "$saved_openapi" packages/contracts/openapi.json && cmp -s "$saved_file" "$generated_file" && cmp -s "$saved_schema" "$graphql_schema" && cmp -s "$saved_graphql_types" "$graphql_types"
     exit $?
 fi
@@ -56,4 +60,4 @@ fi
 generate_openapi
 generate_graphql_schema
 generate_graphql_types
-docker compose -p "${COMPOSE_PROJECT_NAME:-launchpad-quality}" -f compose.checks.yaml run --rm --no-deps web-checks npm run contracts:generate
+compose run --rm --no-deps web-checks npm run contracts:generate
