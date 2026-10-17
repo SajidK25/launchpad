@@ -106,6 +106,29 @@ class ProductVersionInput(BaseModel):
     version: int = Field(ge=0, strict=True)
 
 
+class ProductLaunchEditInput(BaseModel):
+    """Validated post-launch edits; identity, topics, and media are deliberately absent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=0, strict=True)
+    description: str | None = Field(default=None, max_length=5000)
+    website_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("description", "website_url", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @model_validator(mode="after")
+    def require_edit(self) -> ProductLaunchEditInput:
+        if not self.model_fields_set.intersection({"description", "website_url"}):
+            raise ValueError("at least one launch field must be supplied")
+        return self
+
+
 class ProductWithdrawInput(ProductVersionInput):
     """Target the exact active queue period being withdrawn."""
 

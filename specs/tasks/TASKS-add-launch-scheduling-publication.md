@@ -135,7 +135,7 @@ Implement founder booking, reschedule, and cancellation operations. Enforce UTC 
 
 ## Task T3: Add scheduled and launched product lifecycle
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** M
 > **Priority:** critical
