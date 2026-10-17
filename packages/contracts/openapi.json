@@ -62,6 +62,84 @@
         "title": "HealthStatus",
         "type": "object"
       },
+      "LaunchNotificationPreferenceUpdate": {
+        "additionalProperties": false,
+        "description": "Complete strict REST update for all independent launch channels.",
+        "properties": {
+          "failure_email": {
+            "title": "Failure Email",
+            "type": "boolean"
+          },
+          "failure_in_site": {
+            "title": "Failure In Site",
+            "type": "boolean"
+          },
+          "live_email": {
+            "title": "Live Email",
+            "type": "boolean"
+          },
+          "live_in_site": {
+            "title": "Live In Site",
+            "type": "boolean"
+          },
+          "reminder_email": {
+            "title": "Reminder Email",
+            "type": "boolean"
+          },
+          "reminder_in_site": {
+            "title": "Reminder In Site",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reminder_email",
+          "reminder_in_site",
+          "live_email",
+          "live_in_site",
+          "failure_email",
+          "failure_in_site"
+        ],
+        "title": "LaunchNotificationPreferenceUpdate",
+        "type": "object"
+      },
+      "LaunchNotificationPreferences": {
+        "additionalProperties": false,
+        "description": "Six independent default-on launch notice channels.",
+        "properties": {
+          "failure_email": {
+            "default": true,
+            "title": "Failure Email",
+            "type": "boolean"
+          },
+          "failure_in_site": {
+            "default": true,
+            "title": "Failure In Site",
+            "type": "boolean"
+          },
+          "live_email": {
+            "default": true,
+            "title": "Live Email",
+            "type": "boolean"
+          },
+          "live_in_site": {
+            "default": true,
+            "title": "Live In Site",
+            "type": "boolean"
+          },
+          "reminder_email": {
+            "default": true,
+            "title": "Reminder Email",
+            "type": "boolean"
+          },
+          "reminder_in_site": {
+            "default": true,
+            "title": "Reminder In Site",
+            "type": "boolean"
+          }
+        },
+        "title": "LaunchNotificationPreferences",
+        "type": "object"
+      },
       "LoginResponse": {
         "properties": {
           "account_id": {
@@ -1207,6 +1285,62 @@
           }
         },
         "summary": "Ready"
+      }
+    },
+    "/api/v1/me/launch-notification-preferences": {
+      "put": {
+        "operationId": "update_launch_preferences_api_v1_me_launch_notification_preferences_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchNotificationPreferenceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaunchNotificationPreferences"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Launch Preferences"
       }
     },
     "/api/v1/me/notifications/{notification_id}/read": {

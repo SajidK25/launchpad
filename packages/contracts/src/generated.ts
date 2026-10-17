@@ -191,6 +191,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/launch-notification-preferences": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Update Launch Preferences */
+    put: operations["update_launch_preferences_api_v1_me_launch_notification_preferences_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me/notifications/{notification_id}/read": {
     parameters: {
       query?: never;
@@ -515,6 +532,60 @@ export interface components {
     HealthStatus: {
       /** Status */
       status: string;
+    };
+    /**
+     * LaunchNotificationPreferenceUpdate
+     * @description Complete strict REST update for all independent launch channels.
+     */
+    LaunchNotificationPreferenceUpdate: {
+      /** Failure Email */
+      failure_email: boolean;
+      /** Failure In Site */
+      failure_in_site: boolean;
+      /** Live Email */
+      live_email: boolean;
+      /** Live In Site */
+      live_in_site: boolean;
+      /** Reminder Email */
+      reminder_email: boolean;
+      /** Reminder In Site */
+      reminder_in_site: boolean;
+    };
+    /**
+     * LaunchNotificationPreferences
+     * @description Six independent default-on launch notice channels.
+     */
+    LaunchNotificationPreferences: {
+      /**
+       * Failure Email
+       * @default true
+       */
+      failure_email: boolean;
+      /**
+       * Failure In Site
+       * @default true
+       */
+      failure_in_site: boolean;
+      /**
+       * Live Email
+       * @default true
+       */
+      live_email: boolean;
+      /**
+       * Live In Site
+       * @default true
+       */
+      live_in_site: boolean;
+      /**
+       * Reminder Email
+       * @default true
+       */
+      reminder_email: boolean;
+      /**
+       * Reminder In Site
+       * @default true
+       */
+      reminder_in_site: boolean;
     };
     /** LoginResponse */
     LoginResponse: {
@@ -1225,6 +1296,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HealthStatus"];
+        };
+      };
+    };
+  };
+  update_launch_preferences_api_v1_me_launch_notification_preferences_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LaunchNotificationPreferenceUpdate"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LaunchNotificationPreferences"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

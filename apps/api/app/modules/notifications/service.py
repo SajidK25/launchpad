@@ -11,10 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
 
 from app.modules.auth.staff import AccountState
-from app.modules.notifications.models import Notification
+from app.modules.notifications.models import LaunchNotificationPreference, Notification
 from app.modules.notifications.policies import review_notification_kind
 from app.modules.notifications.repository import NotificationRepository
-from app.modules.notifications.schemas import NotificationInbox, NotificationItem, NotificationKind
+from app.modules.notifications.schemas import (
+    LAUNCH_PREFERENCE_FIELDS,
+    NotificationInbox,
+    NotificationItem,
+    NotificationKind,
+)
 from app.shared.events.outbox import OutboxEvent, OutboxRepository
 
 
@@ -63,6 +68,21 @@ class NotificationRepositoryAccess(Protocol):
     ) -> Notification | None: ...
 
 
+class NotificationPreferenceRepositoryAccess(Protocol):
+    async def find_launch_preferences(
+        self, session: AsyncSession, *, account_id: UUID
+    ) -> LaunchNotificationPreference | None: ...
+
+    async def save_launch_preferences(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: UUID,
+        values: dict[str, bool],
+        updated_at: datetime,
+    ) -> dict[str, bool]: ...
+
+
 class NotificationOutboxAccess(Protocol):
     async def add(self, session: AsyncSession, event: OutboxEvent) -> UUID: ...
 
@@ -94,12 +114,14 @@ class NotificationService:
         self,
         *,
         repository: NotificationRepositoryAccess | None = None,
+        preference_repository: NotificationPreferenceRepositoryAccess | None = None,
         outbox_repository: NotificationOutboxAccess | None = None,
         payload_codec: NotificationPayloadCodec,
         member_access: NotificationMemberAccess | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.repository = repository or NotificationRepository()
+        self.preference_repository = preference_repository or NotificationRepository()
         self.outbox_repository = outbox_repository or OutboxRepository()
         self.payload_codec = payload_codec
         if member_access is None:
@@ -109,6 +131,34 @@ class NotificationService:
         else:
             self.member_access = member_access
         self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def launch_preferences(self, session: AsyncSession, *, actor_id: UUID) -> dict[str, bool]:
+        """Read one active account's preferences, applying enabled defaults without a write."""
+
+        await self._require_active_account(session, actor_id)
+        row = await self.preference_repository.find_launch_preferences(session, account_id=actor_id)
+        if row is None:
+            return {field: True for field in LAUNCH_PREFERENCE_FIELDS}
+        return {field: bool(getattr(row, field)) for field in LAUNCH_PREFERENCE_FIELDS}
+
+    async def update_launch_preferences(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        values: dict[str, bool],
+    ) -> dict[str, bool]:
+        """Persist provided channel choices while preserving the other five values."""
+
+        await self._require_active_account(session, actor_id)
+        if not values or any(
+            key not in LAUNCH_PREFERENCE_FIELDS or type(value) is not bool
+            for key, value in values.items()
+        ):
+            raise NotificationValidationError("invalid launch preferences")
+        return await self.preference_repository.save_launch_preferences(
+            session, account_id=actor_id, values=values, updated_at=self.clock()
+        )
 
     async def inbox(
         self,

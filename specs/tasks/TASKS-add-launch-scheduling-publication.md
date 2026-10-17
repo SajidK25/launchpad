@@ -316,7 +316,7 @@ Expose booking, rescheduling, and cancellation through cookie-authenticated REST
 
 ## Task T6: Add launch notice preference persistence and updates
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** M
 > **Priority:** medium
