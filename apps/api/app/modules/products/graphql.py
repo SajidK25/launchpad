@@ -22,9 +22,11 @@ from app.modules.products.service import ApprovedReviewPage as ApprovedReviewRes
 from app.modules.products.service import (
     OwnerProductDetail,
     OwnerReviewOutcome,
+    ProductAssetResult,
     ProductDraft,
     ProductService,
     ProductValidationError,
+    PublicProductProjection,
     StaffProductDetail,
     SubmissionPeriod,
 )
@@ -128,6 +130,28 @@ class ApprovedReviewEntry:
 class ApprovedReviewPage:
     items: list[ApprovedReviewEntry]
     next_cursor: str | None
+
+
+@strawberry.type
+class PublicProductAsset:
+    id: UUID
+    kind: str
+    media_type: str
+    byte_count: int
+    url: str
+
+
+@strawberry.type
+class PublicProduct:
+    id: UUID
+    name: str
+    pitch: str
+    description: str
+    website_url: str
+    launched_at: datetime
+    logo: PublicProductAsset | None
+    screenshots: list[PublicProductAsset]
+    topics: list[str]
 
 
 def _member(info: strawberry.Info) -> MemberContext:
@@ -235,6 +259,46 @@ def _review_outcome(result: OwnerReviewOutcome) -> ReviewOutcome:
         status=result.status,
         feedback=result.feedback,
     )
+
+
+@strawberry.type
+class PublicProductQuery:
+    """Anonymous launched-only public projection owned by products."""
+
+    @strawberry.field
+    async def public_product(self, info: strawberry.Info, id: UUID) -> PublicProduct | None:
+        """Read the explicit public projection only after persisted publication."""
+
+        async with _safe_read():
+            async with info.context["session_factory"]() as session:
+                result: PublicProductProjection | None = await _service(info).public_projection(
+                    cast(AsyncSession, session), product_id=id
+                )
+            if result is None:
+                return None
+
+            def asset(item: ProductAssetResult | None) -> PublicProductAsset | None:
+                if item is None:
+                    return None
+                return PublicProductAsset(
+                    id=item.id,
+                    kind=item.kind,
+                    media_type=item.media_type,
+                    byte_count=item.byte_count,
+                    url=f"/api/v1/products/{result.id}/assets/{item.id}/public",
+                )
+
+            return PublicProduct(
+                id=result.id,
+                name=result.name,
+                pitch=result.pitch,
+                description=result.description,
+                website_url=result.website_url,
+                launched_at=result.launched_at,
+                logo=asset(result.logo),
+                screenshots=[cast(PublicProductAsset, asset(item)) for item in result.screenshots],
+                topics=list(result.topics),
+            )
 
 
 @strawberry.type

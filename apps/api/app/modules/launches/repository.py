@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
 
@@ -23,6 +23,26 @@ class LaunchBookingRepository:
         if lock:
             statement = statement.with_for_update()
         return cast(LaunchBooking | None, await session.scalar(statement))
+
+    async def list_for_founder(
+        self,
+        session: AsyncSession,
+        *,
+        founder_id: UUID,
+        limit: int,
+        after: tuple[datetime, UUID] | None = None,
+    ) -> list[LaunchBooking]:
+        """Return a bounded, stable newest-first owner history page."""
+
+        statement = select(LaunchBooking).where(LaunchBooking.founder_id == founder_id)
+        if after is not None:
+            statement = statement.where(tuple_(LaunchBooking.created_at, LaunchBooking.id) < after)
+        rows = await session.scalars(
+            statement.order_by(LaunchBooking.created_at.desc(), LaunchBooking.id.desc()).limit(
+                limit
+            )
+        )
+        return list(rows.all())
 
     async def record_publication_outcome(
         self,

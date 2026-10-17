@@ -572,7 +572,7 @@ Process due events concurrently within a configurable limit, using a separate se
 
 ## Task T10: Add launch GraphQL reads and schema composition
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** M
 > **Priority:** high
@@ -625,6 +625,8 @@ Expose owner launch bookings/failure reasons and saved preferences, plus an anon
 **Modified files:**
 - `apps/api/app/modules/products/graphql.py` (public product read)
 - `apps/api/app/modules/notifications/graphql.py` (owner preference read)
+- `apps/api/app/modules/launches/repository.py` (bounded owner booking history page)
+- `apps/api/app/modules/launches/service.py` (owner-scoped booking history read)
 - `apps/api/app/graphql.py` (root composition, allowlist, flag variants)
 - `apps/api/app/modules/products/tests/test_graphql.py` (exact root assertions)
 - `tests/integration/test_graphql_composition.py` (flag combinations)

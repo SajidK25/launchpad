@@ -38,6 +38,9 @@ def test_composed_schema_preserves_profiles_and_adds_private_product_reads() -> 
         "approvedReviews",
         "topicChoices",
         "viewerNotificationInbox",
+        "viewerLaunchBookings",
+        "viewerLaunchNotificationPreferences",
+        "publicProduct",
     }
     assert schema.mutation_type is None
     assert schema.subscription_type is None
@@ -68,6 +71,33 @@ def test_router_can_exclude_products_from_composed_schema() -> None:
         "publicProfile",
         "viewerNotificationInbox",
     }
+
+
+def test_router_can_exclude_launch_reads_while_products_remain_enabled() -> None:
+    async def context_getter(request: Request, response: Response) -> dict[str, object]:
+        return {}
+
+    router = build_router(context_getter, include_products=True, include_launches=False)
+
+    assert _query_fields(router.schema) == {
+        "viewerProfile",
+        "publicProfile",
+        "viewerProducts",
+        "viewerProduct",
+        "reviewQueue",
+        "reviewProduct",
+        "approvedReviews",
+        "topicChoices",
+        "viewerNotificationInbox",
+    }
+
+
+def test_router_rejects_launch_reads_without_products() -> None:
+    async def context_getter(request: Request, response: Response) -> dict[str, object]:
+        return {}
+
+    with pytest.raises(ValueError, match="require product reads"):
+        build_router(context_getter, include_products=False, include_launches=True)
 
 
 @pytest.mark.parametrize("products_enabled", [False, True])
@@ -122,6 +152,9 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "approvedReviews",
                     "topicChoices",
                     "viewerNotificationInbox",
+                    "viewerLaunchBookings",
+                    "viewerLaunchNotificationPreferences",
+                    "publicProduct",
                 }
                 if products_enabled
                 else {"viewerProfile", "publicProfile", "viewerNotificationInbox"}

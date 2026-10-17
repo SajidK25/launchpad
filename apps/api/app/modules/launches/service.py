@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal, Protocol
 from uuid import UUID
@@ -35,6 +37,29 @@ class LaunchPayloadCodec(Protocol):
 
 
 LaunchPublicationOutcome = Literal["launched", "missed_day", "suspension_blocked"]
+
+
+@dataclass(frozen=True, slots=True)
+class LaunchBookingRead:
+    """Founder-safe fields for one retained booking history row."""
+
+    id: UUID
+    product_id: UUID
+    state: str
+    product_status: str
+    launch_date: date
+    launch_at: datetime
+    failure_reason: str | None
+    created_at: datetime
+    closed_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class LaunchBookingPage:
+    """One bounded founder booking page."""
+
+    items: tuple[LaunchBookingRead, ...]
+    next_cursor: str | None
 
 
 class LaunchMemberAccess(Protocol):
@@ -145,6 +170,45 @@ class LaunchBookingService:
             failure_reason=None if outcome == "launched" else outcome,
             closed_at=utc_now(now),
         )
+
+    async def owner_bookings(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        first: int = 20,
+        after: str | None = None,
+    ) -> LaunchBookingPage:
+        """Return only the active founder's bounded booking history."""
+
+        await self._active_founder(session, actor_id)
+        if not 1 <= first <= 50:
+            raise LaunchConflictError("invalid booking page size")
+        cursor = _booking_cursor_decode(after) if after is not None else None
+        rows = await self.repository.list_for_founder(
+            session, founder_id=actor_id, limit=first + 1, after=cursor
+        )
+        visible = rows[:first]
+        items = tuple(
+            LaunchBookingRead(
+                id=row.id,
+                product_id=row.product_id,
+                state=row.state,
+                product_status=_product_status_for_booking(row.state),
+                launch_date=row.launch_date,
+                launch_at=row.launch_at,
+                failure_reason=row.failure_reason,
+                created_at=row.created_at,
+                closed_at=row.closed_at,
+            )
+            for row in visible
+        )
+        next_cursor = (
+            _booking_cursor_encode(visible[-1].created_at, visible[-1].id)
+            if len(rows) > first and visible
+            else None
+        )
+        return LaunchBookingPage(items=items, next_cursor=next_cursor)
 
     async def book(
         self,
@@ -372,6 +436,38 @@ def _validate_key(value: str) -> str:
     if not key or len(key) > 255 or key != value:
         raise LaunchConflictError("invalid idempotency key")
     return key
+
+
+def _product_status_for_booking(state: str) -> str:
+    """Project the lifecycle state committed with each durable booking outcome."""
+
+    return {
+        "scheduled": "scheduled",
+        "replaced": "scheduled",
+        "launched": "launched",
+        "missed_day": "approved",
+        "suspension_blocked": "approved",
+        "cancelled": "approved",
+        "returned_for_changes": "changes_requested",
+    }.get(state, "unavailable")
+
+
+def _booking_cursor_encode(created_at: datetime, booking_id: UUID) -> str:
+    value = f"{utc_now(created_at).isoformat()}|{booking_id}"
+    return urlsafe_b64encode(value.encode()).decode().rstrip("=")
+
+
+def _booking_cursor_decode(value: str) -> tuple[datetime, UUID]:
+    try:
+        if not value or len(value) > 256:
+            raise ValueError("invalid cursor")
+        padded = value + "=" * (-len(value) % 4)
+        decoded = urlsafe_b64decode(padded.encode()).decode()
+        created_raw, booking_raw = decoded.split("|", 1)
+        created_at = datetime.fromisoformat(created_raw)
+        return utc_now(created_at), UUID(booking_raw)
+    except (UnicodeDecodeError, ValueError) as error:
+        raise LaunchConflictError("invalid booking cursor") from error
 
 
 def _fingerprint(action: str, product_id: UUID, launch_date: date | None, version: int) -> str:
