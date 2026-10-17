@@ -379,7 +379,7 @@ Let founders save and reload separate email and in-site choices for reminders, l
 
 ## Task T7: Create launch events and durable inbox notices
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** M
 > **Priority:** high

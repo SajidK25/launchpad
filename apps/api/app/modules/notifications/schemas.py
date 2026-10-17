@@ -9,7 +9,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-NotificationKind = Literal["review_approved", "review_rejected", "review_changes_requested"]
+NotificationKind = Literal[
+    "review_approved",
+    "review_rejected",
+    "review_changes_requested",
+    "launch_reminder",
+    "launch_live",
+    "launch_failed",
+]
 
 
 LAUNCH_PREFERENCE_FIELDS = (

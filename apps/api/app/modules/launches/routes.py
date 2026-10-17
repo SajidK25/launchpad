@@ -69,7 +69,12 @@ def router(
             outbox_repository=OutboxRepository(),
             payload_codec=codec,
         )
-        return LaunchBookingService(member_access=member_access, product_access=products)
+        return LaunchBookingService(
+            member_access=member_access,
+            product_access=products,
+            outbox_repository=OutboxRepository(),
+            payload_codec=codec,
+        )
 
     async def bound_action(request: Request, member: MemberContext, action: str) -> None:
         source = request.client.host if request.client else "unknown"

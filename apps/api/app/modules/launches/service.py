@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from collections.abc import Callable
-from datetime import UTC, date, datetime
+from collections.abc import Callable, Mapping
+from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.staff import AccountState
 from app.modules.launches.models import LaunchBooking
@@ -21,7 +23,15 @@ from app.modules.launches.policies import (
     utc_now,
 )
 from app.modules.launches.repository import LaunchBookingRepository
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.shared.events.outbox import OutboxEvent, OutboxRepository
+
+
+class LaunchOutboxAccess(Protocol):
+    async def add(self, session: AsyncSession, event: OutboxEvent) -> UUID: ...
+
+
+class LaunchPayloadCodec(Protocol):
+    def encode(self, payload: Mapping[str, object]) -> tuple[str, bytes]: ...
 
 
 class LaunchMemberAccess(Protocol):
@@ -95,11 +105,15 @@ class LaunchBookingService:
         member_access: LaunchMemberAccess,
         product_access: LaunchProductAccess,
         repository: LaunchBookingRepository | None = None,
+        outbox_repository: LaunchOutboxAccess | None = None,
+        payload_codec: LaunchPayloadCodec | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.member_access = member_access
         self.product_access = product_access
         self.repository = repository or LaunchBookingRepository()
+        self.outbox_repository = outbox_repository or OutboxRepository()
+        self.payload_codec = payload_codec
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def book(
@@ -141,7 +155,7 @@ class LaunchBookingService:
                 launch_at=launch_at,
                 now=now,
             )
-            return await self.repository.create(
+            booking = await self.repository.create(
                 session,
                 product_id=product_id,
                 founder_id=actor_id,
@@ -151,6 +165,8 @@ class LaunchBookingService:
                 request_fingerprint=fingerprint,
                 now=now,
             )
+            await self._schedule_timed_events(session, booking, now=now)
+            return booking
 
     async def reschedule(
         self,
@@ -207,6 +223,7 @@ class LaunchBookingService:
                 request_fingerprint=fingerprint,
                 now=now,
             )
+            await self._schedule_timed_events(session, replacement, now=now)
             return replacement
 
     async def cancel(
@@ -290,6 +307,34 @@ class LaunchBookingService:
             >= 2
         ):
             raise LaunchConflictError("daily launch booking limit reached")
+
+    async def _schedule_timed_events(
+        self, session: AsyncSession, booking: LaunchBooking, *, now: datetime
+    ) -> None:
+        """Write encrypted booking-bound reminder and publication work atomically."""
+
+        if self.payload_codec is None:
+            return
+        reminder_at = max(now, booking.launch_at - timedelta(hours=24))
+        payload = {
+            "launch_booking_id": str(booking.id),
+            "product_id": str(booking.product_id),
+        }
+        for event_type, available_at in (
+            ("launch.reminder_requested.v1", reminder_at),
+            ("launch.publish_requested.v1", booking.launch_at),
+        ):
+            key_id, encrypted_payload = self.payload_codec.encode(payload)
+            await self.outbox_repository.add(
+                session,
+                OutboxEvent(
+                    event_type=event_type,
+                    aggregate_id=booking.id,
+                    key_id=key_id,
+                    encrypted_payload=encrypted_payload,
+                    available_at=available_at,
+                ),
+            )
 
 
 def _validate_key(value: str) -> str:

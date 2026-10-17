@@ -625,7 +625,13 @@ export interface components {
        * Kind
        * @enum {string}
        */
-      kind: "review_approved" | "review_rejected" | "review_changes_requested";
+      kind:
+        | "review_approved"
+        | "review_rejected"
+        | "review_changes_requested"
+        | "launch_reminder"
+        | "launch_live"
+        | "launch_failed";
       /**
        * Product Id
        * Format: uuid
