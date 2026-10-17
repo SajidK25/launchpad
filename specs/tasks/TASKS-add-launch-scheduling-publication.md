@@ -255,7 +255,7 @@ When staff return scheduled work for changes, commit the product/submission tran
 
 ## Task T5: Add launch booking REST commands
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** M
 > **Priority:** high
