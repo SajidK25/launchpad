@@ -195,7 +195,7 @@ Add approved-to-scheduled-to-launched transitions, with same-day recovery and ex
 
 ## Task T4: Close scheduled bookings on staff return-for-changes
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** M
 > **Priority:** high

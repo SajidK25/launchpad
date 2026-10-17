@@ -119,6 +119,14 @@ class ProductReviewNotifications(Protocol):
     ) -> object: ...
 
 
+class ProductLaunchInvalidator(Protocol):
+    """Named launches boundary for an atomic staff return-for-changes action."""
+
+    async def invalidate_for_review(
+        self, session: AsyncSession, *, product_id: UUID, now: datetime
+    ) -> bool: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ProductDraft:
     """Owner-safe product draft view without exposing an ORM mapping."""
@@ -368,6 +376,7 @@ class ProductService:
         repository: ProductRepository | None = None,
         event_storage: ProductEventStorage | None = None,
         review_notifications: ProductReviewNotifications | None = None,
+        launch_booking_access: ProductLaunchInvalidator | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if repository is None:
@@ -388,6 +397,13 @@ class ProductService:
                 payload_codec=cast(EmailPayloadCodec, payload_codec),
             )
         self.review_notifications = review_notifications
+        if launch_booking_access is None:
+            from app.modules.launches.service import LaunchBookingService
+
+            launch_booking_access = LaunchBookingService(
+                member_access=member_access, product_access=self
+            )
+        self.launch_booking_access = launch_booking_access
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def decide_review(
@@ -477,6 +493,10 @@ class ProductService:
             updated = await self.repository.set_product_state(
                 session, product=product, status=outcome, now=now
             )
+            if current_status == "scheduled" and outcome == "changes_requested":
+                await self.launch_booking_access.invalidate_for_review(
+                    session, product_id=product.id, now=now
+                )
             await self.repository.resolve_submission(
                 session, submission=submission, outcome=outcome, closed_at=now
             )

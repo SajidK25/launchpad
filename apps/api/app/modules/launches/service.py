@@ -256,6 +256,24 @@ class LaunchBookingService:
                 request_fingerprint=fingerprint,
             )
 
+    async def invalidate_for_review(
+        self, session: AsyncSession, *, product_id: UUID, now: datetime
+    ) -> bool:
+        """Close the current booking when staff return scheduled content for changes."""
+
+        booking = await self.repository.active_for_product(
+            session, product_id=product_id, lock=True
+        )
+        if booking is None:
+            return False
+        await self.repository.close(
+            session,
+            booking_id=booking.id,
+            state="returned_for_changes",
+            closed_at=utc_now(now),
+        )
+        return True
+
     async def _active_founder(self, session: AsyncSession, actor_id: UUID) -> AccountState:
         account = await self.member_access.current_account(session, actor_id, lock=True)
         if account is None or account.suspended_at is not None or account.role != "member":

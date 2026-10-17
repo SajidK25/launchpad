@@ -112,6 +112,8 @@ def require_review_transition(*, status: str, outcome: str) -> None:
         return
     if status == "approved" and outcome == "changes_requested":
         return
+    if status == "scheduled" and outcome == "changes_requested":
+        return
     raise ProductConflictError("product cannot receive this review outcome")
 
 
