@@ -507,7 +507,7 @@ Dispatch launch events through the encrypted outbox worker. Recheck booking stat
 
 ## Task T9: Process cutoff events with bounded concurrency
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** L
 > **Priority:** critical

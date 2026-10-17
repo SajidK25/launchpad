@@ -66,6 +66,8 @@ class Settings(BaseModel):
     session_cookie_samesite: Literal["lax"] = "lax"
     session_idle_seconds: Literal[86400] = 86400
     session_absolute_seconds: Literal[604800] = 604800
+    worker_concurrency: int = Field(default=16, ge=1, le=128)
+    worker_email_concurrency: int = Field(default=4, ge=1, le=32)
 
     @field_validator("trusted_web_origins", mode="before")
     @classmethod

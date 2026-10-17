@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol, cast
@@ -24,7 +25,13 @@ from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.email.resend import ResendEmailSender
 from app.shared.email.transport import EmailTransport
-from app.shared.events.dispatcher import dispatch_claimed
+from app.shared.events.dispatcher import (
+    EMAIL_EVENT_TYPES,
+    LAUNCH_EMAIL_EVENT_TYPES,
+    REVIEW_EMAIL_EVENT_TYPES,
+    dispatch_claimed,
+)
+from app.shared.events.models import OutboxMessage
 from app.shared.events.outbox import OutboxRepository, PermanentEventError
 from app.shared.storage.client import StorageClient
 from app.shared.storage.objects import PrivateObjectStore
@@ -34,10 +41,50 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 HEALTH_PATH = Path("/tmp/launchpad-worker.progress")
 FRESHNESS_SECONDS = 5.0
+logger = logging.getLogger(__name__)
 
 
 class RedisPublisher(Protocol):
     async def publish(self, channel: str, message: str) -> int: ...
+
+
+async def process_claimed_events(
+    events: list[OutboxMessage],
+    *,
+    sessions: async_sessionmaker[AsyncSession],
+    dispatch: Callable[[AsyncSession, OutboxMessage], Awaitable[None]],
+    concurrency: int,
+    email_concurrency: int,
+    on_progress: Callable[[], None] | None = None,
+) -> None:
+    """Dispatch independent events with isolated transactions and bounded fan-out."""
+
+    if concurrency < 1 or email_concurrency < 1:
+        raise ValueError("worker concurrency limits must be positive")
+    event_slots = asyncio.Semaphore(concurrency)
+    email_slots = asyncio.Semaphore(email_concurrency)
+    email_types = EMAIL_EVENT_TYPES | REVIEW_EMAIL_EVENT_TYPES | LAUNCH_EMAIL_EVENT_TYPES
+
+    async def run_one(event: OutboxMessage) -> None:
+        async with event_slots:
+            try:
+                if event.event_type in email_types:
+                    async with email_slots:
+                        async with sessions.begin() as session:
+                            await dispatch(session, event)
+                else:
+                    async with sessions.begin() as session:
+                        await dispatch(session, event)
+            except Exception:
+                logger.exception(
+                    "Outbox event transaction failed",
+                    extra={"event_id": str(event.id), "event_type": event.event_type},
+                )
+            finally:
+                if on_progress is not None:
+                    on_progress()
+
+    await asyncio.gather(*(run_one(event) for event in events))
 
 
 def create_email_sender(settings: Settings) -> EmailTransport | ResendEmailSender:
@@ -404,33 +451,48 @@ async def run_worker(health: ProgressHealth) -> None:
         notifications=notification_repository,
     )
     sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+
+    async def dispatch_event(session: AsyncSession, event: OutboxMessage) -> None:
+        await dispatch_claimed(
+            session,
+            events=[event],
+            repository=repository,
+            codec=codec,
+            sender=email_sender,
+            product_handler=product_service,
+            launch_email_handler=launch_email_handler,
+            launch_event_handler=launch_event_handler,
+            review_email_handler=ReviewOutcomeEmailHandler(
+                member_access=member_access,
+                notifications=notification_repository,
+            ),
+            notification_handler=NotificationChangedPublisher(
+                redis=cast(RedisPublisher, redis),
+                notifications=notification_repository,
+            ),
+        )
+
+    def record_worker_progress() -> None:
+        health.tick()
+        record_progress(HEALTH_PATH)
+
     try:
         await database.ensure_compatible()
         while True:
             try:
                 async with sessions.begin() as session:
                     await repository.release_expired_claims(session)
-                    claimed = await repository.claim_due(session, limit=20)
-                for event in claimed:
-                    async with sessions.begin() as session:
-                        await dispatch_claimed(
-                            session,
-                            events=[event],
-                            repository=repository,
-                            codec=codec,
-                            sender=email_sender,
-                            product_handler=product_service,
-                            launch_email_handler=launch_email_handler,
-                            launch_event_handler=launch_event_handler,
-                            review_email_handler=ReviewOutcomeEmailHandler(
-                                member_access=member_access,
-                                notifications=notification_repository,
-                            ),
-                            notification_handler=NotificationChangedPublisher(
-                                redis=cast(RedisPublisher, redis),
-                                notifications=notification_repository,
-                            ),
-                        )
+                    claimed = await repository.claim_due(
+                        session, limit=min(settings.worker_concurrency * 4, 512)
+                    )
+                await process_claimed_events(
+                    claimed,
+                    sessions=sessions,
+                    dispatch=dispatch_event,
+                    concurrency=settings.worker_concurrency,
+                    email_concurrency=settings.worker_email_concurrency,
+                    on_progress=record_worker_progress,
+                )
                 health.tick()
                 record_progress(HEALTH_PATH)
             except Exception:
