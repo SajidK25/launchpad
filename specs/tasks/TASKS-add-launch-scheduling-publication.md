@@ -68,7 +68,7 @@ Create the database foundation for scheduling and publication. Persist booking h
 
 ## Task T2: Implement UTC booking rules and founder capacity
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** M
 > **Priority:** critical
