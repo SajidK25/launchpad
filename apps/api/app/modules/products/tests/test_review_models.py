@@ -2,7 +2,7 @@
 
 from typing import cast
 
-from sqlalchemy import Table
+from sqlalchemy import CheckConstraint, Table
 
 from app.modules.notifications.models import Notification
 from app.modules.products.models import Product, ProductReviewDecision, ProductSubmission
@@ -27,6 +27,12 @@ def test_review_mappings_expose_required_private_constraints() -> None:
         "ck_product_review_decisions_feedback",
         "ck_product_review_decisions_version",
     } <= decision_checks
+    transition_check = next(
+        cast(CheckConstraint, constraint).sqltext
+        for constraint in cast(Table, ProductReviewDecision.__table__).constraints
+        if constraint.name == "ck_product_review_decisions_transition"
+    )
+    assert "scheduled" in str(transition_check)
     assert "ck_notifications_kind" in notification_checks
 
     review_indexes = {index.name for index in cast(Table, ProductReviewDecision.__table__).indexes}
