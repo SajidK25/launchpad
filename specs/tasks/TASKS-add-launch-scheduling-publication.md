@@ -1106,7 +1106,7 @@ Show launched product details and published media to anonymous visitors on a dis
 
 ## Task T17: Configure launch environments in Compose
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** M
 > **Priority:** high

@@ -96,6 +96,7 @@ services:
       LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL: http://localhost:9000
       LAUNCHPAD_PRODUCTS_ENABLED: "true"
       LAUNCHPAD_REVIEW_WRITES_ENABLED: "true"
+      LAUNCHPAD_LAUNCHES_ENABLED: "true"
     ports:
       - "127.0.0.1:8000:8000"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -120,6 +121,7 @@ services:
       PYTHONPATH: /workspace/apps/api
       LAUNCHPAD_DATABASE_URL: postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development
       LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+      LAUNCHPAD_WORKER_CONCURRENCY: ${LAUNCHPAD_WORKER_CONCURRENCY:-16}
       LAUNCHPAD_STORAGE_PROVIDER: minio
       LAUNCHPAD_STORAGE_REGION: us-east-1
       LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime

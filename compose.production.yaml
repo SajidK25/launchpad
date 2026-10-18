@@ -86,6 +86,7 @@ services:
       - /etc/launchpad/api.env
     environment:
       LAUNCHPAD_ENVIRONMENT: production
+      LAUNCHPAD_LAUNCHES_ENABLED: ${LAUNCHPAD_LAUNCHES_ENABLED:-false}
     command:
       - python
       - -c
@@ -114,6 +115,7 @@ services:
     environment:
       LAUNCHPAD_ENVIRONMENT: production
       PYTHONPATH: /workspace/apps/api
+      LAUNCHPAD_WORKER_CONCURRENCY: ${LAUNCHPAD_WORKER_CONCURRENCY:-16}
     command: ["python", "apps/worker/worker.py"]
     networks:
       - backend
