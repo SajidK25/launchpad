@@ -7,6 +7,7 @@ import { createIdentityClient } from "./identity/client";
 import { IdentityRoutes, navigate } from "./identity/Screens";
 import { ProfileRoutes } from "./profiles/ProfileScreens";
 import { NotificationBell } from "./notifications/NotificationBell";
+import { LaunchRoutes } from "./launches/LaunchScreens";
 
 const statusCopy = {
   connected: "Connected",
@@ -40,6 +41,8 @@ export function App() {
   }, [path]);
 
   if (path !== "/") {
+    if (path === "/launches")
+      return <LaunchRoutes identityClient={identityClient} />;
     if (path === "/products" || path.startsWith("/products/")) {
       return (
         <>
