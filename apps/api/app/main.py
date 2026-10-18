@@ -10,6 +10,7 @@ from app.modules.auth.routes import router as auth_router
 from app.modules.health.probes import database_probe, redis_probe, storage_probe
 from app.modules.health.routes import router
 from app.modules.health.service import HealthService
+from app.modules.launches.routes import router as launches_router
 from app.modules.notifications.live import NotificationRedis
 from app.modules.notifications.routes import router as notifications_router
 from app.modules.products.routes import router as products_router
@@ -103,6 +104,14 @@ def create_app(service: HealthService | None = None) -> FastAPI:
                     database=database,
                     redis=Redis.from_url(str(settings.redis_url)),
                     storage=private_store,
+                )
+            )
+        if settings.launches_enabled:
+            app.include_router(
+                launches_router(
+                    settings=settings,
+                    database=database,
+                    redis=Redis.from_url(str(settings.redis_url)),
                 )
             )
     return app

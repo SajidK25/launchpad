@@ -697,7 +697,7 @@ Allow anonymous visitors to fetch only the logo and screenshots attached to a la
 
 ## Task T12: Wire launch routes and reversible feature flag
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** M
 > **Priority:** critical
@@ -746,9 +746,12 @@ Add a reversible launch feature flag and connect launch routes and GraphQL field
 - `.env.example` (document flag)
 - `apps/api/app/main.py` (conditionally mount launch routes)
 - `apps/api/app/modules/users/routes.py` (pass independent launch/product flags)
+- `apps/api/app/graphql.py` (compose launch queries without private product reads)
+- `apps/api/app/modules/notifications/routes.py` (gate launch preferences with the launch flag)
+- `apps/api/app/modules/products/tests/test_graphql.py` (cover independent root composition and app flags)
+- `apps/api/app/modules/notifications/tests/test_preference_routes.py` (enable the preference route in direct router tests)
 
 **Must NOT modify:**
-- `apps/api/app/graphql.py` schema definitions and allowlist (T10)
 - Compose files (T17)
 - Migration 0012 (T1)
 

@@ -84,6 +84,7 @@ def _client(monkeypatch: object) -> tuple[TestClient, UUID]:
     cast(Any, monkeypatch).setattr(SessionService, "resolve", resolve)
     cast(Any, monkeypatch).setattr(NotificationService, "update_launch_preferences", save)
     settings = Settings(
+        launches_enabled=True,
         trusted_web_origins=(_ORIGIN,),
         outbox_key_id="preference-route-test",
         outbox_key=SecretStr(base64.b64encode(b"p" * 32).decode("ascii")),

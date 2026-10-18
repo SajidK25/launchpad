@@ -11,7 +11,12 @@ from fastapi.testclient import TestClient
 from graphql import GraphQLSchema
 from strawberry import Schema
 
-from app.graphql import ProfileOnlyQuery, Query, build_router, validate_read_query
+from app.graphql import (
+    ProfileOnlyQuery,
+    Query,
+    build_router,
+    validate_read_query,
+)
 from app.main import create_app
 from app.modules.auth.sessions import MemberContext
 from app.shared.config.settings import Settings
@@ -92,23 +97,33 @@ def test_router_can_exclude_launch_reads_while_products_remain_enabled() -> None
     }
 
 
-def test_router_rejects_launch_reads_without_products() -> None:
+def test_router_composes_public_product_and_launch_reads_without_private_products() -> None:
     async def context_getter(request: Request, response: Response) -> dict[str, object]:
         return {}
 
-    with pytest.raises(ValueError, match="require product reads"):
-        build_router(context_getter, include_products=False, include_launches=True)
+    router = build_router(context_getter, include_products=False, include_launches=True)
+
+    assert _query_fields(router.schema) == {
+        "viewerProfile",
+        "publicProfile",
+        "viewerNotificationInbox",
+        "viewerLaunchBookings",
+        "viewerLaunchNotificationPreferences",
+        "publicProduct",
+    }
 
 
 @pytest.mark.parametrize("products_enabled", [False, True])
+@pytest.mark.parametrize("launches_enabled", [False, True])
 def test_app_mounts_product_rest_and_graphql_only_when_enabled(
-    monkeypatch: pytest.MonkeyPatch, products_enabled: bool
+    monkeypatch: pytest.MonkeyPatch, products_enabled: bool, launches_enabled: bool
 ) -> None:
     import sys
 
     main = cast(Any, sys.modules["app.main"])
     settings = Settings(
         products_enabled=products_enabled,
+        launches_enabled=launches_enabled,
         review_writes_enabled=False,
         trusted_web_origins=("http://localhost:8080",),
     )
@@ -136,9 +151,13 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
         application = create_app()
         paths = set(application.openapi()["paths"])
         product_route_present = "/api/v1/me/products" in paths
+        launch_route_present = "/api/v1/me/products/{product_id}/launch-booking" in paths
+        preference_route_present = "/api/v1/me/launch-notification-preferences" in paths
         notification_route_present = "/api/v1/me/notifications/{notification_id}/read" in paths
 
         assert product_route_present is products_enabled
+        assert launch_route_present is launches_enabled
+        assert preference_route_present is launches_enabled
         assert notification_route_present
         assert graph_fields == [
             (
@@ -156,7 +175,28 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "viewerLaunchNotificationPreferences",
                     "publicProduct",
                 }
+                if products_enabled and launches_enabled
+                else {
+                    "viewerProfile",
+                    "publicProfile",
+                    "viewerProducts",
+                    "viewerProduct",
+                    "reviewQueue",
+                    "reviewProduct",
+                    "approvedReviews",
+                    "topicChoices",
+                    "viewerNotificationInbox",
+                }
                 if products_enabled
+                else {
+                    "viewerProfile",
+                    "publicProfile",
+                    "viewerNotificationInbox",
+                    "viewerLaunchBookings",
+                    "viewerLaunchNotificationPreferences",
+                    "publicProduct",
+                }
+                if launches_enabled
                 else {"viewerProfile", "publicProfile", "viewerNotificationInbox"}
             )
         ]

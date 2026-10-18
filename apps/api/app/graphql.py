@@ -70,6 +70,13 @@ class ProductsWithoutLaunchesQuery(ProfileQuery, ProductQuery, NotificationQuery
 
 
 @strawberry.type
+class LaunchesWithoutProductsQuery(
+    ProfileQuery, PublicProductQuery, NotificationQuery, LaunchQuery, LaunchPreferenceQuery
+):
+    """Composed launch read root without private product reads."""
+
+
+@strawberry.type
 class ProfileOnlyQuery(ProfileQuery, NotificationQuery):
     """Read root used while the products feature is disabled."""
 
@@ -103,13 +110,13 @@ def build_router(
     include_launches: bool | None = None,
 ) -> GraphQLRouter:
     launch_reads_enabled = include_products if include_launches is None else include_launches
-    if launch_reads_enabled and not include_products:
-        raise ValueError("launch GraphQL reads require product reads")
     query_type = (
         Query
         if include_products and launch_reads_enabled
         else ProductsWithoutLaunchesQuery
         if include_products
+        else LaunchesWithoutProductsQuery
+        if launch_reads_enabled
         else ProfileOnlyQuery
     )
     router = PrivateReadRouter(

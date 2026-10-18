@@ -36,6 +36,7 @@ class Settings(BaseModel):
 
     environment: Literal["development", "test", "check", "production"] = "development"
     products_enabled: bool = False
+    launches_enabled: bool = False
     review_writes_enabled: bool = False
     storage_provider: Literal["minio", "r2"] = "minio"
     storage_region: Literal["us-east-1", "auto"] = "us-east-1"
