@@ -1160,7 +1160,7 @@ Configure each existing Compose environment for launch rollout and worker limits
 
 ## Task T18: Document launch operations and recovery
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** S
 > **Priority:** high

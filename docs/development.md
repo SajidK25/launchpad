@@ -214,6 +214,192 @@ For metrics and incident notes, use event type, event ID, failure class, attempt
 the event is pending or dead. Do not record review feedback, email address, authentication/session
 tokens, encrypted payload, Resend key, signed media URL, or private object key.
 
+### Launch scheduling and publication operations
+
+Launch dates use one platform-wide UTC calendar. The cutoff is 00:00 UTC; if the current UTC date is
+D, founders can book an approved product for D+1 through D+90 inclusive. Each founder can book at
+most two products on a UTC date. A founder may cancel or reschedule only strictly before the
+booking's original 00:00 UTC time. At the cutoff, cancellation and rescheduling are no longer
+available even if processing is delayed.
+
+#### Production rollout and feature switch
+
+The production deploy controller stops API, worker, and scheduler writers, applies the verified
+release migration, then starts and health-checks the matching API, worker, and scheduler. Migration
+`0012_launch_schedule` follows `0011_profile_upload_declarations`. Keep the launch switch off until
+that compatible release is healthy and every old worker has been drained. PostgreSQL is authoritative
+for booking history and outbox work; Redis only carries retryable due-work hints.
+
+The production Compose default is `LAUNCHPAD_LAUNCHES_ENABLED=false`. The controller's
+`current-release.env` contains image digests and runtime paths, not this switch. After a production
+deployment, enable launches explicitly on the VM as the `deploy` user; use `false` to disable new
+launch API/public-route access during rollback. Each subsequent controller deployment starts with
+the safe default again, so re-enable only after checking that release's compatible API and worker.
+These commands recreate only the API service and print only the boolean switch value:
+
+```sh
+sudo -u deploy env LAUNCHPAD_LAUNCHES_ENABLED=true docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env \
+  up -d api
+
+sudo -u deploy docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env \
+  exec -T api python -c 'from app.shared.config.settings import load_settings; print(load_settings().launches_enabled)'
+```
+
+For rollback, disable the switch and verify it reports `False`:
+
+```sh
+sudo -u deploy env LAUNCHPAD_LAUNCHES_ENABLED=false docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env \
+  up -d api
+```
+
+Keep the compatible worker and scheduler running so committed launch and notice events can finish
+safely. Do not downgrade migration 0012, remove booking rows, delete outbox events, or restore an
+older worker. Fix forward, or leave the launch switch off while the compatible release remains
+deployed.
+
+#### Health and metadata checks
+
+From the VM, check service health and the local readiness endpoint. The production web container
+proxies the API; the public endpoint also verifies the Cloudflare tunnel route.
+
+```sh
+sudo -u deploy docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env ps
+curl --fail --silent --show-error http://127.0.0.1:18080/api/v1/health/ready
+curl --fail --silent --show-error https://launchpad.t99ltd.com/api/v1/health/ready
+sudo -u deploy docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env \
+  logs --since=30m --no-color api worker scheduler
+```
+
+Use the production PostgreSQL container for an authorized, read-only transaction and run
+`BEGIN READ ONLY;` before the following snapshots, then `COMMIT;`. The query reads operational
+columns only and never inspects encrypted event payloads or product content. A nonzero due backlog
+should be checked against worker health; the age is the time since the oldest pending/claimed
+publication became due.
+
+```sh
+sudo -u deploy docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env \
+  exec postgres sh -ec 'exec psql -X -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"'
+```
+
+```sql
+SELECT count(*) AS due_publications,
+       coalesce(
+           extract(epoch FROM (now() - min(
+               CASE WHEN state = 'claimed' THEN claimed_at ELSE available_at END
+           )))::bigint,
+           0
+       ) AS oldest_due_age_seconds
+FROM outbox_messages
+WHERE event_type = 'launch.publish_requested.v1'
+  AND state IN ('pending', 'claimed')
+  AND (state = 'claimed' OR available_at <= now());
+```
+
+The normal-operation publication target is 1,000 eligible products publicly readable within 60
+seconds after their shared midnight cutoff. This query measures durable publication transition
+latency; the load verification must also confirm public reads within the same target at the
+`/launches/{product_id}` route. The `closed_at` time is recorded in the same transaction as the
+launch outcome.
+
+```sql
+SELECT count(*) AS launched,
+       count(*) FILTER (WHERE closed_at <= launch_at + interval '60 seconds') AS within_60_seconds,
+       count(*) FILTER (WHERE closed_at > launch_at + interval '60 seconds') AS over_60_seconds
+FROM launch_bookings
+WHERE state = 'launched'
+  AND launch_at >= now() - interval '24 hours';
+
+SELECT state, failure_reason, count(*) AS bookings
+FROM launch_bookings
+WHERE state IN ('missed_day', 'suspension_blocked')
+  AND closed_at >= now() - interval '7 days'
+GROUP BY state, failure_reason
+ORDER BY state;
+```
+
+Use these snapshots to check bounded retries/dead letters, provider email receipts, and persistent
+inbox records. Preferences can suppress a channel, so the absence of an email event alone is not a
+delivery failure. `email_deliveries` records provider acceptance; it does not claim inbox placement.
+
+```sql
+SELECT event_type, state, count(*) AS events,
+       max(attempts) AS highest_attempt_count
+FROM outbox_messages
+WHERE event_type IN (
+    'launch.publish_requested.v1',
+    'launch.reminder_requested.v1',
+    'launch.notice_email_requested.v1'
+)
+  AND available_at >= now() - interval '7 days'
+GROUP BY event_type, state
+ORDER BY event_type, state;
+
+SELECT o.state, count(*) AS email_events,
+       count(d.event_id) AS provider_accepted
+FROM outbox_messages AS o
+LEFT JOIN email_deliveries AS d ON d.event_id = o.id
+WHERE o.event_type = 'launch.notice_email_requested.v1'
+  AND o.available_at >= now() - interval '7 days'
+GROUP BY o.state
+ORDER BY o.state;
+
+SELECT kind, count(*) AS inbox_notices,
+       count(*) FILTER (WHERE read_at IS NULL) AS unread
+FROM notifications
+WHERE kind IN ('launch_reminder', 'launch_live', 'launch_failed')
+  AND created_at >= now() - interval '7 days'
+GROUP BY kind
+ORDER BY kind;
+```
+
+Worker failure logs include event ID, event type, failure class, and whether the event was
+dead-lettered. Use the database snapshots above for booking outcomes, attempt counts, and latency;
+do not infer a successful delivery from the absence of a failure log. Keep investigation notes to
+those metadata fields and counts. Never log or share product descriptions, review feedback,
+recipient addresses, object keys, signed URLs, encrypted payloads, authentication tokens, or
+provider secrets.
+
+#### Recovery decisions
+
+- **Worker or scheduler outage, recovered on the booked UTC day:** restore PostgreSQL/Redis access
+  and the compatible worker/scheduler, then monitor health, the due-publication snapshot, and the
+  founder's booking status. Durable outbox work is retried; an eligible product may still publish
+  during that same UTC date. Do not publish it manually.
+- **The full booked UTC date elapsed:** the publication handler closes the booking as `missed_day`
+  and returns the product to private `approved` state. The founder must choose a new eligible date
+  and create a new booking. Preserve the closed booking and its failure notice.
+- **Founder suspension blocks publication:** the product returns to private `approved` state and
+  the retained booking is closed as `suspension_blocked`. After reinstatement, the founder must make
+  a new booking; do not revive or edit the old booking.
+- **Old reminder or changed booking:** reminder handlers recheck the current booking and its
+  preferences before delivery. They discard obsolete reminders. Do not resend an old reminder by
+  hand; check the current booking and inbox first.
+- **Resend or Redis outage:** restore the provider/dependency and let the bounded outbox retry
+  continue. PostgreSQL booking/publication state and persistent inbox notices remain authoritative;
+  Redis notification hints can be rebuilt by refetching the inbox. For a dead-lettered or ambiguous
+  email, inspect its event state and provider receipt using the existing stable event ID and
+  idempotency behavior. Do not blindly replay, create a replacement event, or alter encrypted
+  payloads. If delivery cannot be established, preserve the inbox notice and escalate for an
+  authorized, idempotent recovery.
+
 ## Private media and deletion operations
 
 Product photos use short-lived signed staging uploads to the private object store (currently five
