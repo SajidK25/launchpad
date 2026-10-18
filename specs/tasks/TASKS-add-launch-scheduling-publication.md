@@ -818,7 +818,7 @@ Regenerate OpenAPI, GraphQL schema/operations, and TypeScript types from the com
 
 ## Task T14: Add launch frontend clients and query hooks
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** M
 > **Priority:** high
