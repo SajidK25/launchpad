@@ -1,0 +1,89 @@
+@page {
+  size: A4;
+  margin: 15mm 16mm 17mm;
+}
+
+* { box-sizing: border-box; }
+header#title-block-header { display: none; }
+body {
+  color: #171717;
+  background: #fffdf7;
+  font: 9.4pt/1.42 "DejaVu Sans", Arial, sans-serif;
+  margin: 0;
+}
+h1, h2, h3, p, ul, ol, table { margin-top: 0; }
+h1 {
+  background: #ffcc3e;
+  border: 3px solid #171717;
+  box-shadow: 5px 5px 0 #171717;
+  font-size: 25pt;
+  line-height: 1.12;
+  margin: 0 0 7mm;
+  padding: 8mm;
+}
+h2 {
+  background: #171717;
+  color: #fffdf7;
+  font-size: 14pt;
+  line-height: 1.2;
+  margin: 8mm 0 3mm;
+  padding: 3mm 4mm;
+  break-after: avoid;
+}
+h3 {
+  background: #d9eaff;
+  border-left: 4px solid #171717;
+  font-size: 10.5pt;
+  margin: 5mm 0 2mm;
+  padding: 2mm 3mm;
+  break-after: avoid;
+}
+p { margin-bottom: 2.5mm; }
+ul, ol { padding-left: 7mm; }
+li { margin-bottom: 1.4mm; padding-left: 1mm; }
+strong { font-weight: 700; }
+a { color: #154eb0; text-decoration: underline; }
+blockquote {
+  background: #e8f5d0;
+  border: 2px solid #171717;
+  box-shadow: 3px 3px 0 #171717;
+  margin: 3mm 0 4mm;
+  padding: 3mm 4mm;
+}
+table {
+  border-collapse: collapse;
+  font-size: 8.1pt;
+  margin: 3mm 0 5mm;
+  width: 100%;
+}
+th, td {
+  border: 1.5px solid #171717;
+  padding: 2.2mm;
+  vertical-align: top;
+}
+th { background: #ffcc3e; text-align: left; }
+tr { break-inside: avoid; }
+code {
+  background: #efede5;
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 8pt;
+  overflow-wrap: anywhere;
+}
+pre {
+  background: #f2f0e9;
+  border: 2px solid #171717;
+  box-shadow: 3px 3px 0 #171717;
+  font: 6.6pt/1.25 "DejaVu Sans Mono", monospace;
+  margin: 3mm 0 4mm;
+  overflow: hidden;
+  padding: 3mm;
+  break-inside: avoid;
+}
+pre code { background: transparent; font: inherit; overflow-wrap: normal; }
+hr { border: 0; border-top: 2px solid #171717; margin: 5mm 0; }
+@media print {
+  h2, h3 { break-after: avoid; }
+  li, p { orphans: 3; widows: 3; }
+  table, blockquote { break-inside: avoid; }
+  h2:nth-of-type(3), h2:nth-of-type(6), h2:nth-of-type(8) { break-before: page; }
+}

@@ -10,6 +10,7 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
+
 from app.modules.auth.staff import AccountState
 from app.modules.launches.policies import LaunchConflictError, LaunchForbiddenError
 from app.modules.launches.service import LaunchBookingService

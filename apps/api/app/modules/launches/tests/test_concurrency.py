@@ -10,6 +10,10 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import delete, insert, update
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from uuid6 import uuid7
+
 from app.modules.auth.models import Account
 from app.modules.auth.staff import AuthAccessService
 from app.modules.launches.models import LaunchBooking
@@ -17,9 +21,6 @@ from app.modules.launches.repository import LaunchBookingRepository
 from app.modules.launches.service import LaunchBookingService
 from app.modules.products.models import Product
 from app.shared.db.database import Database
-from sqlalchemy import delete, insert, update
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from uuid6 import uuid7
 
 
 class _ProductPort:

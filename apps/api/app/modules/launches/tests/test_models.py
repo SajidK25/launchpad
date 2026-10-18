@@ -2,10 +2,11 @@
 
 from typing import cast
 
+from sqlalchemy import CheckConstraint, Table
+
 from app.modules.launches.models import LaunchBooking
 from app.modules.notifications.models import LaunchNotificationPreference, Notification
 from app.modules.products.models import Product, ProductReviewDecision
-from sqlalchemy import CheckConstraint, Table
 
 
 def test_launch_booking_mapping_has_retained_identity_and_hot_path_indexes() -> None:
