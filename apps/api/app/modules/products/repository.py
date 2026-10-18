@@ -334,6 +334,25 @@ class ProductRepository:
             statement = statement.with_for_update()
         return cast(ProductAsset | None, await session.scalar(statement))
 
+    async def get_launched_attached_asset(
+        self, session: AsyncSession, *, product_id: UUID, asset_id: UUID
+    ) -> tuple[Product, ProductAsset] | None:
+        """Resolve media only while the product is launched and the asset is attached and clean."""
+
+        row = await session.execute(
+            select(Product, ProductAsset)
+            .join(ProductAsset, ProductAsset.product_id == Product.id)
+            .where(
+                Product.id == product_id,
+                Product.status == "launched",
+                ProductAsset.id == asset_id,
+                ProductAsset.state == "clean",
+                ProductAsset.attached_at.is_not(None),
+                ProductAsset.clean_key.is_not(None),
+            )
+        )
+        return row.tuples().one_or_none()
+
     async def get_assets(
         self,
         session: AsyncSession,

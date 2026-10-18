@@ -846,6 +846,34 @@ class ProductService:
             raise ProductInfrastructureError("product media is unavailable") from error
         return ProductPrivateMedia(body=body, media_type=asset.media_type)
 
+    async def read_public_asset(
+        self,
+        session: AsyncSession,
+        *,
+        product_id: UUID,
+        asset_id: UUID,
+        storage: ProductMediaStorage,
+    ) -> ProductPrivateMedia:
+        """Serve attached media only while its product has persisted launched status."""
+
+        resolved = await self.repository.get_launched_attached_asset(
+            session, product_id=product_id, asset_id=asset_id
+        )
+        if resolved is None:
+            raise ProductNotFoundError("product media unavailable")
+        product, asset = resolved
+        if asset.clean_key is None:
+            raise ProductNotFoundError("product media unavailable")
+        try:
+            body, _storage_media_type = await storage.get_product_private(
+                account_id=product.founder_id,
+                product_id=product.id,
+                object_key=asset.clean_key,
+            )
+        except ObjectOperationError as error:
+            raise ProductInfrastructureError("product media is unavailable") from error
+        return ProductPrivateMedia(body=body, media_type=asset.media_type)
+
     async def _authorized_private_asset(
         self,
         session: AsyncSession,

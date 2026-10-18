@@ -640,7 +640,7 @@ Expose owner launch bookings/failure reasons and saved preferences, plus an anon
 
 ## Task T11: Serve media only for launched products
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** M
 > **Priority:** critical
@@ -686,6 +686,7 @@ Allow anonymous visitors to fetch only the logo and screenshots attached to a la
 - `apps/api/app/modules/products/routes.py` (anonymous public media endpoint)
 - `apps/api/app/modules/products/service.py` (public launched asset authorization)
 - `apps/api/app/modules/products/repository.py` (launched product and attached clean asset lookup)
+- `apps/api/app/modules/products/tests/test_routes.py` (exact route inventory assertion)
 
 **Must NOT modify:**
 - `apps/api/app/modules/products/graphql.py` (T10)
