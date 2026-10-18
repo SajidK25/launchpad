@@ -175,6 +175,59 @@ query ViewerNotificationInbox($first: Int! = 20, $after: String) {
   }
 }
 
+query ViewerLaunchBookings($first: Int! = 20, $after: String) {
+  viewerLaunchBookings(first: $first, after: $after) {
+    items {
+      id
+      productId
+      state
+      productStatus
+      launchAt
+      failureReason
+      createdAt
+      closedAt
+    }
+    nextCursor
+  }
+}
+
+query ViewerLaunchNotificationPreferences {
+  viewerLaunchNotificationPreferences {
+    reminderEmail
+    reminderInSite
+    liveEmail
+    liveInSite
+    failureEmail
+    failureInSite
+  }
+}
+
+query PublicProduct($id: UUID!) {
+  publicProduct(id: $id) {
+    id
+    name
+    pitch
+    description
+    websiteUrl
+    launchedAt
+    logo {
+      id
+      kind
+      mediaType
+      byteCount
+      url
+    }
+    screenshots {
+      id
+      kind
+      mediaType
+      byteCount
+      url
+    }
+    topics
+  }
+}
+
 query TopicChoices($first: Int! = 20, $query: String) {
   topicChoices(first: $first, query: $query) {
     id

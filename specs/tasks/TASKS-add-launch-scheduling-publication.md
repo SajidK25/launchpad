@@ -759,7 +759,7 @@ Add a reversible launch feature flag and connect launch routes and GraphQL field
 
 ## Task T13: Regenerate launch API and GraphQL contracts
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** M
 > **Priority:** high
@@ -808,7 +808,7 @@ Regenerate OpenAPI, GraphQL schema/operations, and TypeScript types from the com
 - `packages/contracts/operations.graphql`
 - `packages/contracts/src/generated.ts`
 - `packages/contracts/src/graphql.generated.ts`
-- `scripts/quality/contracts.sh` (only if needed to include launch operations in the existing generation/check flow)
+- `scripts/quality/contracts.sh` (generate full launch-enabled contracts and verify launch-disabled root)
 
 **Must NOT modify:**
 - API source schemas/routes (T5, T6, T10)

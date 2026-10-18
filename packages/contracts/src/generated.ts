@@ -312,6 +312,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/products/{product_id}/launch-booking": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Reschedule Booking */
+    put: operations["reschedule_booking_api_v1_me_products__product_id__launch_booking_put"];
+    /** Create Booking */
+    post: operations["create_booking_api_v1_me_products__product_id__launch_booking_post"];
+    /** Cancel Booking */
+    delete: operations["cancel_booking_api_v1_me_products__product_id__launch_booking_delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me/products/{product_id}/submit": {
     parameters: {
       query?: never;
@@ -465,6 +484,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/products/{product_id}/assets/{asset_id}/public": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Public Product Asset */
+    get: operations["get_public_product_asset_api_v1_products__product_id__assets__asset_id__public_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/profiles/{account_id}/photo": {
     parameters: {
       query?: never;
@@ -532,6 +568,57 @@ export interface components {
     HealthStatus: {
       /** Status */
       status: string;
+    };
+    /**
+     * LaunchBookingInput
+     * @description Founder-selected UTC calendar date and expected product version.
+     */
+    LaunchBookingInput: {
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Launch Date
+       * Format: date
+       */
+      launch_date: string;
+    };
+    /**
+     * LaunchBookingResponse
+     * @description Safe booking identity plus the product lifecycle result.
+     */
+    LaunchBookingResponse: {
+      /**
+       * Booking Id
+       * Format: uuid
+       */
+      booking_id: string;
+      /**
+       * Launch At
+       * Format: date-time
+       */
+      launch_at: string;
+      /**
+       * Launch Date
+       * Format: date
+       */
+      launch_date: string;
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
+      /**
+       * Product Status
+       * @enum {string}
+       */
+      product_status: "scheduled" | "approved";
+      /** Product Version */
+      product_version: number;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "scheduled" | "cancelled" | "replaced";
     };
     /**
      * LaunchNotificationPreferenceUpdate
@@ -1615,6 +1702,118 @@ export interface operations {
       };
     };
   };
+  reschedule_booking_api_v1_me_products__product_id__launch_booking_put: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LaunchBookingInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LaunchBookingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_booking_api_v1_me_products__product_id__launch_booking_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LaunchBookingInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LaunchBookingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cancel_booking_api_v1_me_products__product_id__launch_booking_delete: {
+    parameters: {
+      query: {
+        expected_version: number;
+      };
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LaunchBookingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   submit_draft_api_v1_me_products__product_id__submit_post: {
     parameters: {
       query?: never;
@@ -1899,6 +2098,38 @@ export interface operations {
         expires: number;
         signature: string;
       };
+      header?: never;
+      path: {
+        product_id: string;
+        asset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_public_product_asset_api_v1_products__product_id__assets__asset_id__public_get: {
+    parameters: {
+      query?: never;
       header?: never;
       path: {
         product_id: string;

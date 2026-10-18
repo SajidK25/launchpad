@@ -62,6 +62,76 @@
         "title": "HealthStatus",
         "type": "object"
       },
+      "LaunchBookingInput": {
+        "additionalProperties": false,
+        "description": "Founder-selected UTC calendar date and expected product version.",
+        "properties": {
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "launch_date": {
+            "format": "date",
+            "title": "Launch Date",
+            "type": "string"
+          }
+        },
+        "required": ["launch_date", "expected_version"],
+        "title": "LaunchBookingInput",
+        "type": "object"
+      },
+      "LaunchBookingResponse": {
+        "description": "Safe booking identity plus the product lifecycle result.",
+        "properties": {
+          "booking_id": {
+            "format": "uuid",
+            "title": "Booking Id",
+            "type": "string"
+          },
+          "launch_at": {
+            "format": "date-time",
+            "title": "Launch At",
+            "type": "string"
+          },
+          "launch_date": {
+            "format": "date",
+            "title": "Launch Date",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_status": {
+            "enum": ["scheduled", "approved"],
+            "title": "Product Status",
+            "type": "string"
+          },
+          "product_version": {
+            "minimum": 0.0,
+            "title": "Product Version",
+            "type": "integer"
+          },
+          "state": {
+            "enum": ["scheduled", "cancelled", "replaced"],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "booking_id",
+          "product_id",
+          "state",
+          "launch_date",
+          "launch_at",
+          "product_status",
+          "product_version"
+        ],
+        "title": "LaunchBookingResponse",
+        "type": "object"
+      },
       "LaunchNotificationPreferenceUpdate": {
         "additionalProperties": false,
         "description": "Complete strict REST update for all independent launch channels.",
@@ -1825,6 +1895,233 @@
         "summary": "Transfer Asset"
       }
     },
+    "/api/v1/me/products/{product_id}/launch-booking": {
+      "delete": {
+        "operationId": "cancel_booking_api_v1_me_products__product_id__launch_booking_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_version",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Expected Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaunchBookingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Booking"
+      },
+      "post": {
+        "operationId": "create_booking_api_v1_me_products__product_id__launch_booking_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchBookingInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaunchBookingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Booking"
+      },
+      "put": {
+        "operationId": "reschedule_booking_api_v1_me_products__product_id__launch_booking_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchBookingInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaunchBookingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reschedule Booking"
+      }
+    },
     "/api/v1/me/products/{product_id}/submit": {
       "post": {
         "operationId": "submit_draft_api_v1_me_products__product_id__submit_post",
@@ -2353,6 +2650,54 @@
           }
         },
         "summary": "Get Private Product Asset"
+      }
+    },
+    "/api/v1/products/{product_id}/assets/{asset_id}/public": {
+      "get": {
+        "operationId": "get_public_product_asset_api_v1_products__product_id__assets__asset_id__public_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Public Product Asset"
       }
     },
     "/api/v1/profiles/{account_id}/photo": {
