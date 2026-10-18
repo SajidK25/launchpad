@@ -18,6 +18,7 @@ import {
   LaunchRequestError,
   type LaunchBookingPage,
   type LaunchClient,
+  type PublicProduct,
 } from "./client";
 import {
   useBookLaunch,
@@ -25,6 +26,7 @@ import {
   useLaunchBookings,
   useLaunchLiveInvalidation,
   useLaunchPreferences,
+  usePublicProduct,
   useRescheduleLaunch,
   useUpdateLaunchPreferences,
 } from "./useLaunches";
@@ -117,6 +119,184 @@ export function LaunchRoutes({
       productClient={productClient}
       session={founderSession}
     />
+  );
+}
+
+export function PublicLaunchPage({
+  identityClient,
+  productId,
+}: {
+  identityClient: IdentityClient;
+  productId: string;
+}) {
+  const client = useMemo(
+    () => createLaunchClient(undefined, identityClient),
+    [identityClient],
+  );
+  const publicProduct = usePublicProduct(client, productId);
+
+  if (publicProduct.isPending)
+    return (
+      <PublicLaunchStatus
+        title="Loading launch"
+        message="Opening the public product page…"
+      />
+    );
+  const data = publicProduct.data;
+  if (publicProduct.isError || !data)
+    return (
+      <PublicLaunchStatus
+        title="Launch not found"
+        message="This launch is private or unavailable."
+      />
+    );
+
+  return <PublicLaunchDetails product={data} />;
+}
+
+function PublicLaunchDetails({
+  product,
+}: {
+  product: NonNullable<PublicProduct>;
+}) {
+  const launchedDate = new Intl.DateTimeFormat("en", {
+    dateStyle: "long",
+    timeZone: "UTC",
+  }).format(new Date(product.launchedAt));
+
+  return (
+    <main
+      className="launch-shell public-launch-shell"
+      id="public-launch-main"
+      tabIndex={-1}
+    >
+      <div className="launch-workspace">
+        <header className="public-launch-topbar">
+          <a className="launch-brand" href="/">
+            LAUNCHPAD <span>INDEPENDENT PRODUCT LAUNCHES</span>
+          </a>
+          <span className="public-launch-stamp">NOW LIVE ↗</span>
+        </header>
+
+        <article aria-labelledby="public-launch-title">
+          <section className="public-launch-hero">
+            <div className="public-launch-copy">
+              <p className="launch-kicker">
+                LAUNCHED {launchedDate} · 00:00 UTC
+              </p>
+              <h1 id="public-launch-title">{product.name}</h1>
+              <p className="public-launch-pitch">{product.pitch}</p>
+              <a
+                aria-label={`Visit ${product.name} website (opens in a new tab)`}
+                className="launch-button launch-button-yellow public-launch-website"
+                href={product.websiteUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Visit website ↗
+              </a>
+            </div>
+            {product.logo ? (
+              <figure className="public-launch-logo-frame">
+                <img alt={`${product.name} logo`} src={product.logo.url} />
+              </figure>
+            ) : null}
+          </section>
+
+          {product.topics.length > 0 ? (
+            <section
+              aria-label="Product topics"
+              className="public-launch-topics"
+            >
+              {product.topics.map((topic) => (
+                <span className="public-launch-topic" key={topic}>
+                  {topic}
+                </span>
+              ))}
+            </section>
+          ) : null}
+
+          <section
+            aria-labelledby="about-product"
+            className="public-launch-about"
+          >
+            <div>
+              <p className="launch-kicker">THE PRODUCT</p>
+              <h2 id="about-product">A closer look</h2>
+            </div>
+            <p className="public-launch-description">{product.description}</p>
+          </section>
+
+          {product.screenshots.length > 0 ? (
+            <section
+              aria-labelledby="product-gallery"
+              className="public-launch-gallery-section"
+            >
+              <div className="launch-section-heading">
+                <div>
+                  <p className="launch-kicker">IN THE FRAME</p>
+                  <h2 id="product-gallery">Product gallery</h2>
+                </div>
+                <span className="public-launch-count">
+                  {String(product.screenshots.length).padStart(2, "0")} IMAGES
+                </span>
+              </div>
+              <div className="public-launch-gallery">
+                {product.screenshots.map((screenshot, index) => (
+                  <figure className="public-launch-shot" key={screenshot.id}>
+                    <img
+                      alt={`${product.name} screenshot ${index + 1}`}
+                      loading="lazy"
+                      src={screenshot.url}
+                    />
+                    <figcaption>
+                      {String(index + 1).padStart(2, "0")} /{" "}
+                      {String(product.screenshots.length).padStart(2, "0")}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </article>
+
+        <footer className="public-launch-footer">
+          <span>AN OPEN DOOR FOR WHAT’S NEXT.</span>
+          <a href="/">Explore Launchpad ↗</a>
+        </footer>
+      </div>
+    </main>
+  );
+}
+
+function PublicLaunchStatus({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <main className="launch-shell public-launch-shell">
+      <div className="launch-workspace">
+        <header className="public-launch-topbar">
+          <a className="launch-brand" href="/">
+            LAUNCHPAD <span>INDEPENDENT PRODUCT LAUNCHES</span>
+          </a>
+        </header>
+        <section
+          aria-labelledby="public-launch-status-title"
+          className="launch-panel public-launch-status"
+        >
+          <p className="launch-kicker">PUBLIC PRODUCT PAGE</p>
+          <h1 id="public-launch-status-title">{title}</h1>
+          <p role="status">{message}</p>
+          <a className="launch-button launch-button-dark" href="/">
+            Back to Launchpad
+          </a>
+        </section>
+      </div>
+    </main>
   );
 }
 

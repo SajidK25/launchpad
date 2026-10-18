@@ -1045,7 +1045,7 @@ Give founders a clear place to book, reschedule, cancel, and monitor launch outc
 
 ## Task T16: Build the anonymous public launch page
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** M
 > **Priority:** high

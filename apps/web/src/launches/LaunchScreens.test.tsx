@@ -9,11 +9,12 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IdentityClient } from "../identity/client";
-import { LaunchRoutes } from "./LaunchScreens";
+import { LaunchRoutes, PublicLaunchPage } from "./LaunchScreens";
 
 const mocks = vi.hoisted(() => ({
   session: null as unknown,
   products: null as unknown,
+  publicProduct: null as unknown,
   bookings: null as unknown,
   preferences: null as unknown,
   bookMutation: { isPending: false, mutateAsync: vi.fn() },
@@ -42,6 +43,7 @@ vi.mock("./useLaunches", () => ({
   useLaunchBookings: () => mocks.bookings,
   useLaunchLiveInvalidation: vi.fn(),
   useLaunchPreferences: () => mocks.preferences,
+  usePublicProduct: () => mocks.publicProduct,
   useRescheduleLaunch: () => mocks.rescheduleMutation,
   useUpdateLaunchPreferences: () => mocks.preferenceMutation,
 }));
@@ -83,6 +85,44 @@ function renderLaunch() {
   return render(<LaunchRoutes identityClient={{} as IdentityClient} />);
 }
 
+function renderPublicLaunch(productId = "product-1") {
+  return render(
+    <PublicLaunchPage
+      identityClient={{} as IdentityClient}
+      productId={productId}
+    />,
+  );
+}
+
+function publicProduct(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "product-1",
+    name: "Launchpad demo",
+    pitch: "A clear launch story",
+    description: "A detailed description of the product for visitors.",
+    websiteUrl: "https://example.com",
+    launchedAt: "2026-10-16T00:00:00Z",
+    logo: {
+      id: "logo-1",
+      kind: "logo",
+      mediaType: "image/png",
+      byteCount: 1024,
+      url: "/public/logo.png",
+    },
+    screenshots: [
+      {
+        id: "shot-1",
+        kind: "screenshot",
+        mediaType: "image/png",
+        byteCount: 2048,
+        url: "/public/screen.png",
+      },
+    ],
+    topics: ["Developer tools", "Productivity"],
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   mocks.session = { data: memberSession(), isPending: false, isError: false };
   mocks.products = {
@@ -90,6 +130,7 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   };
+  mocks.publicProduct = { data: undefined, isPending: false, isError: false };
   mocks.bookings = {
     data: { items: [], nextCursor: null },
     isPending: false,
@@ -393,5 +434,99 @@ describe("founder launch dashboard", () => {
       "Sign in with a founder account",
     );
     expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
+  });
+});
+
+describe("anonymous public launch page", () => {
+  it("shows the launched public fields, media, date, and accessible website link", () => {
+    mocks.publicProduct = {
+      data: publicProduct(),
+      isPending: false,
+      isError: false,
+    };
+    renderPublicLaunch();
+
+    expect(
+      screen.getByRole("heading", { name: "Launchpad demo" }),
+    ).toBeTruthy();
+    expect(screen.getByText("A clear launch story")).toBeTruthy();
+    expect(
+      screen.getByText("A detailed description of the product for visitors."),
+    ).toBeTruthy();
+    expect(screen.getByText(/October 16, 2026 · 00:00 UTC/)).toBeTruthy();
+    expect(screen.getByText("Developer tools")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("img", {
+          name: "Launchpad demo logo",
+        }) as HTMLImageElement
+      ).src,
+    ).toContain("/public/logo.png");
+    expect(
+      screen.getByRole("img", { name: "Launchpad demo screenshot 1" }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", {
+          name: "Visit Launchpad demo website (opens in a new tab)",
+        })
+        .getAttribute("href"),
+    ).toBe("https://example.com");
+    expect(screen.queryByText(/review|founder|booking|account/i)).toBeNull();
+  });
+
+  it("shows a generic safe state for unpublished, missing, and unavailable products", () => {
+    mocks.publicProduct = { data: null, isPending: false, isError: false };
+    const view = renderPublicLaunch("approved-product-id");
+    expect(
+      screen.getByRole("heading", { name: "Launch not found" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe(
+      "This launch is private or unavailable.",
+    );
+    expect(screen.queryByText("Launchpad demo")).toBeNull();
+
+    mocks.publicProduct = {
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: new Error("private review feedback must not leak"),
+    };
+    view.rerender(
+      <PublicLaunchPage
+        identityClient={{} as IdentityClient}
+        productId="missing-product-id"
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toBe(
+      "This launch is private or unavailable.",
+    );
+    expect(screen.queryByText(/private review feedback/)).toBeNull();
+  });
+
+  it("announces loading and keeps keyboard focusable public links", () => {
+    mocks.publicProduct = { data: undefined, isPending: true, isError: false };
+    const view = renderPublicLaunch();
+    expect(screen.getByRole("status").textContent).toBe(
+      "Opening the public product page…",
+    );
+
+    mocks.publicProduct = {
+      data: publicProduct({ logo: null, screenshots: [] }),
+      isPending: false,
+      isError: false,
+    };
+    view.rerender(
+      <PublicLaunchPage
+        identityClient={{} as IdentityClient}
+        productId="product-1"
+      />,
+    );
+    const websiteLink = screen.getByRole("link", {
+      name: "Visit Launchpad demo website (opens in a new tab)",
+    });
+    websiteLink.focus();
+    expect(document.activeElement).toBe(websiteLink);
+    expect(screen.queryByRole("img")).toBeNull();
   });
 });
