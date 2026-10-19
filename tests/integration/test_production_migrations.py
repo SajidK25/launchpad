@@ -154,8 +154,17 @@ def test_launch_migration_preserves_review_notice_and_allows_only_scheduled_chan
                 )
 
             await database.prepare()
-            assert await database.current_revision() == "0012_launch_schedule"
+            assert await database.current_revision() == "0013_launch_history_index"
             async with database.engine.begin() as connection:
+                history_index = await connection.scalar(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = current_schema() "
+                        "AND tablename = 'launch_bookings' "
+                        "AND indexname = 'ix_launch_bookings_founder_created'"
+                    )
+                )
+                assert history_index == "ix_launch_bookings_founder_created"
                 old_notice = (
                     await connection.execute(
                         text(
