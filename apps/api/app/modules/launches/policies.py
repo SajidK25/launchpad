@@ -21,6 +21,10 @@ class LaunchConflictError(LaunchError):
     """The request conflicts with current launch state or capacity."""
 
 
+class LaunchValidationError(LaunchError):
+    """The requested launch input is outside the supported business bounds."""
+
+
 def utc_now(value: datetime) -> datetime:
     """Require an aware clock value and normalize it to UTC."""
 
@@ -34,7 +38,7 @@ def require_eligible_date(value: date, *, now: datetime) -> datetime:
 
     current_date = utc_now(now).date()
     if value <= current_date or value > current_date + timedelta(days=90):
-        raise LaunchConflictError("launch date must be tomorrow through 90 days ahead (UTC)")
+        raise LaunchValidationError("launch date must be tomorrow through 90 days ahead (UTC)")
     return datetime.combine(value, datetime.min.time(), tzinfo=UTC)
 
 

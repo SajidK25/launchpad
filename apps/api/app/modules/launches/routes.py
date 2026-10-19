@@ -25,6 +25,31 @@ from app.shared.security.csrf import RequestSecurityError, require_csrf, validat
 from app.shared.security.rate_limit import RateLimiter, RateLimitExceeded, RateLimitUnavailable
 
 
+def map_launch_error(error: Exception) -> HTTPException:
+    """Map typed launch domain failures to stable HTTP responses."""
+
+    from app.modules.launches.policies import (
+        LaunchConflictError,
+        LaunchForbiddenError,
+        LaunchNotFoundError,
+        LaunchValidationError,
+    )
+
+    if isinstance(error, LaunchForbiddenError):
+        return HTTPException(status_code=403, detail="launch access is forbidden")
+    if isinstance(error, LaunchNotFoundError):
+        return HTTPException(status_code=404, detail="launch product unavailable")
+    if isinstance(error, LaunchValidationError):
+        return HTTPException(status_code=422, detail="launch request is invalid")
+    if isinstance(error, (LaunchConflictError, ValueError)):
+        return HTTPException(status_code=409, detail="launch request conflicts with current state")
+    if isinstance(error, RateLimitExceeded):
+        return HTTPException(status_code=429, detail="try again later")
+    if isinstance(error, (SQLAlchemyError, RedisError, RateLimitUnavailable, UnauthenticatedError)):
+        return HTTPException(status_code=503, detail="service unavailable")
+    return HTTPException(status_code=400, detail="request could not be completed")
+
+
 def router(
     *,
     settings: Settings,
@@ -82,29 +107,6 @@ def router(
             address_key=f"launch:{action}:account:{member.account_id.hex}",
             source_key=f"launch:{action}:source:{source}",
         )
-
-    def map_error(error: Exception) -> HTTPException:
-        from app.modules.launches.policies import (
-            LaunchConflictError,
-            LaunchForbiddenError,
-            LaunchNotFoundError,
-        )
-
-        if isinstance(error, LaunchForbiddenError):
-            return HTTPException(status_code=403, detail="launch access is forbidden")
-        if isinstance(error, LaunchNotFoundError):
-            return HTTPException(status_code=404, detail="launch product unavailable")
-        if isinstance(error, (LaunchConflictError, ValueError)):
-            return HTTPException(
-                status_code=409, detail="launch request conflicts with current state"
-            )
-        if isinstance(error, RateLimitExceeded):
-            return HTTPException(status_code=429, detail="try again later")
-        if isinstance(
-            error, (SQLAlchemyError, RedisError, RateLimitUnavailable, UnauthenticatedError)
-        ):
-            return HTTPException(status_code=503, detail="service unavailable")
-        return HTTPException(status_code=400, detail="request could not be completed")
 
     async def authorize_write(
         request: Request, session: AsyncSession, csrf_token: str | None
@@ -165,7 +167,7 @@ def router(
                     idempotency_key=idempotency_key,
                 )
             except Exception as error:
-                raise map_error(error) from error
+                raise map_launch_error(error) from error
         return response(
             booking,
             product_status="scheduled",
@@ -196,7 +198,7 @@ def router(
                     idempotency_key=idempotency_key,
                 )
             except Exception as error:
-                raise map_error(error) from error
+                raise map_launch_error(error) from error
         return response(
             booking,
             product_status="scheduled",
@@ -226,7 +228,7 @@ def router(
                     idempotency_key=idempotency_key,
                 )
             except Exception as error:
-                raise map_error(error) from error
+                raise map_launch_error(error) from error
         return response(
             booking,
             product_status="approved",

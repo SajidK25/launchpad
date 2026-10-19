@@ -399,7 +399,7 @@ function FounderLaunchDashboard({
             <span>UTC CUTOFF</span>
             <strong>00:00</strong>
             <span>DAILY CAPACITY</span>
-            <strong>ONE PER FOUNDER</strong>
+            <strong>TWO PER FOUNDER</strong>
           </div>
         </section>
 

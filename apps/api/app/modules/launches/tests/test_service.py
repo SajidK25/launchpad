@@ -12,7 +12,11 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.modules.auth.staff import AccountState
-from app.modules.launches.policies import LaunchConflictError, LaunchForbiddenError
+from app.modules.launches.policies import (
+    LaunchConflictError,
+    LaunchForbiddenError,
+    LaunchValidationError,
+)
 from app.modules.launches.service import LaunchBookingService
 
 
@@ -198,7 +202,7 @@ def test_booking_rejects_dates_outside_utc_window_without_mutation(offset: int) 
             repository=cast(Any, repository),
             clock=lambda: now,
         )
-        with pytest.raises(LaunchConflictError):
+        with pytest.raises(LaunchValidationError):
             await service.book(
                 cast(Any, _Session()),
                 actor_id=accounts.account_id,

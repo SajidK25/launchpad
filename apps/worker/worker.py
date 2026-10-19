@@ -194,23 +194,39 @@ class LaunchEventWorker:
         product_id = _event_uuid(payload, "product_id")
         if booking_id != aggregate_id:
             raise PermanentEventError("launch event aggregate does not match booking")
-        now = self.clock().astimezone(UTC)
-        booking = await self.bookings.booking_by_id(session, booking_id=booking_id, lock=True)
-        if booking is None or booking.product_id != product_id:
+        # Take an unlocked snapshot only to discover the founder/product. All
+        # contending launch/review paths then lock account -> product -> booking.
+        snapshot = await self.bookings.booking_by_id(session, booking_id=booking_id)
+        if snapshot is None or snapshot.product_id != product_id:
             raise PermanentEventError("launch event does not identify a booking")
+        if snapshot.state != "scheduled":
+            return
+
+        account = await self.member_access.current_account(session, snapshot.founder_id, lock=True)
+        product = await self.products.get_scheduled_product(
+            session,
+            founder_id=snapshot.founder_id,
+            product_id=snapshot.product_id,
+            lock=True,
+        )
+        booking = await self.bookings.booking_by_id(session, booking_id=booking_id, lock=True)
+        if (
+            booking is None
+            or booking.product_id != snapshot.product_id
+            or booking.founder_id != snapshot.founder_id
+        ):
+            raise PermanentEventError("launch booking changed identity")
         if booking.state != "scheduled":
             return
+        if product is None:
+            # For example, review may have returned the product for changes
+            # while this worker waited for its product lock.
+            return
+        now = self.clock().astimezone(UTC)
 
         if event_type == "launch.reminder_requested.v1":
             if now >= booking.launch_at.astimezone(UTC):
                 return
-            product = await self.products.get_scheduled_product(
-                session,
-                founder_id=booking.founder_id,
-                product_id=booking.product_id,
-                lock=True,
-            )
-            account = await self.member_access.current_account(session, booking.founder_id)
             if product is None or account is None or account.suspended_at is not None:
                 return
             await self.notifications.record_launch_notice(

@@ -29,6 +29,7 @@ def test_launch_booking_mapping_has_retained_identity_and_hot_path_indexes() -> 
     assert {
         "uq_launch_bookings_active_product",
         "ix_launch_bookings_founder_date_active",
+        "ix_launch_bookings_founder_created",
         "ix_launch_bookings_due",
         "uq_launch_bookings_founder_idempotency",
         "uq_launch_bookings_founder_close_idempotency",

@@ -68,6 +68,12 @@ class LaunchBooking(LaunchBase):
             postgresql_where=text("state = 'scheduled'"),
         ),
         Index(
+            "ix_launch_bookings_founder_created",
+            "founder_id",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        Index(
             "ix_launch_bookings_due",
             "state",
             "launch_at",

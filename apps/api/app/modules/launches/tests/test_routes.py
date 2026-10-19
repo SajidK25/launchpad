@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
 from redis import Redis
 
-from app.modules.launches.routes import router
+from app.modules.launches.policies import LaunchConflictError, LaunchValidationError
+from app.modules.launches.routes import map_launch_error, router
 from app.modules.launches.schemas import LaunchBookingInput
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
@@ -104,3 +105,8 @@ def test_launch_mutation_validates_body_and_required_idempotency_header() -> Non
         pass
     else:
         raise AssertionError("extra launch request fields must be rejected")
+
+
+def test_date_window_errors_are_unprocessable_but_state_conflicts_remain_conflicts() -> None:
+    assert map_launch_error(LaunchValidationError("outside window")).status_code == 422
+    assert map_launch_error(LaunchConflictError("full day")).status_code == 409

@@ -178,6 +178,7 @@ describe("founder launch dashboard", () => {
     ).toBeTruthy();
     expect(screen.getAllByRole("checkbox")).toHaveLength(6);
     expect(screen.getByRole("link", { name: "Your products" })).toBeTruthy();
+    expect(screen.getByText("TWO PER FOUNDER")).toBeTruthy();
   });
 
   it("books an approved product with its current version and UTC date", async () => {
