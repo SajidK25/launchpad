@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
@@ -28,6 +29,9 @@ from app.shared.events.outbox import OutboxRepository
 @pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="requires check PostgreSQL")
 def test_cancel_cutoff_and_failed_reschedule_preserve_booking_state() -> None:
     async def verify() -> None:
+        def clock_at(value: datetime) -> Callable[[], datetime]:
+            return lambda: value
+
         now = datetime(2026, 10, 17, 12, tzinfo=UTC)
         founder_id = uuid4()
         product_ids = [uuid4() for _ in range(5)]
@@ -150,7 +154,7 @@ def test_cancel_cutoff_and_failed_reschedule_preserve_booking_state() -> None:
                     product_access=products,
                     outbox_repository=outbox,
                     payload_codec=codec,
-                    clock=lambda cutoff_time=cutoff_time: cutoff_time,
+                    clock=clock_at(cutoff_time),
                 )
                 async with sessions() as session, session.begin():
                     with pytest.raises(LaunchConflictError):
