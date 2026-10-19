@@ -191,6 +191,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/launch-notification-preferences": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Update Launch Preferences */
+    put: operations["update_launch_preferences_api_v1_me_launch_notification_preferences_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me/notifications/{notification_id}/read": {
     parameters: {
       query?: never;
@@ -290,6 +307,25 @@ export interface paths {
     put: operations["transfer_asset_api_v1_me_products__product_id__assets__asset_id__content_put"];
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/me/products/{product_id}/launch-booking": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Reschedule Booking */
+    put: operations["reschedule_booking_api_v1_me_products__product_id__launch_booking_put"];
+    /** Create Booking */
+    post: operations["create_booking_api_v1_me_products__product_id__launch_booking_post"];
+    /** Cancel Booking */
+    delete: operations["cancel_booking_api_v1_me_products__product_id__launch_booking_delete"];
     options?: never;
     head?: never;
     patch?: never;
@@ -448,6 +484,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/products/{product_id}/assets/{asset_id}/public": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Public Product Asset */
+    get: operations["get_public_product_asset_api_v1_products__product_id__assets__asset_id__public_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/profiles/{account_id}/photo": {
     parameters: {
       query?: never;
@@ -516,6 +569,111 @@ export interface components {
       /** Status */
       status: string;
     };
+    /**
+     * LaunchBookingInput
+     * @description Founder-selected UTC calendar date and expected product version.
+     */
+    LaunchBookingInput: {
+      /** Expected Version */
+      expected_version: number;
+      /**
+       * Launch Date
+       * Format: date
+       */
+      launch_date: string;
+    };
+    /**
+     * LaunchBookingResponse
+     * @description Safe booking identity plus the product lifecycle result.
+     */
+    LaunchBookingResponse: {
+      /**
+       * Booking Id
+       * Format: uuid
+       */
+      booking_id: string;
+      /**
+       * Launch At
+       * Format: date-time
+       */
+      launch_at: string;
+      /**
+       * Launch Date
+       * Format: date
+       */
+      launch_date: string;
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
+      /**
+       * Product Status
+       * @enum {string}
+       */
+      product_status: "scheduled" | "approved";
+      /** Product Version */
+      product_version: number;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "scheduled" | "cancelled" | "replaced";
+    };
+    /**
+     * LaunchNotificationPreferenceUpdate
+     * @description Complete strict REST update for all independent launch channels.
+     */
+    LaunchNotificationPreferenceUpdate: {
+      /** Failure Email */
+      failure_email: boolean;
+      /** Failure In Site */
+      failure_in_site: boolean;
+      /** Live Email */
+      live_email: boolean;
+      /** Live In Site */
+      live_in_site: boolean;
+      /** Reminder Email */
+      reminder_email: boolean;
+      /** Reminder In Site */
+      reminder_in_site: boolean;
+    };
+    /**
+     * LaunchNotificationPreferences
+     * @description Six independent default-on launch notice channels.
+     */
+    LaunchNotificationPreferences: {
+      /**
+       * Failure Email
+       * @default true
+       */
+      failure_email: boolean;
+      /**
+       * Failure In Site
+       * @default true
+       */
+      failure_in_site: boolean;
+      /**
+       * Live Email
+       * @default true
+       */
+      live_email: boolean;
+      /**
+       * Live In Site
+       * @default true
+       */
+      live_in_site: boolean;
+      /**
+       * Reminder Email
+       * @default true
+       */
+      reminder_email: boolean;
+      /**
+       * Reminder In Site
+       * @default true
+       */
+      reminder_in_site: boolean;
+    };
     /** LoginResponse */
     LoginResponse: {
       /**
@@ -554,7 +712,13 @@ export interface components {
        * Kind
        * @enum {string}
        */
-      kind: "review_approved" | "review_rejected" | "review_changes_requested";
+      kind:
+        | "review_approved"
+        | "review_rejected"
+        | "review_changes_requested"
+        | "launch_reminder"
+        | "launch_live"
+        | "launch_failed";
       /**
        * Product Id
        * Format: uuid
@@ -1229,6 +1393,41 @@ export interface operations {
       };
     };
   };
+  update_launch_preferences_api_v1_me_launch_notification_preferences_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LaunchNotificationPreferenceUpdate"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LaunchNotificationPreferences"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   mark_notification_read_api_v1_me_notifications__notification_id__read_put: {
     parameters: {
       query?: never;
@@ -1491,6 +1690,118 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reschedule_booking_api_v1_me_products__product_id__launch_booking_put: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LaunchBookingInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LaunchBookingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_booking_api_v1_me_products__product_id__launch_booking_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LaunchBookingInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LaunchBookingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cancel_booking_api_v1_me_products__product_id__launch_booking_delete: {
+    parameters: {
+      query: {
+        expected_version: number;
+      };
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LaunchBookingResponse"];
+        };
       };
       /** @description Validation Error */
       422: {
@@ -1787,6 +2098,38 @@ export interface operations {
         expires: number;
         signature: string;
       };
+      header?: never;
+      path: {
+        product_id: string;
+        asset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_public_product_asset_api_v1_products__product_id__assets__asset_id__public_get: {
+    parameters: {
+      query?: never;
       header?: never;
       path: {
         product_id: string;

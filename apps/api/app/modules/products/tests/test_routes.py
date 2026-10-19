@@ -58,6 +58,7 @@ def test_product_routes_are_explicit_and_require_trusted_origin() -> None:
         "/api/v1/me/products/{product_id}/assets/{asset_id}/content",
         "/api/v1/me/products/{product_id}/assets/{asset_id}/complete",
         "/api/v1/products/{product_id}/assets/{asset_id}",
+        "/api/v1/products/{product_id}/assets/{asset_id}/public",
     }
     response = TestClient(app).post(
         "/api/v1/me/products/00000000-0000-0000-0000-000000000001/assets",

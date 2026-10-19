@@ -56,6 +56,28 @@ class OutboxRepository:
         await session.flush()
         return event_id
 
+    async def add_once(self, session: AsyncSession, event: OutboxEvent) -> UUID:
+        """Insert an event with a caller-stable ID, ignoring an already materialized intent."""
+
+        event_id = event.id or uuid7()
+        await session.execute(
+            insert(OutboxMessage)
+            .values(
+                id=event_id,
+                event_type=event.event_type,
+                aggregate_id=event.aggregate_id,
+                encrypted_payload=event.encrypted_payload,
+                key_id=event.key_id,
+                available_at=_utc(event.available_at),
+                attempts=0,
+                claimed_at=None,
+                completed_at=None,
+                state="pending",
+            )
+            .on_conflict_do_nothing(index_elements=[OutboxMessage.id])
+        )
+        return event_id
+
     async def claim_due(
         self,
         session: AsyncSession,

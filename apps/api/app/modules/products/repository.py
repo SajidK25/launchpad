@@ -334,6 +334,25 @@ class ProductRepository:
             statement = statement.with_for_update()
         return cast(ProductAsset | None, await session.scalar(statement))
 
+    async def get_launched_attached_asset(
+        self, session: AsyncSession, *, product_id: UUID, asset_id: UUID
+    ) -> tuple[Product, ProductAsset] | None:
+        """Resolve media only while the product is launched and the asset is attached and clean."""
+
+        row = await session.execute(
+            select(Product, ProductAsset)
+            .join(ProductAsset, ProductAsset.product_id == Product.id)
+            .where(
+                Product.id == product_id,
+                Product.status == "launched",
+                ProductAsset.id == asset_id,
+                ProductAsset.state == "clean",
+                ProductAsset.attached_at.is_not(None),
+                ProductAsset.clean_key.is_not(None),
+            )
+        )
+        return row.tuples().one_or_none()
+
     async def get_assets(
         self,
         session: AsyncSession,
@@ -480,6 +499,63 @@ class ProductRepository:
         if lock:
             statement = statement.with_for_update()
         return cast(Product | None, await session.scalar(statement))
+
+    async def get_public_product(
+        self, session: AsyncSession, *, product_id: UUID
+    ) -> Product | None:
+        """Return the minimum product mapping only after publication."""
+
+        return cast(
+            Product | None,
+            await session.scalar(
+                select(Product)
+                .where(Product.id == product_id, Product.status == "launched")
+                .execution_options(populate_existing=True)
+            ),
+        )
+
+    async def transition_launch_state(
+        self,
+        session: AsyncSession,
+        *,
+        product: Product,
+        expected_version: int,
+        from_status: str,
+        to_status: str,
+        now: datetime,
+        launched_at: datetime | None = None,
+        failure_reason: str | None = None,
+        content: ProductContentInput | None = None,
+        website_key: str | None = None,
+    ) -> Product:
+        """Apply one optimistic launch lifecycle transition atomically."""
+
+        values: dict[str, object] = {
+            "status": to_status,
+            "version": Product.version + 1,
+            "updated_at": now,
+            "launched_at": launched_at,
+            "launch_failure_reason": failure_reason,
+        }
+        if content is not None:
+            values.update(description=content.description, website_url=content.website_url)
+            values["website_key"] = website_key
+        statement = (
+            update(Product)
+            .where(
+                Product.id == product.id,
+                Product.founder_id == product.founder_id,
+                Product.status == from_status,
+                Product.version == expected_version,
+            )
+            .values(**values)
+            .returning(Product)
+            .execution_options(populate_existing=True)
+        )
+        saved = (await session.execute(statement)).scalar_one_or_none()
+        if saved is None:
+            raise ProductConflictError("product changed; reload and retry")
+        return saved
 
     async def get_pending_submission(
         self, session: AsyncSession, *, product_id: UUID, lock: bool = False

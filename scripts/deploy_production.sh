@@ -254,6 +254,7 @@ compose=("${compose_base[@]}" --env-file "$candidate_tmp" --profile ops)
 previous_env="${LAUNCHPAD_PRODUCTION_RELEASE_ENV:-$state_dir/current-release.env}"
 previous_json="$state_dir/current-release.json"
 previous_available=0
+initial_release_resume=0
 previous_commit=""
 previous_schema=""
 previous_api=""
@@ -291,7 +292,7 @@ for volume_spec in "launchpad-production-postgres:postgres_data" "launchpad-prod
         [[ -z "$existing_volume" ]] || fail "An existing production volume could not be verified safely."
     fi
 done
-for network_spec in "${project_name}_ingress:ingress" "${project_name}_backend:backend"; do
+for network_spec in "${project_name}_ingress:ingress" "${project_name}_backend:backend" "${project_name}_host-publish:host-publish"; do
     network_name="${network_spec%%:*}"
     logical_name="${network_spec#*:}"
     if network_labels="$(docker network inspect --format '{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "com.docker.compose.network" }}' "$network_name" 2>/dev/null)"; then
@@ -346,10 +347,46 @@ if (( previous_available )); then
     (( database_has_schema )) || fail "Database schema is missing despite an active release."
     [[ "$database_schema" == "$previous_schema" ]] || fail "Database schema does not match the active release; refusing deployment."
 elif (( database_has_schema )); then
-    fail "Database already has a schema but no previous release is recorded; refusing deployment."
+    if [[ "$database_schema" == "$schema_revision" && -f "$state_dir/maintenance" && ! -L "$state_dir/maintenance" && -f "$state_file" && ! -L "$state_file" ]] && python3 - "$state_file" "$schema_revision" <<'PY'
+import json
+import re
+import sys
+
+path, expected_schema = sys.argv[1:]
+try:
+    with open(path, encoding="utf-8") as source:
+        record = json.load(source)
+    commit = record["commit"]
+    release_id = record["release_id"]
+    run_id = record["workflow_run_id"]
+    attempt = record["workflow_run_attempt"]
+    valid = (
+        record.get("status") == "failed"
+        and record.get("stage") == "maintenance_recovery_required"
+        and record.get("failure_reason") == "Local or public readiness check failed before the deadline."
+        and record.get("schema_revision") == expected_schema
+        and isinstance(run_id, int)
+        and run_id > 0
+        and isinstance(attempt, int)
+        and attempt > 0
+        and isinstance(commit, str)
+        and re.fullmatch(r"[0-9a-f]{40}", commit)
+        and release_id == f"{run_id}-{attempt}-{commit}"
+    )
+except (OSError, UnicodeError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+    valid = False
+if not valid:
+    raise SystemExit(1)
+PY
+    then
+        initial_release_resume=1
+        printf '[deploy] resuming interrupted initial release at existing schema=%s\n' "$database_schema"
+    else
+        fail "Database already has a schema but no recoverable initial release is recorded; refusing deployment."
+    fi
 fi
 
-if (( database_has_schema )); then
+if (( database_has_schema && ! initial_release_resume )); then
     stage="backing_up"
     backup_env_file="${LAUNCHPAD_BACKUP_DATABASE_ENV_FILE:-/etc/launchpad/backup-database.env}"
     backup_script="${LAUNCHPAD_BACKUP_SCRIPT:-/srv/launchpad/bin/backup_production.sh}"
@@ -456,9 +493,13 @@ readiness_checks() {
 stage="stopping_writers"
 "${compose[@]}" stop api worker scheduler || { rollback_or_leave "Could not stop application writers." || true; fail "$failure_reason"; }
 stage="migrating"
-if ! "${compose[@]}" run --rm --no-deps migrate; then
-    rollback_or_leave "Database migration failed."
-    fail "$failure_reason"
+if (( initial_release_resume )); then
+    printf '[deploy] skipping migration; database is already at the verified interrupted release schema\n'
+else
+    if ! "${compose[@]}" run --rm --no-deps migrate; then
+        rollback_or_leave "Database migration failed."
+        fail "$failure_reason"
+    fi
 fi
 stage="starting_services"
 if ! "${compose[@]}" up --detach --wait --wait-timeout "$health_timeout" web api worker scheduler; then

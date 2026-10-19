@@ -10,9 +10,40 @@ type ApprovedReviewPage {
 }
 
 """
+Date (isoformat)
+"""
+scalar Date
+
+"""
 Date with time (isoformat)
 """
 scalar DateTime
+
+type LaunchBookingEntry {
+  id: UUID!
+  productId: UUID!
+  state: String!
+  productStatus: String!
+  launchDate: Date!
+  launchAt: DateTime!
+  failureReason: String
+  createdAt: DateTime!
+  closedAt: DateTime
+}
+
+type LaunchBookingPage {
+  items: [LaunchBookingEntry!]!
+  nextCursor: String
+}
+
+type LaunchNotificationPreferences {
+  reminderEmail: Boolean!
+  reminderInSite: Boolean!
+  liveEmail: Boolean!
+  liveInSite: Boolean!
+  failureEmail: Boolean!
+  failureInSite: Boolean!
+}
 
 type NotificationEntry {
   id: UUID!
@@ -73,6 +104,26 @@ type ProductTopic {
   position: Int!
 }
 
+type PublicProduct {
+  id: UUID!
+  name: String!
+  pitch: String!
+  description: String!
+  websiteUrl: String!
+  launchedAt: DateTime!
+  logo: PublicProductAsset
+  screenshots: [PublicProductAsset!]!
+  topics: [String!]!
+}
+
+type PublicProductAsset {
+  id: UUID!
+  kind: String!
+  mediaType: String!
+  byteCount: Int!
+  url: String!
+}
+
 type PublicProfile {
   accountId: UUID!
   displayName: String!
@@ -90,10 +141,16 @@ type Query {
   reviewProduct(id: UUID!): ReviewDetail
   approvedReviews(first: Int! = 20, after: String = null): ApprovedReviewPage!
   topicChoices(first: Int! = 20, query: String = null): [TopicChoice!]!
+  publicProduct(id: UUID!): PublicProduct
   viewerNotificationInbox(
     first: Int! = 20
     after: String = null
   ): NotificationInbox!
+  viewerLaunchBookings(
+    first: Int! = 20
+    after: String = null
+  ): LaunchBookingPage!
+  viewerLaunchNotificationPreferences: LaunchNotificationPreferences!
 }
 
 type ReviewDetail {

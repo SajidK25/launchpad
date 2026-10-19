@@ -478,6 +478,7 @@ def router(
             payload_codec=codec,
         ),
         include_products=settings.products_enabled,
+        include_launches=settings.launches_enabled,
     )
     return routes, graphql_routes
 

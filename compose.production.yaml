@@ -64,6 +64,7 @@ services:
       - ${LAUNCHPAD_STATE_DIR:-/srv/launchpad/state}:/run/launchpad/state:ro
     networks:
       - ingress
+      - host-publish
     restart: unless-stopped
     logging: *bounded-logging
     healthcheck:
@@ -85,6 +86,7 @@ services:
       - /etc/launchpad/api.env
     environment:
       LAUNCHPAD_ENVIRONMENT: production
+      LAUNCHPAD_LAUNCHES_ENABLED: ${LAUNCHPAD_LAUNCHES_ENABLED:-false}
     command:
       - python
       - -c
@@ -113,6 +115,7 @@ services:
     environment:
       LAUNCHPAD_ENVIRONMENT: production
       PYTHONPATH: /workspace/apps/api
+      LAUNCHPAD_WORKER_CONCURRENCY: ${LAUNCHPAD_WORKER_CONCURRENCY:-16}
     command: ["python", "apps/worker/worker.py"]
     networks:
       - backend
@@ -173,6 +176,8 @@ services:
 networks:
   ingress:
     internal: true
+  host-publish:
+    name: launchpad-production_host-publish
   backend:
 
 volumes:

@@ -120,7 +120,13 @@ def deploy_environment(tmp_path: Path) -> dict[str, str]:
                 )
                 print(f"launchpad-production|{logical}")
             elif "network" in args and "inspect" in args:
-                logical = "ingress" if "_ingress" in args[-1] else "backend"
+                logical = (
+                    "ingress"
+                    if "_ingress" in args[-1]
+                    else "host-publish"
+                    if "_host-publish" in args[-1]
+                    else "backend"
+                )
                 print(f"launchpad-production|{logical}")
             elif "ps" in args:
                 if os.getenv("FAKE_FOREIGN_PROJECT_SERVICE"):

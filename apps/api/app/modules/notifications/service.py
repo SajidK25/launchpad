@@ -5,16 +5,21 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Protocol, cast
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
 
 from app.modules.auth.staff import AccountState
-from app.modules.notifications.models import Notification
+from app.modules.notifications.models import LaunchNotificationPreference, Notification
 from app.modules.notifications.policies import review_notification_kind
 from app.modules.notifications.repository import NotificationRepository
-from app.modules.notifications.schemas import NotificationInbox, NotificationItem, NotificationKind
+from app.modules.notifications.schemas import (
+    LAUNCH_PREFERENCE_FIELDS,
+    NotificationInbox,
+    NotificationItem,
+    NotificationKind,
+)
 from app.shared.events.outbox import OutboxEvent, OutboxRepository
 
 
@@ -23,6 +28,14 @@ class ReviewDecision(Protocol):
 
     id: UUID
     outcome: str
+
+
+class LaunchNoticeBooking(Protocol):
+    """Minimum durable booking identity needed to create a launch inbox notice."""
+
+    id: UUID
+    founder_id: UUID
+    product_id: UUID
 
 
 class NotificationMemberAccess(Protocol):
@@ -63,8 +76,37 @@ class NotificationRepositoryAccess(Protocol):
     ) -> Notification | None: ...
 
 
+class NotificationPreferenceRepositoryAccess(Protocol):
+    async def find_launch_preferences(
+        self, session: AsyncSession, *, account_id: UUID
+    ) -> LaunchNotificationPreference | None: ...
+
+    async def save_launch_preferences(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: UUID,
+        values: dict[str, bool],
+        updated_at: datetime,
+    ) -> dict[str, bool]: ...
+
+
+class LaunchNoticeRepositoryAccess(Protocol):
+    async def find_launch_notification(
+        self, session: AsyncSession, *, booking_id: UUID, kind: str
+    ) -> Notification | None: ...
+
+    async def add_launch_notification(
+        self, session: AsyncSession, notification: Notification
+    ) -> tuple[Notification, bool]: ...
+
+
 class NotificationOutboxAccess(Protocol):
     async def add(self, session: AsyncSession, event: OutboxEvent) -> UUID: ...
+
+
+class IdempotentNotificationOutboxAccess(Protocol):
+    async def add_once(self, session: AsyncSession, event: OutboxEvent) -> UUID: ...
 
 
 class NotificationPayloadCodec(Protocol):
@@ -94,13 +136,19 @@ class NotificationService:
         self,
         *,
         repository: NotificationRepositoryAccess | None = None,
+        preference_repository: NotificationPreferenceRepositoryAccess | None = None,
+        launch_notice_repository: LaunchNoticeRepositoryAccess | None = None,
         outbox_repository: NotificationOutboxAccess | None = None,
+        idempotent_outbox_repository: IdempotentNotificationOutboxAccess | None = None,
         payload_codec: NotificationPayloadCodec,
         member_access: NotificationMemberAccess | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.repository = repository or NotificationRepository()
+        self.preference_repository = preference_repository or NotificationRepository()
+        self.launch_notice_repository = launch_notice_repository or NotificationRepository()
         self.outbox_repository = outbox_repository or OutboxRepository()
+        self.idempotent_outbox_repository = idempotent_outbox_repository or OutboxRepository()
         self.payload_codec = payload_codec
         if member_access is None:
             from app.modules.auth.staff import AuthAccessService
@@ -109,6 +157,138 @@ class NotificationService:
         else:
             self.member_access = member_access
         self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def launch_preferences(self, session: AsyncSession, *, actor_id: UUID) -> dict[str, bool]:
+        """Read one active account's preferences, applying enabled defaults without a write."""
+
+        await self._require_active_account(session, actor_id)
+        row = await self.preference_repository.find_launch_preferences(session, account_id=actor_id)
+        if row is None:
+            return {field: True for field in LAUNCH_PREFERENCE_FIELDS}
+        return {field: bool(getattr(row, field)) for field in LAUNCH_PREFERENCE_FIELDS}
+
+    async def update_launch_preferences(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        values: dict[str, bool],
+    ) -> dict[str, bool]:
+        """Persist provided channel choices while preserving the other five values."""
+
+        await self._require_active_account(session, actor_id)
+        if not values or any(
+            key not in LAUNCH_PREFERENCE_FIELDS or type(value) is not bool
+            for key, value in values.items()
+        ):
+            raise NotificationValidationError("invalid launch preferences")
+        return await self.preference_repository.save_launch_preferences(
+            session, account_id=actor_id, values=values, updated_at=self.clock()
+        )
+
+    async def record_launch_notice(
+        self,
+        session: AsyncSession,
+        *,
+        booking: LaunchNoticeBooking,
+        kind: str,
+    ) -> Notification | None:
+        """Persist enabled launch channels atomically and deduplicate by booking and kind.
+
+        The launch booking retains failure reason independently of these optional notices.
+        """
+
+        preference_prefix = {
+            "launch_reminder": "reminder",
+            "launch_live": "live",
+            "launch_failed": "failure",
+        }.get(kind)
+        if preference_prefix is None:
+            raise NotificationValidationError("invalid launch notice kind")
+
+        existing = await self.launch_notice_repository.find_launch_notification(
+            session, booking_id=booking.id, kind=kind
+        )
+        if existing is not None:
+            return existing
+
+        preferences = await self.preference_repository.find_launch_preferences(
+            session, account_id=booking.founder_id
+        )
+        email_enabled = (
+            True
+            if preferences is None
+            else bool(getattr(preferences, f"{preference_prefix}_email"))
+        )
+        in_site_enabled = (
+            True
+            if preferences is None
+            else bool(getattr(preferences, f"{preference_prefix}_in_site"))
+        )
+        if not email_enabled and not in_site_enabled:
+            return None
+
+        now = self.clock()
+        notice: Notification | None = None
+        if in_site_enabled:
+            candidate = Notification(
+                id=uuid7(),
+                recipient_account_id=booking.founder_id,
+                product_id=booking.product_id,
+                review_decision_id=None,
+                launch_booking_id=booking.id,
+                kind=kind,
+                created_at=now,
+                read_at=None,
+            )
+            notice, created = await self.launch_notice_repository.add_launch_notification(
+                session, candidate
+            )
+            if not created:
+                return notice
+
+        if email_enabled:
+            email_key, email_payload = self.payload_codec.encode(
+                {
+                    "recipient_account_id": booking.founder_id,
+                    "launch_booking_id": booking.id,
+                    "notification_id": notice.id if notice is not None else booking.id,
+                    "kind": kind,
+                }
+            )
+            await self.idempotent_outbox_repository.add_once(
+                session,
+                OutboxEvent(
+                    event_type="launch.notice_email_requested.v1",
+                    aggregate_id=booking.id,
+                    id=uuid5(NAMESPACE_URL, f"launch-email:{booking.id}:{kind}"),
+                    key_id=email_key,
+                    encrypted_payload=email_payload,
+                    available_at=now,
+                ),
+            )
+
+        if notice is not None:
+            live_key, live_payload = self.payload_codec.encode(
+                {
+                    "recipient_account_id": booking.founder_id,
+                    "launch_booking_id": booking.id,
+                    "notification_id": notice.id,
+                    "kind": kind,
+                }
+            )
+            await self.idempotent_outbox_repository.add_once(
+                session,
+                OutboxEvent(
+                    event_type="notification.changed.v1",
+                    aggregate_id=booking.id,
+                    id=uuid5(NAMESPACE_URL, f"launch-inbox:{booking.id}:{kind}"),
+                    key_id=live_key,
+                    encrypted_payload=live_payload,
+                    available_at=now,
+                ),
+            )
+        return notice
 
     async def inbox(
         self,

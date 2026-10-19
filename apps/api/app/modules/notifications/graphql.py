@@ -40,6 +40,16 @@ class NotificationInbox:
     next_cursor: str | None
 
 
+@strawberry.type
+class LaunchNotificationPreferences:
+    reminder_email: bool
+    reminder_in_site: bool
+    live_email: bool
+    live_in_site: bool
+    failure_email: bool
+    failure_in_site: bool
+
+
 def _member(info: strawberry.Info) -> MemberContext:
     member: MemberContext | None = info.context.get("member")
     if member is None:
@@ -92,3 +102,20 @@ class NotificationQuery:
                 unread_count=page.unread_count,
                 next_cursor=page.next_cursor,
             )
+
+
+@strawberry.type
+class LaunchPreferenceQuery:
+    """Owner-only saved launch delivery preferences with enabled defaults."""
+
+    @strawberry.field
+    async def viewer_launch_notification_preferences(
+        self, info: strawberry.Info
+    ) -> LaunchNotificationPreferences:
+        async with _safe_read():
+            member = _member(info)
+            async with info.context["session_factory"]() as session:
+                values = await _service(info).launch_preferences(
+                    cast(AsyncSession, session), actor_id=member.account_id
+                )
+            return LaunchNotificationPreferences(**values)

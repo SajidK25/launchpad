@@ -19,8 +19,19 @@ class Product(ProductBase):
     __tablename__ = "products"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('draft', 'submitted', 'changes_requested', 'approved', 'rejected')",
+            "status IN ('draft', 'submitted', 'changes_requested', 'approved', 'rejected', "
+            "'scheduled', 'launched')",
             name="ck_products_status",
+        ),
+        CheckConstraint(
+            "(status = 'launched' AND launched_at IS NOT NULL) OR "
+            "(status <> 'launched' AND launched_at IS NULL)",
+            name="ck_products_launched_at",
+        ),
+        CheckConstraint(
+            "launch_failure_reason IS NULL OR "
+            "launch_failure_reason IN ('missed_day', 'suspension_blocked')",
+            name="ck_products_launch_failure_reason",
         ),
         CheckConstraint("version >= 0", name="ck_products_version"),
         CheckConstraint(
@@ -70,6 +81,8 @@ class Product(ProductBase):
     description: Mapped[str | None] = mapped_column(Text)
     website_url: Mapped[str | None] = mapped_column(Text)
     website_key: Mapped[str | None] = mapped_column(Text)
+    launched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    launch_failure_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -129,7 +142,8 @@ class ProductReviewDecision(ProductBase):
         CheckConstraint(
             "(from_status = 'submitted' AND outcome IN "
             "('approved', 'rejected', 'changes_requested')) OR "
-            "(from_status = 'approved' AND outcome = 'changes_requested')",
+            "(from_status = 'approved' AND outcome = 'changes_requested') OR "
+            "(from_status = 'scheduled' AND outcome = 'changes_requested')",
             name="ck_product_review_decisions_transition",
         ),
         CheckConstraint(

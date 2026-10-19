@@ -443,6 +443,33 @@ def router(
             },
         )
 
+    @routes.get("/products/{product_id}/assets/{asset_id}/public")
+    async def get_public_product_asset(
+        product_id: UUID,
+        asset_id: UUID,
+        session: DbSession,
+    ) -> Response:
+        try:
+            async with session.begin():
+                media = await service().read_public_asset(
+                    session,
+                    product_id=product_id,
+                    asset_id=asset_id,
+                    storage=storage,
+                )
+        except ProductNotFoundError as error:
+            raise HTTPException(status_code=404, detail="product media unavailable") from error
+        except (ProductInfrastructureError, ObjectOperationError, SQLAlchemyError) as error:
+            raise HTTPException(status_code=503, detail="service unavailable") from error
+        return StreamingResponse(
+            iter((media.body,)),
+            media_type=media.media_type,
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
     @routes.post(
         "/me/products/{product_id}/assets",
         response_model=ProductAssetIntentResponse,

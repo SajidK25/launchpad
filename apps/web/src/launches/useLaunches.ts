@@ -1,0 +1,174 @@
+import { useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { IdentityClient } from "../identity/client";
+import type { createNotificationClient } from "../notifications/client";
+import { notificationKeys } from "../notifications/useNotifications";
+import type { LaunchBookingInput, LaunchClient } from "./client";
+
+export type LaunchSession = Pick<
+  Awaited<ReturnType<IdentityClient["currentSession"]>>,
+  "account_id" | "role" | "suspended"
+>;
+export type LiveNotificationClient = Pick<
+  ReturnType<typeof createNotificationClient>,
+  "subscribeToChanges"
+>;
+
+export const launchKeys = {
+  bookings: (accountId: string, first?: number, after?: string | null) =>
+    ["launches", accountId, "bookings", first, after] as const,
+  bookingRoot: (accountId: string) =>
+    ["launches", accountId, "bookings"] as const,
+  preferences: (accountId: string) =>
+    ["launches", accountId, "preferences"] as const,
+  publicProduct: (productId: string) =>
+    ["launches", "public-product", productId] as const,
+};
+
+export function useLaunchBookings(
+  client: LaunchClient,
+  session: LaunchSession | null,
+  first = 20,
+  after?: string | null,
+) {
+  const eligible = session?.role === "member" && session.suspended === false;
+  const accountId = eligible ? session.account_id : "";
+  return useQuery({
+    queryKey: launchKeys.bookings(accountId, first, after),
+    queryFn: () => client.fetchLaunchBookings({ first, after }),
+    enabled: eligible,
+    staleTime: 0,
+  });
+}
+
+export function useLaunchPreferences(
+  client: LaunchClient,
+  session: LaunchSession | null,
+) {
+  const eligible = session?.role === "member" && session.suspended === false;
+  const accountId = eligible ? session.account_id : "";
+  return useQuery({
+    queryKey: launchKeys.preferences(accountId),
+    queryFn: client.fetchLaunchPreferences,
+    enabled: eligible,
+    staleTime: 0,
+  });
+}
+
+export function usePublicProduct(client: LaunchClient, productId: string) {
+  return useQuery({
+    queryKey: launchKeys.publicProduct(productId),
+    queryFn: () => client.fetchPublicProduct({ id: productId }),
+    enabled: productId.length > 0,
+  });
+}
+
+export function useBookLaunch(
+  client: LaunchClient,
+  productId: string,
+  accountId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      payload,
+      idempotencyKey,
+    }: {
+      payload: LaunchBookingInput;
+      idempotencyKey: string;
+    }) => client.createBooking(productId, payload, idempotencyKey),
+    onSettled: () => invalidateBookingState(queryClient, productId, accountId),
+  });
+}
+
+export function useRescheduleLaunch(
+  client: LaunchClient,
+  productId: string,
+  accountId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      payload,
+      idempotencyKey,
+    }: {
+      payload: LaunchBookingInput;
+      idempotencyKey: string;
+    }) => client.rescheduleBooking(productId, payload, idempotencyKey),
+    onSettled: () => invalidateBookingState(queryClient, productId, accountId),
+  });
+}
+
+export function useCancelLaunch(
+  client: LaunchClient,
+  productId: string,
+  accountId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      expectedVersion,
+      idempotencyKey,
+    }: {
+      expectedVersion: number;
+      idempotencyKey: string;
+    }) => client.cancelBooking(productId, expectedVersion, idempotencyKey),
+    onSettled: () => invalidateBookingState(queryClient, productId, accountId),
+  });
+}
+
+export function useUpdateLaunchPreferences(
+  client: LaunchClient,
+  accountId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: client.updateLaunchPreferences,
+    onSettled: () =>
+      void queryClient.invalidateQueries({
+        queryKey: launchKeys.preferences(accountId),
+      }),
+  });
+}
+
+export function useLaunchLiveInvalidation(
+  client: LiveNotificationClient,
+  session: LaunchSession | null,
+) {
+  const queryClient = useQueryClient();
+  const eligible = session?.role === "member" && session.suspended === false;
+  const accountId = eligible ? session.account_id : "";
+  useEffect(() => {
+    if (!eligible || !accountId) return;
+    const invalidate = () => {
+      void queryClient.invalidateQueries({
+        queryKey: launchKeys.bookingRoot(accountId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: launchKeys.preferences(accountId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: notificationKeys.inbox(accountId),
+      });
+    };
+    const unsubscribe = client.subscribeToChanges(invalidate);
+    return () => {
+      unsubscribe();
+      queryClient.removeQueries({ queryKey: ["launches", accountId] });
+    };
+  }, [accountId, client, eligible, queryClient]);
+}
+
+function invalidateBookingState(
+  queryClient: ReturnType<typeof useQueryClient>,
+  productId: string,
+  accountId: string,
+) {
+  void queryClient.invalidateQueries({
+    queryKey: launchKeys.bookingRoot(accountId),
+  });
+  void queryClient.invalidateQueries({ queryKey: ["products", "viewer"] });
+  void queryClient.invalidateQueries({
+    queryKey: ["products", "viewer", productId],
+  });
+}

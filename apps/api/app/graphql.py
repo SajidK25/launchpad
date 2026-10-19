@@ -18,9 +18,11 @@ from strawberry.types.execution import ExecutionResult
 
 from app.modules.auth.sessions import MemberContext, SessionService, UnauthenticatedError
 from app.modules.auth.staff import AuthAccessService
-from app.modules.notifications.graphql import NotificationQuery
+from app.modules.launches.graphql import LaunchQuery
+from app.modules.launches.service import LaunchBookingService
+from app.modules.notifications.graphql import LaunchPreferenceQuery, NotificationQuery
 from app.modules.notifications.service import NotificationService
-from app.modules.products.graphql import ProductQuery
+from app.modules.products.graphql import ProductQuery, PublicProductQuery
 from app.modules.products.policies import ProductForbiddenError, ProductNotFoundError
 from app.modules.products.service import ProductService, ProductValidationError
 from app.modules.users.graphql import ProfileQuery
@@ -39,6 +41,9 @@ _ALLOWED_ROOT_FIELDS = frozenset(
         "approvedReviews",
         "topicChoices",
         "viewerNotificationInbox",
+        "viewerLaunchBookings",
+        "viewerLaunchNotificationPreferences",
+        "publicProduct",
     }
 )
 _MAX_QUERY_LENGTH = 8192
@@ -48,8 +53,27 @@ _MAX_QUERY_FIELDS = 60
 
 
 @strawberry.type
-class Query(ProfileQuery, ProductQuery, NotificationQuery):
+class Query(
+    ProfileQuery,
+    ProductQuery,
+    PublicProductQuery,
+    NotificationQuery,
+    LaunchQuery,
+    LaunchPreferenceQuery,
+):
     """The application's single read root; no mutation or subscription exists."""
+
+
+@strawberry.type
+class ProductsWithoutLaunchesQuery(ProfileQuery, ProductQuery, NotificationQuery):
+    """Composed product read root for environments before launch rollout."""
+
+
+@strawberry.type
+class LaunchesWithoutProductsQuery(
+    ProfileQuery, PublicProductQuery, NotificationQuery, LaunchQuery, LaunchPreferenceQuery
+):
+    """Composed launch read root without private product reads."""
 
 
 @strawberry.type
@@ -80,10 +104,23 @@ class PrivateReadRouter(GraphQLRouter):
 
 
 def build_router(
-    context_getter: Callable[..., Any], *, include_products: bool = True
+    context_getter: Callable[..., Any],
+    *,
+    include_products: bool = True,
+    include_launches: bool | None = None,
 ) -> GraphQLRouter:
+    launch_reads_enabled = include_products if include_launches is None else include_launches
+    query_type = (
+        Query
+        if include_products and launch_reads_enabled
+        else ProductsWithoutLaunchesQuery
+        if include_products
+        else LaunchesWithoutProductsQuery
+        if launch_reads_enabled
+        else ProfileOnlyQuery
+    )
     router = PrivateReadRouter(
-        strawberry.Schema(query=Query if include_products else ProfileOnlyQuery),
+        strawberry.Schema(query=query_type),
         path="/graphql",
         context_getter=context_getter,
         allow_queries_via_get=False,
@@ -137,14 +174,24 @@ def context_getter(
                 except UnauthenticatedError:
                     secret = None
         response.headers["Cache-Control"] = "no-store"
+
+        def product_service_factory() -> ProductService:
+            return ProductService(member_access=AuthAccessService(), payload_codec=payload_codec)
+
+        def launch_booking_service_factory() -> LaunchBookingService:
+            return LaunchBookingService(
+                member_access=AuthAccessService(),
+                product_access=product_service_factory(),
+                payload_codec=payload_codec,
+            )
+
         return {
             "member": member,
             "session_secret": secret,
             "session_factory": session_factory,
             "service_factory": profile_service_factory,
-            "product_service_factory": lambda: ProductService(
-                member_access=AuthAccessService(), payload_codec=payload_codec
-            ),
+            "product_service_factory": product_service_factory,
+            "launch_booking_service_factory": launch_booking_service_factory,
             "notification_service_factory": lambda: NotificationService(
                 member_access=AuthAccessService(), payload_codec=payload_codec
             ),

@@ -7,6 +7,7 @@ import { createIdentityClient } from "./identity/client";
 import { IdentityRoutes, navigate } from "./identity/Screens";
 import { ProfileRoutes } from "./profiles/ProfileScreens";
 import { NotificationBell } from "./notifications/NotificationBell";
+import { LaunchRoutes, PublicLaunchPage } from "./launches/LaunchScreens";
 
 const statusCopy = {
   connected: "Connected",
@@ -40,6 +41,23 @@ export function App() {
   }, [path]);
 
   if (path !== "/") {
+    if (path === "/launches")
+      return <LaunchRoutes identityClient={identityClient} />;
+    const publicLaunchPath = path.match(/^\/launches\/([^/]+)\/?$/);
+    if (publicLaunchPath) {
+      let productId = "";
+      try {
+        productId = decodeURIComponent(publicLaunchPath[1]);
+      } catch {
+        // An invalid path encoding resolves to the same safe not-found view.
+      }
+      return (
+        <PublicLaunchPage
+          identityClient={identityClient}
+          productId={productId}
+        />
+      );
+    }
     if (path === "/products" || path.startsWith("/products/")) {
       return (
         <>

@@ -161,6 +161,7 @@ services:
       <<: *check_runtime
       LAUNCHPAD_ENVIRONMENT: test
       LAUNCHPAD_PRODUCTS_ENABLED: "true"
+      LAUNCHPAD_LAUNCHES_ENABLED: "true"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
   web:
@@ -220,6 +221,7 @@ services:
     environment:
       <<: *check_runtime
       PYTHONPATH: /workspace/apps/api
+      LAUNCHPAD_WORKER_CONCURRENCY: ${LAUNCHPAD_WORKER_CONCURRENCY:-16}
     command: ["python", "apps/worker/worker.py"]
     healthcheck:
       test: ["CMD", "python", "apps/worker/worker.py", "--health"]

@@ -15,8 +15,8 @@ export function useCurrentSession(client: IdentityClient) {
         return await client.currentSession();
       } catch (error) {
         if (error instanceof IdentityRequestError && error.status === 401) {
-          queryClient.removeQueries({ queryKey: identityKeys.session });
           queryClient.removeQueries({ queryKey: ["profiles"] });
+          return null;
         }
         throw error;
       }

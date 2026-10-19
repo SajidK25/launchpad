@@ -127,7 +127,7 @@ describe("identity hooks", () => {
     });
   });
 
-  it("removes stale session data after a revoked session response", async () => {
+  it("resolves a revoked session as signed out and removes stale session data", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -143,8 +143,9 @@ describe("identity hooks", () => {
       wrapper: wrapper(queryClient),
     });
     await waitFor(() =>
-      expect(queryClient.getQueryData(["identity", "session"])).toBeUndefined(),
+      expect(queryClient.getQueryData(["identity", "session"])).toBeNull(),
     );
-    expect(result.current.error).toBeDefined();
+    expect(result.current.isError).toBe(false);
+    expect(result.current.data).toBeNull();
   });
 });

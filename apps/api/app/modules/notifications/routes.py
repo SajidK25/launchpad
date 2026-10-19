@@ -15,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.modules.auth.sessions import SessionService, UnauthenticatedError
 from app.modules.auth.staff import AuthAccessService
 from app.modules.notifications.live import NotificationRedis, notification_live_router
-from app.modules.notifications.schemas import NotificationKind
+from app.modules.notifications.schemas import (
+    LaunchNotificationPreferences,
+    LaunchNotificationPreferenceUpdate,
+    NotificationKind,
+)
 from app.modules.notifications.service import (
     NotificationForbiddenError,
     NotificationNotFoundError,
@@ -133,6 +137,49 @@ def router(
             raise
         except Exception as error:
             raise map_error(error) from error
+
+    if settings.launches_enabled:
+
+        @routes.put(
+            "/me/launch-notification-preferences",
+            response_model=LaunchNotificationPreferences,
+        )
+        async def update_launch_preferences(
+            body: LaunchNotificationPreferenceUpdate,
+            request: Request,
+            session: DbSession,
+            x_csrf_token: str | None = Header(default=None),
+        ) -> LaunchNotificationPreferences:
+            try:
+                validate_origin(request.headers.get("origin"), settings.trusted_web_origins)
+                async with session.begin():
+                    secret = request.cookies.get(settings.session_cookie_name)
+                    if not secret:
+                        raise HTTPException(status_code=401, detail="authentication required")
+                    member = await session_service.resolve(session, session_secret=secret)
+                    require_csrf(
+                        origin=request.headers.get("origin"),
+                        trusted_origin=settings.trusted_web_origins,
+                        token=x_csrf_token,
+                        expected_digest=member.csrf_digest,
+                    )
+                    source = request.client.host if request.client else "unknown"
+                    await limiter.check(
+                        address_key=f"notification:preferences:account:{member.account_id.hex}",
+                        source_key=f"notification:preferences:source:{source}",
+                    )
+                    values = await service().update_launch_preferences(
+                        session,
+                        actor_id=member.account_id,
+                        values=body.model_dump(),
+                    )
+                return LaunchNotificationPreferences.model_validate(values)
+            except RequestSecurityError as error:
+                raise HTTPException(status_code=403, detail="request rejected") from error
+            except HTTPException:
+                raise
+            except Exception as error:
+                raise map_error(error) from error
 
     routes.include_router(
         notification_live_router(

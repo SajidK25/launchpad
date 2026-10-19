@@ -417,6 +417,125 @@ export const VIEWER_NOTIFICATION_INBOX_QUERY =
   }
 }` as const;
 
+export type ViewerLaunchBookingsQueryVariables = {
+  first?: number;
+  after?: string | null;
+};
+
+export type ViewerLaunchBookingsQuery = {
+  viewerLaunchBookings: {
+    items: Array<{
+      id: string;
+      productId: string;
+      state: string;
+      productStatus: string;
+      launchAt: string;
+      failureReason: string | null;
+      createdAt: string;
+      closedAt: string | null;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const VIEWER_LAUNCH_BOOKINGS_QUERY =
+  `query ViewerLaunchBookings($first: Int! = 20, $after: String) {
+  viewerLaunchBookings(first: $first, after: $after) {
+    items {
+      id
+      productId
+      state
+      productStatus
+      launchAt
+      failureReason
+      createdAt
+      closedAt
+    }
+    nextCursor
+  }
+}` as const;
+
+export type ViewerLaunchNotificationPreferencesQueryVariables = {};
+
+export type ViewerLaunchNotificationPreferencesQuery = {
+  viewerLaunchNotificationPreferences: {
+    reminderEmail: boolean;
+    reminderInSite: boolean;
+    liveEmail: boolean;
+    liveInSite: boolean;
+    failureEmail: boolean;
+    failureInSite: boolean;
+  };
+};
+
+export const VIEWER_LAUNCH_NOTIFICATION_PREFERENCES_QUERY =
+  `query ViewerLaunchNotificationPreferences {
+  viewerLaunchNotificationPreferences {
+    reminderEmail
+    reminderInSite
+    liveEmail
+    liveInSite
+    failureEmail
+    failureInSite
+  }
+}` as const;
+
+export type PublicProductQueryVariables = {
+  id: string;
+};
+
+export type PublicProductQuery = {
+  publicProduct: {
+    id: string;
+    name: string;
+    pitch: string;
+    description: string;
+    websiteUrl: string;
+    launchedAt: string;
+    logo: {
+      id: string;
+      kind: string;
+      mediaType: string;
+      byteCount: number;
+      url: string;
+    } | null;
+    screenshots: Array<{
+      id: string;
+      kind: string;
+      mediaType: string;
+      byteCount: number;
+      url: string;
+    }>;
+    topics: Array<string>;
+  } | null;
+};
+
+export const PUBLIC_PRODUCT_QUERY = `query PublicProduct($id: UUID!) {
+  publicProduct(id: $id) {
+    id
+    name
+    pitch
+    description
+    websiteUrl
+    launchedAt
+    logo {
+      id
+      kind
+      mediaType
+      byteCount
+      url
+    }
+    screenshots {
+      id
+      kind
+      mediaType
+      byteCount
+      url
+    }
+    topics
+  }
+}` as const;
+
 export type TopicChoicesQueryVariables = {
   first?: number;
   query?: string | null;

@@ -7,7 +7,7 @@ import hmac
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 from urllib.parse import SplitResult, urlsplit
 from uuid import UUID
@@ -41,7 +41,11 @@ from app.modules.products.policies import (
     require_staff_reviewer,
     verify_product_media_signature,
 )
-from app.modules.products.schemas import ProductAssetIntentInput, ProductContentInput
+from app.modules.products.schemas import (
+    ProductAssetIntentInput,
+    ProductContentInput,
+    ProductLaunchEditInput,
+)
 from app.shared.events.outbox import OutboxEvent, OutboxRepository, PermanentEventError
 from app.shared.storage.objects import (
     CleanPhoto,
@@ -115,6 +119,14 @@ class ProductReviewNotifications(Protocol):
     ) -> object: ...
 
 
+class ProductLaunchInvalidator(Protocol):
+    """Named launches boundary for an atomic staff return-for-changes action."""
+
+    async def invalidate_for_review(
+        self, session: AsyncSession, *, product_id: UUID, now: datetime
+    ) -> bool: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ProductDraft:
     """Owner-safe product draft view without exposing an ORM mapping."""
@@ -162,6 +174,21 @@ class ProductAssetResult:
     state: str
     media_type: Literal["image/jpeg", "image/png", "image/webp"]
     byte_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class PublicProductProjection:
+    """Explicit launched-only public fields, without account or review data."""
+
+    id: UUID
+    name: str
+    pitch: str
+    description: str
+    website_url: str
+    launched_at: datetime
+    logo: ProductAssetResult | None
+    screenshots: tuple[ProductAssetResult, ...]
+    topics: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,6 +376,7 @@ class ProductService:
         repository: ProductRepository | None = None,
         event_storage: ProductEventStorage | None = None,
         review_notifications: ProductReviewNotifications | None = None,
+        launch_booking_access: ProductLaunchInvalidator | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if repository is None:
@@ -369,6 +397,13 @@ class ProductService:
                 payload_codec=cast(EmailPayloadCodec, payload_codec),
             )
         self.review_notifications = review_notifications
+        if launch_booking_access is None:
+            from app.modules.launches.service import LaunchBookingService
+
+            launch_booking_access = LaunchBookingService(
+                member_access=member_access, product_access=self
+            )
+        self.launch_booking_access = launch_booking_access
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def decide_review(
@@ -458,6 +493,10 @@ class ProductService:
             updated = await self.repository.set_product_state(
                 session, product=product, status=outcome, now=now
             )
+            if current_status == "scheduled" and outcome == "changes_requested":
+                await self.launch_booking_access.invalidate_for_review(
+                    session, product_id=product.id, now=now
+                )
             await self.repository.resolve_submission(
                 session, submission=submission, outcome=outcome, closed_at=now
             )
@@ -488,6 +527,254 @@ class ProductService:
                 status=updated.status,
                 version=updated.version,
             )
+
+    async def get_approved_product(
+        self,
+        session: AsyncSession,
+        *,
+        founder_id: UUID,
+        product_id: UUID,
+        lock: bool = False,
+    ) -> Product | None:
+        """Named launches port: return only this founder's currently approved aggregate."""
+
+        product = await self.repository.get_product(session, product_id=product_id, lock=lock)
+        if product is None or product.founder_id != founder_id or product.status != "approved":
+            return None
+        return product
+
+    async def get_scheduled_product(
+        self,
+        session: AsyncSession,
+        *,
+        founder_id: UUID,
+        product_id: UUID,
+        lock: bool = False,
+    ) -> Product | None:
+        """Named launches port for owner-scoped scheduled product lifecycle actions."""
+
+        product = await self.repository.get_product(session, product_id=product_id, lock=lock)
+        if product is None or product.founder_id != founder_id or product.status != "scheduled":
+            return None
+        return product
+
+    async def schedule_product(
+        self,
+        session: AsyncSession,
+        *,
+        product: object,
+        expected_version: int,
+        launch_date: date,
+        launch_at: datetime,
+        now: datetime,
+    ) -> Product:
+        """Move an approved private product into scheduled state."""
+
+        current = cast(Product, product)
+        if launch_at.date() != launch_date:
+            raise ProductConflictError("launch time does not match its UTC date")
+        if current.status != "approved":
+            raise ProductConflictError("only approved products can be scheduled")
+        require_expected_version(current=current.version, expected=expected_version)
+        return await self.repository.transition_launch_state(
+            session,
+            product=current,
+            expected_version=expected_version,
+            from_status="approved",
+            to_status="scheduled",
+            now=now,
+        )
+
+    async def reschedule_product(
+        self,
+        session: AsyncSession,
+        *,
+        product: object,
+        expected_version: int,
+        launch_date: date,
+        launch_at: datetime,
+        now: datetime,
+    ) -> Product:
+        """Update only the product version while retaining its scheduled state."""
+
+        current = cast(Product, product)
+        if current.status != "scheduled" or launch_at.date() != launch_date:
+            raise ProductConflictError("scheduled product is unavailable")
+        require_expected_version(current=current.version, expected=expected_version)
+        return await self.repository.transition_launch_state(
+            session,
+            product=current,
+            expected_version=expected_version,
+            from_status="scheduled",
+            to_status="scheduled",
+            now=now,
+        )
+
+    async def return_to_approved(
+        self,
+        session: AsyncSession,
+        *,
+        product: object,
+        expected_version: int,
+        now: datetime,
+        reason: str,
+    ) -> Product:
+        """Release scheduled work to private approval state with optional failure reason."""
+
+        current = cast(Product, product)
+        if current.status != "scheduled":
+            raise ProductConflictError("scheduled product is unavailable")
+        require_expected_version(current=current.version, expected=expected_version)
+        failure = reason if reason in {"missed_day", "suspension_blocked"} else None
+        return await self.repository.transition_launch_state(
+            session,
+            product=current,
+            expected_version=expected_version,
+            from_status="scheduled",
+            to_status="approved",
+            now=now,
+            failure_reason=failure,
+        )
+
+    async def publish_scheduled_product(
+        self,
+        session: AsyncSession,
+        *,
+        product_id: UUID,
+        launch_at: datetime,
+        now: datetime,
+    ) -> Product:
+        """Publish once on the booked UTC date, or persist the required failure outcome."""
+
+        current_time = now.astimezone(UTC)
+        launch_time = launch_at.astimezone(UTC)
+        async with session.begin_nested():
+            candidate = await self.repository.get_product(session, product_id=product_id)
+            if candidate is None:
+                raise ProductNotFoundError("product unavailable")
+            await self.member_access.current_account(session, candidate.founder_id, lock=True)
+            product = await self.repository.get_product(session, product_id=product_id, lock=True)
+            if product is None:
+                raise ProductNotFoundError("product unavailable")
+            if product.status == "launched":
+                return product
+            if product.status != "scheduled":
+                raise ProductConflictError("product is no longer scheduled")
+            account = await self.member_access.current_account(session, product.founder_id)
+            if account is None or account.suspended_at is not None:
+                return await self.repository.transition_launch_state(
+                    session,
+                    product=product,
+                    expected_version=product.version,
+                    from_status="scheduled",
+                    to_status="approved",
+                    now=current_time,
+                    failure_reason="suspension_blocked",
+                )
+            if current_time.date() > launch_time.date():
+                return await self.repository.transition_launch_state(
+                    session,
+                    product=product,
+                    expected_version=product.version,
+                    from_status="scheduled",
+                    to_status="approved",
+                    now=current_time,
+                    failure_reason="missed_day",
+                )
+            if current_time < launch_time:
+                raise ProductConflictError("launch time has not arrived")
+            return await self.repository.transition_launch_state(
+                session,
+                product=product,
+                expected_version=product.version,
+                from_status="scheduled",
+                to_status="launched",
+                now=current_time,
+                launched_at=current_time,
+            )
+
+    async def public_projection(
+        self, session: AsyncSession, *, product_id: UUID
+    ) -> PublicProductProjection | None:
+        """Return only the explicit public fields for an already launched product."""
+
+        product = await self.repository.get_public_product(session, product_id=product_id)
+        if product is None:
+            return None
+        name, pitch, description, website_url = (
+            product.name,
+            product.pitch,
+            product.description,
+            product.website_url,
+        )
+        if (
+            not all(isinstance(value, str) for value in (name, pitch, description, website_url))
+            or product.launched_at is None
+        ):
+            return None
+        assets = await self.repository.get_attached_clean_assets(session, product_id=product.id)
+        topics = await self.repository.get_product_topics(session, product_id=product.id)
+        views = tuple(_asset_view(asset) for asset in assets)
+        return PublicProductProjection(
+            id=product.id,
+            name=cast(str, name),
+            pitch=cast(str, pitch),
+            description=cast(str, description),
+            website_url=cast(str, website_url),
+            launched_at=product.launched_at,
+            logo=next((asset for asset in views if asset.kind == "logo"), None),
+            screenshots=tuple(asset for asset in views if asset.kind == "screenshot"),
+            topics=tuple(topic.selected_label for topic in topics),
+        )
+
+    async def edit_launched_product(
+        self,
+        session: AsyncSession,
+        *,
+        actor_id: UUID,
+        product_id: UUID,
+        command: ProductLaunchEditInput,
+    ) -> ProductDraft:
+        """Allow only validated description and website edits after launch."""
+
+        require_active_founder(
+            await self.member_access.current_account(session, actor_id, lock=True)
+        )
+        async with session.begin_nested():
+            product = await self.repository.get_owned_product(
+                session, product_id=product_id, founder_id=actor_id, lock=True
+            )
+            if product is None or product.status != "launched":
+                raise ProductConflictError("only launched products can use this edit")
+            require_expected_version(current=product.version, expected=command.version)
+            candidate = ProductContentInput(
+                description=(
+                    command.description
+                    if "description" in command.model_fields_set
+                    else product.description
+                ),
+                website_url=(
+                    command.website_url
+                    if "website_url" in command.model_fields_set
+                    else product.website_url
+                ),
+            )
+            updated = await self.repository.transition_launch_state(
+                session,
+                product=product,
+                expected_version=command.version,
+                from_status="launched",
+                to_status="launched",
+                now=self.clock(),
+                launched_at=product.launched_at,
+                content=candidate,
+                website_key=(
+                    canonical_website_key(candidate.website_url)
+                    if candidate.website_url is not None
+                    else None
+                ),
+            )
+            return _draft_view(updated)
 
     async def create_draft(self, session: AsyncSession, *, actor_id: UUID) -> ProductDraft:
         """Create an incomplete private draft for any signed-in unsuspended member."""
@@ -547,6 +834,34 @@ class ProductService:
         product, asset = await self._authorized_private_asset(
             session, actor_id=actor_id, product_id=product_id, asset_id=asset_id
         )
+        if asset.clean_key is None:
+            raise ProductNotFoundError("product media unavailable")
+        try:
+            body, _storage_media_type = await storage.get_product_private(
+                account_id=product.founder_id,
+                product_id=product.id,
+                object_key=asset.clean_key,
+            )
+        except ObjectOperationError as error:
+            raise ProductInfrastructureError("product media is unavailable") from error
+        return ProductPrivateMedia(body=body, media_type=asset.media_type)
+
+    async def read_public_asset(
+        self,
+        session: AsyncSession,
+        *,
+        product_id: UUID,
+        asset_id: UUID,
+        storage: ProductMediaStorage,
+    ) -> ProductPrivateMedia:
+        """Serve attached media only while its product has persisted launched status."""
+
+        resolved = await self.repository.get_launched_attached_asset(
+            session, product_id=product_id, asset_id=asset_id
+        )
+        if resolved is None:
+            raise ProductNotFoundError("product media unavailable")
+        product, asset = resolved
         if asset.clean_key is None:
             raise ProductNotFoundError("product media unavailable")
         try:
