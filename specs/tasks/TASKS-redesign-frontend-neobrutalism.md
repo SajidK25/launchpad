@@ -135,7 +135,7 @@ Create small semantic components for repeated page structure and non-success sta
 
 ## Task T3: Establish the shared visual foundation
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** m
 > **Priority:** critical
