@@ -68,7 +68,7 @@ Extract a pure, typed pathname classifier and the existing History API navigatio
 
 ## Task T2: Add semantic primitives and a safe error boundary
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical
