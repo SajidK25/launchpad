@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import type { IdentityClient } from "./client";
+import { navigate } from "../routing";
+export { navigate } from "../routing";
 import {
   useLogin,
   useRegister,
@@ -18,11 +20,6 @@ type Screen =
   | "recovery"
   | "reset"
   | "profile";
-
-export function navigate(path: string, state: Record<string, unknown> = {}) {
-  window.history.pushState(state, "", path);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-}
 
 function usePath() {
   const [path, setPath] = useState(window.location.pathname);
@@ -61,13 +58,13 @@ function Page({
   children: React.ReactNode;
 }) {
   return (
-    <main className="page-shell identity-shell">
+    <section className="identity-page">
       <section aria-labelledby="identity-title" className="identity-card">
         <p className="eyebrow">Launchpad account</p>
         <h1 id="identity-title">{title}</h1>
         {children}
       </section>
-    </main>
+    </section>
   );
 }
 

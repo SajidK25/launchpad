@@ -374,7 +374,7 @@ Compose the new route classifier, public/workspace shells, homepage, and error b
 
 ## Task T7: Redesign account access screens
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
