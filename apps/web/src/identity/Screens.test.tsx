@@ -40,6 +40,21 @@ describe("identity screens", () => {
     ).toBeTruthy();
   });
 
+  it("uses the shared navigation helper for account links and browser history", async () => {
+    renderRoutes("/signin");
+    fireEvent.click(screen.getByRole("link", { name: "Create an account" }));
+    expect(window.location.pathname).toBe("/register");
+    expect(
+      screen.getByRole("heading", { name: "Create your account" }),
+    ).toBeTruthy();
+
+    window.history.pushState({}, "", "/signin");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy(),
+    );
+  });
+
   it("uses generic registration copy after a successful submit", async () => {
     const fetcher = vi
       .fn()
@@ -57,6 +72,26 @@ describe("identity screens", () => {
     expect((await screen.findByRole("status")).textContent).toContain(
       "If the address can receive Launchpad mail",
     );
+  });
+
+  it("keeps recovery input after a retryable failure and uses generic copy", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "account exists" }), {
+        status: 500,
+      }),
+    );
+    renderRoutes("/recover", fetcher);
+    const email = screen.getByLabelText("Email") as HTMLInputElement;
+    fireEvent.change(email, { target: { value: "member@example.com" } });
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Send recovery email" }),
+    );
+
+    const error = await screen.findByRole("alert");
+    expect(error.textContent).toContain("could not start recovery");
+    expect(error.textContent).not.toContain("account exists");
+    expect(email.value).toBe("member@example.com");
+    expect(email.getAttribute("aria-describedby")).toBe("recover-error");
   });
 
   it("does not enable token consumption from a GET landing page without a token", () => {

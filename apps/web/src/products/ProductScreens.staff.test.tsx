@@ -210,6 +210,11 @@ describe("staff review screens", () => {
     const list = await screen.findByRole("list", {
       name: "Pending submissions, oldest first",
     });
+    expect(screen.queryByRole("main")).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Your account" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
     const cards = within(list).getAllByRole("link");
     expect(cards[0].textContent).toContain("Product oldest");
     expect(cards[1].textContent).toContain("Product next");

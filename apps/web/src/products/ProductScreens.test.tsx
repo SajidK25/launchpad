@@ -225,10 +225,18 @@ describe("founder product screens", () => {
 
   it("creates a private draft from the owner list", async () => {
     const app = fixture();
-    app.view("/products");
+    const view = app.view("/products");
+
+    await screen.findByRole("heading", { name: "Your products" });
+    expect(view.container.querySelector("#product-main")).not.toBeNull();
+    expect(screen.queryByRole("main")).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Your account" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Create a product draft" }),
+      screen.getByRole("button", { name: "Create a product draft" }),
     );
 
     await waitFor(() => expect(app.client.createDraft).toHaveBeenCalledOnce());

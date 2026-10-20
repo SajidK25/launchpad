@@ -16,6 +16,7 @@
     "typecheck": "npm run typecheck --workspace=@launchpad/web"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eslint/js": "9.33.0",
     "@playwright/test": "1.55.0",
     "@types/react": "19.1.12",

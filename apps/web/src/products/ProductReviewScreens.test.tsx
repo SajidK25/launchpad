@@ -31,6 +31,19 @@ const founderSession = {
   role: "member" as const,
   suspended: false,
 };
+type ApprovedReviewItem = {
+  product: {
+    id: string;
+    status: string;
+    version: number;
+    name: string;
+    pitch: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  submission: { id: string; submittedAt: string; productVersion: number };
+  approvedAt: string;
+};
 
 function detail(status: string, feedback: string | null = null) {
   const submission = {
@@ -68,22 +81,15 @@ function harness({
   productStatus = "submitted",
   feedback = null,
   approvedItems = [],
+  approvedPages = [{ items: approvedItems, nextCursor: null }],
 }: {
   role?: "staff" | "founder";
   productStatus?: string;
   feedback?: string | null;
-  approvedItems?: Array<{
-    product: {
-      id: string;
-      status: string;
-      version: number;
-      name: string;
-      pitch: string;
-      createdAt: string;
-      updatedAt: string;
-    };
-    submission: { id: string; submittedAt: string; productVersion: number };
-    approvedAt: string;
+  approvedItems?: ApprovedReviewItem[];
+  approvedPages?: Array<{
+    items: ApprovedReviewItem[];
+    nextCursor: string | null;
   }>;
 } = {}) {
   const session = role === "staff" ? staffSession : founderSession;
@@ -97,10 +103,12 @@ function harness({
       .fn()
       .mockResolvedValue({ items: [], nextCursor: null }),
     fetchReviewProduct: vi.fn().mockResolvedValue(currentDetail),
-    fetchApprovedReviews: vi.fn().mockResolvedValue({
-      items: approvedItems,
-      nextCursor: null,
-    }),
+    fetchApprovedReviews: vi
+      .fn()
+      .mockImplementation(async (variables?: { after?: string | null }) => {
+        const index = variables?.after ? 1 : 0;
+        return approvedPages[index] ?? { items: [], nextCursor: null };
+      }),
     fetchTopicChoices: vi.fn().mockResolvedValue([]),
     decideReview: vi.fn().mockResolvedValue({
       decision_id: "decision-1",
@@ -150,9 +158,16 @@ describe("product review screens", () => {
     const app = harness();
     app.view("/products/review/product-1");
     await screen.findByRole("heading", { name: "Quiet Harbor" });
+    expect(screen.queryByRole("main")).toBeNull();
+    expect(screen.getByText("In review")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Decision"), {
       target: { value: "changes_requested" },
     });
+    expect(
+      screen.getByText(
+        "Requesting changes returns this product to the founder for corrections. Explain what needs to change.",
+      ),
+    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Record review decision" }),
     );
@@ -223,6 +238,10 @@ describe("product review screens", () => {
     expect((await screen.findByRole("alert")).textContent).toContain(
       "changed after you opened it",
     );
+    expect(
+      (screen.getByLabelText(/Feedback for the founder/) as HTMLTextAreaElement)
+        .value,
+    ).toBe("The launch information is incomplete.");
     expect(screen.queryByText(/Decision recorded/)).toBeNull();
     await waitFor(() =>
       expect(app.client.fetchReviewProduct).toHaveBeenCalledTimes(2),
@@ -261,6 +280,12 @@ describe("product review screens", () => {
     cleanup();
     app.view("/products/review/product-1");
     await screen.findByRole("heading", { name: "Quiet Harbor" });
+    expect(screen.getByText("Approved · private")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Requesting changes returns this product to the founder for corrections. Explain what needs to change.",
+      ),
+    ).toBeTruthy();
     const decision = screen.getByLabelText("Decision") as HTMLSelectElement;
     expect(Array.from(decision.options).map((option) => option.value)).toEqual([
       "changes_requested",
@@ -278,6 +303,42 @@ describe("product review screens", () => {
       expect.objectContaining({ outcome: "changes_requested" }),
       expect.any(String),
     );
+  });
+
+  it("moves through approved-review history pages without stale cards", async () => {
+    const product = (id: string, name: string): ApprovedReviewItem => ({
+      product: {
+        id,
+        status: "approved",
+        version: 7,
+        name,
+        pitch: `Pitch for ${name}`,
+        createdAt: "2026-10-01T07:00:00Z",
+        updatedAt: "2026-10-01T08:00:00Z",
+      },
+      submission: {
+        id: `submission-${id}`,
+        submittedAt: "2026-10-01T08:00:00Z",
+        productVersion: 7,
+      },
+      approvedAt: "2026-10-01T09:00:00Z",
+    });
+    const app = harness({
+      approvedPages: [
+        { items: [product("first", "First approved")], nextCursor: "page-2" },
+        { items: [product("second", "Second approved")], nextCursor: null },
+      ],
+    });
+    app.view("/products/review");
+    await screen.findByText("First approved");
+    fireEvent.click(screen.getByRole("button", { name: "Next approved page" }));
+    await screen.findByText("Second approved");
+    expect(screen.queryByText("First approved")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Previous approved page" }),
+    );
+    await screen.findByText("First approved");
+    expect(screen.queryByText("Second approved")).toBeNull();
   });
 
   it("lets founders edit a requested correction and keeps it out of delete", async () => {

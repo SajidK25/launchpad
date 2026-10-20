@@ -1,0 +1,225 @@
+.app-shell {
+  display: grid;
+  width: min(100%, var(--content-width));
+  min-height: 100vh;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--space-5);
+  margin-inline: auto;
+  padding: 0 clamp(var(--space-3), 4vw, var(--space-6)) var(--space-5);
+}
+
+.app-skip-link {
+  position: fixed;
+  z-index: 100;
+  top: var(--space-3);
+  left: var(--space-3);
+  transform: translateY(-160%);
+  border: var(--border-strong) solid var(--color-ink);
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-ink);
+  background: var(--color-yellow);
+  box-shadow: var(--shadow-hard-small);
+  font-weight: 850;
+}
+
+.app-skip-link:focus {
+  transform: translateY(0);
+}
+
+.app-header {
+  display: flex;
+  min-width: 0;
+  min-height: 5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-bottom: var(--border-heavy) solid var(--color-ink);
+  padding-block: var(--space-3);
+}
+
+.app-brand {
+  display: grid;
+  min-width: 0;
+  color: var(--color-ink);
+  font-size: var(--text-lg);
+  font-weight: 950;
+  letter-spacing: -0.05em;
+  line-height: 1.05;
+  text-decoration: none;
+}
+
+.app-brand span {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 900;
+  letter-spacing: 0.09em;
+}
+
+.app-public-nav,
+.app-workspace-nav {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.app-public-nav a:not(.ui-action),
+.app-workspace-nav a,
+.app-workspace-nav button {
+  display: inline-flex;
+  min-height: var(--control-height);
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  border: var(--border-strong) solid var(--color-ink);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-ink);
+  background: var(--color-white);
+  box-shadow: var(--shadow-hard-small);
+  font-size: var(--text-sm);
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.app-public-nav a:not(.ui-action):hover,
+.app-workspace-nav a:hover,
+.app-workspace-nav button:hover:not(:disabled) {
+  background: var(--color-sky);
+}
+
+.app-notification-slot {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.app-notification-slot .notification-bell {
+  position: relative;
+  inset: auto;
+  z-index: 1;
+}
+
+.app-menu-toggle {
+  display: none;
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+  border: var(--border-strong) solid var(--color-ink);
+  background: var(--color-yellow);
+  box-shadow: var(--shadow-hard-small);
+  font-size: var(--text-lg);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.app-main {
+  min-width: 0;
+  padding-block: var(--space-3) var(--space-5);
+}
+
+.app-footer {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  border-top: var(--border-strong) solid var(--color-ink);
+  padding-top: var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  font-weight: 800;
+}
+
+.app-footer span:first-child {
+  color: var(--color-ink);
+  letter-spacing: 0.1em;
+}
+
+@media (max-width: 52rem) {
+  .app-shell {
+    gap: var(--space-4);
+  }
+
+  .app-header--workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .app-brand {
+    white-space: nowrap;
+  }
+
+  .app-notification-slot {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .app-menu-toggle {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .app-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app-workspace-nav {
+    display: none;
+    grid-column: 1 / -1;
+    width: 100%;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding-top: var(--space-2);
+  }
+
+  .app-workspace-nav.is-open {
+    display: flex;
+  }
+
+  .app-workspace-nav > * {
+    flex: 1 1 100%;
+  }
+
+  .app-public-nav {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .app-public-nav > * {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .app-public-nav .ui-action {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 24rem) {
+  .app-shell {
+    padding-inline: var(--space-3);
+  }
+
+  .app-brand {
+    font-size: var(--text-base);
+  }
+
+  .app-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

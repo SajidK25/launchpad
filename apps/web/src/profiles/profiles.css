@@ -1,0 +1,103 @@
+.profile-page {
+  min-height: 0;
+  align-content: start;
+}
+
+.profile-card {
+  width: min(100%, 56rem);
+}
+
+.profile-card textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 7rem;
+  border: var(--border-strong) solid var(--color-ink);
+  padding: var(--space-3);
+  color: var(--color-ink);
+  background: var(--color-cream);
+  resize: vertical;
+}
+
+.profile-checklist {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-4);
+  border: var(--border-strong) solid var(--color-ink);
+  background: var(--color-sky);
+  list-style: none;
+}
+
+.profile-checklist li {
+  min-width: 0;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.profile-checklist li::before {
+  display: inline-block;
+  width: 1.5em;
+  font-weight: 950;
+}
+
+.profile-checklist .complete::before {
+  content: "✓";
+}
+
+.profile-checklist .incomplete::before {
+  content: "○";
+}
+
+.profile-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.profile-actions .secondary-button {
+  margin-top: 0;
+}
+
+.profile-card > .form-message {
+  margin-top: var(--space-3);
+}
+
+.profile-photo {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  max-height: 24rem;
+  margin-top: var(--space-4);
+  border: var(--border-strong) solid var(--color-ink);
+  object-fit: cover;
+  box-shadow: var(--shadow-hard-small);
+}
+
+.profile-bio {
+  max-width: var(--content-width-reading);
+  color: var(--color-muted);
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+.public-links {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 0;
+  padding-left: var(--space-5);
+}
+
+.public-links a {
+  color: var(--color-ink);
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 24rem) {
+  .profile-card {
+    padding: var(--space-4);
+  }
+}

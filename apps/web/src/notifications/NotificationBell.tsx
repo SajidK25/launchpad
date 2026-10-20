@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { navigate } from "../identity/Screens";
+import { navigate } from "../routing";
 import type { IdentityClient } from "../identity/client";
 import { useCurrentSession } from "../identity/useIdentity";
 import { createNotificationClient } from "./client";
@@ -91,7 +91,6 @@ export function NotificationBell({
       <button
         aria-expanded={open}
         aria-controls="notification-inbox"
-        aria-label={`Notifications, ${unreadCount} unread`}
         className="notification-bell-trigger"
         onClick={() => setOpen((value) => !value)}
         ref={buttonRef}
@@ -100,8 +99,9 @@ export function NotificationBell({
         <span aria-hidden="true">♢</span>
         <span>Notifications</span>
         <span aria-hidden="true" className="notification-unread-count">
-          {unreadCount}
+          {unreadCount > 99 ? "99+" : unreadCount}
         </span>
+        <span className="sr-only">, {unreadCount} unread</span>
       </button>
       <span aria-atomic="true" aria-live="polite" className="sr-only">
         {countAnnouncement}
@@ -133,13 +133,15 @@ export function NotificationBell({
               <li key={item.id}>
                 <button
                   aria-label={`${outcomeCopy[item.kind]}${item.readAt ? "" : ", unread"}`}
-                  className="notification-item"
+                  className={`notification-item${item.readAt ? " notification-item--read" : " notification-item--unread"}`}
                   disabled={notifications.isMarkingRead}
                   onClick={() => void openNotification(item.id, item.productId)}
                   type="button"
                 >
                   <span>{outcomeCopy[item.kind]}</span>
-                  {!item.readAt ? <span>Unread</span> : null}
+                  <span className="notification-item-state">
+                    {item.readAt ? "Read" : "Unread"}
+                  </span>
                   <time dateTime={item.createdAt}>
                     {new Date(item.createdAt).toLocaleDateString()}
                   </time>

@@ -362,7 +362,7 @@ function ProfileShell({
   children: React.ReactNode;
 }) {
   return (
-    <main className="page-shell identity-shell">
+    <section className="identity-page profile-page">
       <section
         aria-labelledby="profile-title"
         className="identity-card profile-card"
@@ -371,7 +371,7 @@ function ProfileShell({
         <h1 id="profile-title">{title}</h1>
         {children}
       </section>
-    </main>
+    </section>
   );
 }
 
