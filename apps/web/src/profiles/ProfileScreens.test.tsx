@@ -65,6 +65,7 @@ describe("profile screens", () => {
       ).disabled,
     ).toBe(true);
     expect(screen.getByLabelText("Display name")).toBeTruthy();
+    expect(screen.queryByRole("main")).toBeNull();
   });
 
   it("shows field guidance for non-HTTPS links", async () => {
@@ -124,6 +125,19 @@ describe("profile screens", () => {
     );
     expect(screen.getByText("Hello")).toBeTruthy();
     expect(screen.queryByText(/private profile/i)).toBeNull();
+  });
+
+  it("uses the same unavailable state for private or missing public profiles", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ errors: [{ message: "Not found" }] }), {
+        status: 404,
+      }),
+    );
+    renderProfiles("/public/missing-account", fetcher);
+    expect(
+      await screen.findByText("This profile is private or unavailable."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/missing-account|Not found/)).toBeNull();
   });
 
   it("rejects unsupported photos before any staging request", async () => {

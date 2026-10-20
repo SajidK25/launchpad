@@ -433,7 +433,7 @@ Move account screens into the public shell's visual language while preserving re
 
 ## Task T8: Redesign private and public profiles
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
