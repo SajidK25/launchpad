@@ -21,12 +21,10 @@ const mocks = vi.hoisted(() => ({
   rescheduleMutation: { isPending: false, mutateAsync: vi.fn() },
   cancelMutation: { isPending: false, mutateAsync: vi.fn() },
   preferenceMutation: { isPending: false, mutateAsync: vi.fn() },
-  logoutMutation: { isPending: false, mutateAsync: vi.fn() },
 }));
 
 vi.mock("../identity/useIdentity", () => ({
   useCurrentSession: () => mocks.session,
-  useLogout: () => mocks.logoutMutation,
 }));
 
 vi.mock("../products/useProducts", () => ({
@@ -157,7 +155,6 @@ beforeEach(() => {
     isPending: false,
     mutateAsync: vi.fn().mockResolvedValue(allPreferences),
   };
-  mocks.logoutMutation = { isPending: false, mutateAsync: vi.fn() };
   vi.stubGlobal("crypto", { randomUUID: () => "test-idempotency-key" });
 });
 
@@ -170,6 +167,7 @@ describe("founder launch dashboard", () => {
   it("shows the empty state and six separately labelled notification choices", () => {
     renderLaunch();
 
+    expect(screen.queryByRole("main")).toBeNull();
     expect(
       screen.getByRole("heading", { name: "Your launch calendar" }),
     ).toBeTruthy();
@@ -177,7 +175,15 @@ describe("founder launch dashboard", () => {
       screen.getByRole("heading", { name: "No approved products yet" }),
     ).toBeTruthy();
     expect(screen.getAllByRole("checkbox")).toHaveLength(6);
-    expect(screen.getByRole("link", { name: "Your products" })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Manage product details ↗" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("navigation", {
+        name: "Founder workspace navigation",
+      }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /Notifications/ })).toBeNull();
     expect(screen.getByText("TWO PER FOUNDER")).toBeTruthy();
   });
 
@@ -447,6 +453,7 @@ describe("anonymous public launch page", () => {
     };
     renderPublicLaunch();
 
+    expect(screen.queryByRole("main")).toBeNull();
     expect(
       screen.getByRole("heading", { name: "Launchpad demo" }),
     ).toBeTruthy();

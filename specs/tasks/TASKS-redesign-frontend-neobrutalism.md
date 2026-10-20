@@ -674,7 +674,7 @@ Adapt the existing live notification trigger and inbox to the single workspace-s
 
 ## Task T12: Redesign launch scheduling and public product pages
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** l
 > **Priority:** high

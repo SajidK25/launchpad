@@ -9,10 +9,8 @@ import type { ViewerProductsQuery } from "@launchpad/contracts/src/graphql.gener
 import { createProductClient } from "../products/client";
 import { useViewerProducts } from "../products/useProducts";
 import type { IdentityClient } from "../identity/client";
-import { navigate } from "../identity/Screens";
-import { useCurrentSession, useLogout } from "../identity/useIdentity";
+import { useCurrentSession } from "../identity/useIdentity";
 import { createNotificationClient } from "../notifications/client";
-import { NotificationBell } from "../notifications/NotificationBell";
 import {
   createLaunchClient,
   LaunchRequestError,
@@ -113,7 +111,6 @@ export function LaunchRoutes({
 
   return (
     <FounderLaunchDashboard
-      identityClient={identityClient}
       launchClient={launchClient}
       notificationClient={notificationClient}
       productClient={productClient}
@@ -165,19 +162,9 @@ function PublicLaunchDetails({
   }).format(new Date(product.launchedAt));
 
   return (
-    <main
-      className="launch-shell public-launch-shell"
-      id="public-launch-main"
-      tabIndex={-1}
-    >
+    <div className="launch-shell public-launch-shell public-launch-page">
       <div className="launch-workspace">
-        <header className="public-launch-topbar">
-          <a className="launch-brand" href="/">
-            LAUNCHPAD <span>INDEPENDENT PRODUCT LAUNCHES</span>
-          </a>
-          <span className="public-launch-stamp">NOW LIVE ↗</span>
-        </header>
-
+        <span className="public-launch-stamp">NOW LIVE ↗</span>
         <article aria-labelledby="public-launch-title">
           <section className="public-launch-hero">
             <div className="public-launch-copy">
@@ -259,13 +246,8 @@ function PublicLaunchDetails({
             </section>
           ) : null}
         </article>
-
-        <footer className="public-launch-footer">
-          <span>AN OPEN DOOR FOR WHAT’S NEXT.</span>
-          <a href="/">Explore Launchpad ↗</a>
-        </footer>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -277,13 +259,8 @@ function PublicLaunchStatus({
   message: string;
 }) {
   return (
-    <main className="launch-shell public-launch-shell">
+    <section className="launch-shell public-launch-shell">
       <div className="launch-workspace">
-        <header className="public-launch-topbar">
-          <a className="launch-brand" href="/">
-            LAUNCHPAD <span>INDEPENDENT PRODUCT LAUNCHES</span>
-          </a>
-        </header>
         <section
           aria-labelledby="public-launch-status-title"
           className="launch-panel public-launch-status"
@@ -296,18 +273,16 @@ function PublicLaunchStatus({
           </a>
         </section>
       </div>
-    </main>
+    </section>
   );
 }
 
 function FounderLaunchDashboard({
-  identityClient,
   launchClient,
   notificationClient,
   productClient,
   session,
 }: {
-  identityClient: IdentityClient;
   launchClient: LaunchClient;
   notificationClient: ReturnType<typeof createNotificationClient>;
   productClient: ReturnType<typeof createProductClient>;
@@ -318,7 +293,6 @@ function FounderLaunchDashboard({
   const preferences = useLaunchPreferences(launchClient, session);
   const products = useViewerProducts(productClient);
   const savePreferences = useUpdateLaunchPreferences(launchClient, accountId);
-  const logout = useLogout(identityClient);
   useLaunchLiveInvalidation(notificationClient, session);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -348,15 +322,6 @@ function FounderLaunchDashboard({
     }
   }
 
-  async function signOut() {
-    try {
-      await logout.mutateAsync();
-      navigate("/signin");
-    } catch {
-      setError("We could not sign you out. Please try again.");
-    }
-  }
-
   const availableProducts =
     products.data?.items.filter((product) =>
       ["approved", "scheduled", "launched"].includes(product.status),
@@ -368,26 +333,8 @@ function FounderLaunchDashboard({
   }
 
   return (
-    <main className="launch-shell" id="launch-main" tabIndex={-1}>
+    <div className="launch-shell" id="launch-main">
       <div className="launch-workspace">
-        <header className="launch-topbar">
-          <a className="launch-brand" href="/products">
-            LAUNCHPAD <span>FOUNDER WORKSPACE</span>
-          </a>
-          <nav aria-label="Founder workspace navigation" className="launch-nav">
-            <NotificationBell identityClient={identityClient} />
-            <a href="/products">Your products</a>
-            <a href="/profile">Profile</a>
-            <button
-              disabled={logout.isPending}
-              onClick={() => void signOut()}
-              type="button"
-            >
-              {logout.isPending ? "Signing out…" : "Sign out"}
-            </button>
-          </nav>
-        </header>
-
         <section aria-labelledby="launch-title" className="launch-hero">
           <p className="launch-kicker">ONE RELEASE AT A TIME</p>
           <h1 id="launch-title">Your launch calendar</h1>
@@ -520,7 +467,7 @@ function FounderLaunchDashboard({
           </p>
         </section>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -731,14 +678,14 @@ function LaunchStatus({
   action?: ReactNode;
 }) {
   return (
-    <main className="launch-shell">
-      <section className="launch-panel launch-gate">
+    <section className="launch-shell launch-gate">
+      <div className="launch-panel">
         <p className="launch-kicker">FOUNDER WORKSPACE</p>
         <h1>{title}</h1>
         <p role="status">{message}</p>
         {action}
-      </section>
-    </main>
+      </div>
+    </section>
   );
 }
 
