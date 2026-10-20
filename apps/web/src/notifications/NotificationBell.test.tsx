@@ -13,7 +13,7 @@ import { useNotificationInbox } from "./useNotifications";
 
 vi.mock("../identity/useIdentity", () => ({ useCurrentSession: vi.fn() }));
 vi.mock("./useNotifications", () => ({ useNotificationInbox: vi.fn() }));
-vi.mock("../identity/Screens", () => ({ navigate: vi.fn() }));
+vi.mock("../routing", () => ({ navigate: vi.fn() }));
 
 const sessionHook = vi.mocked(useCurrentSession);
 const inboxHook = vi.mocked(useNotificationInbox);
@@ -72,7 +72,7 @@ describe("notification bell", () => {
       markError: null,
     } as never);
     sessionHook.mockReturnValue({ data: memberSession } as never);
-    const { navigate } = await import("../identity/Screens");
+    const { navigate } = await import("../routing");
     render(
       <NotificationBell identityClient={{} as never} client={{} as never} />,
     );
@@ -87,6 +87,37 @@ describe("notification bell", () => {
     expect(navigate).toHaveBeenCalledWith("/products/product-1", {
       focusProductMain: true,
     });
+  });
+
+  it("leaves a notification unread and open when marking it read fails", async () => {
+    const markRead = vi.fn().mockRejectedValue(new Error("offline"));
+    inboxHook.mockReturnValue({
+      inbox: { data: { items: [notice], unreadCount: 1, nextCursor: null } },
+      markRead,
+      isMarkingRead: false,
+      markError: new Error("offline"),
+    } as never);
+    sessionHook.mockReturnValue({ data: memberSession } as never);
+    const { navigate } = await import("../routing");
+    render(
+      <NotificationBell identityClient={{} as never} client={{} as never} />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Notifications, 1 unread" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Approval received/ }));
+
+    expect(
+      await screen.findByText(
+        "This update could not be opened. It remains unread.",
+      ),
+    ).not.toBeNull();
+    expect(screen.getByText("Unread")).not.toBeNull();
+    expect(
+      screen.getByRole("region", { name: "Notifications" }),
+    ).not.toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("does not show private notices outside an active founder session", () => {
@@ -158,6 +189,26 @@ describe("notification bell", () => {
         screen.getByText("You have 4 unread review updates."),
       ).not.toBeNull(),
     );
+  });
+
+  it("bounds the visible badge while retaining the exact accessible count", () => {
+    sessionHook.mockReturnValue({ data: memberSession } as never);
+    inboxHook.mockReturnValue({
+      inbox: {
+        data: { items: [], unreadCount: 134, nextCursor: null },
+      },
+      markRead: vi.fn(),
+      isMarkingRead: false,
+      markError: null,
+    } as never);
+    render(
+      <NotificationBell identityClient={{} as never} client={{} as never} />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Notifications, 134 unread" }),
+    ).not.toBeNull();
+    expect(screen.getByText("99+")).not.toBeNull();
   });
 });
 

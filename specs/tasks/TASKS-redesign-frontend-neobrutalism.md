@@ -615,7 +615,7 @@ Apply the shared visual system to the pending queue, approved-review history, re
 
 ## Task T11: Integrate the notification bell and inbox presentation
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
