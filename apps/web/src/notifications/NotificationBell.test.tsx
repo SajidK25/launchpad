@@ -38,7 +38,7 @@ describe("notification bell", () => {
     );
 
     const button = screen.getByRole("button", {
-      name: "Notifications, 2 unread",
+      name: /Notifications\s*,\s*2 unread/,
     });
     fireEvent.click(button);
     expect(
@@ -78,7 +78,7 @@ describe("notification bell", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Notifications, 2 unread" }),
+      screen.getByRole("button", { name: /Notifications\s*,\s*2 unread/ }),
     );
     fireEvent.click(screen.getByRole("button", { name: /Approval received/ }));
 
@@ -104,7 +104,7 @@ describe("notification bell", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Notifications, 1 unread" }),
+      screen.getByRole("button", { name: /Notifications\s*,\s*1 unread/ }),
     );
     fireEvent.click(screen.getByRole("button", { name: /Approval received/ }));
 
@@ -144,7 +144,7 @@ describe("notification bell", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Notifications, 0 unread" }),
+      screen.getByRole("button", { name: /Notifications\s*,\s*0 unread/ }),
     );
 
     expect(screen.getByText("No review updates yet.")).not.toBeNull();
@@ -162,7 +162,7 @@ describe("notification bell", () => {
       <NotificationBell identityClient={{} as never} client={{} as never} />,
     );
     expect(
-      screen.getByRole("button", { name: "Notifications, 1 unread" }),
+      screen.getByRole("button", { name: /Notifications\s*,\s*1 unread/ }),
     ).not.toBeNull();
 
     inboxHook.mockReturnValue({
@@ -182,7 +182,7 @@ describe("notification bell", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: "Notifications, 4 unread" }),
+      screen.getByRole("button", { name: /Notifications\s*,\s*4 unread/ }),
     ).not.toBeNull();
     await waitFor(() =>
       expect(
@@ -206,7 +206,7 @@ describe("notification bell", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: "Notifications, 134 unread" }),
+      screen.getByRole("button", { name: /Notifications\s*,\s*134 unread/ }),
     ).not.toBeNull();
     expect(screen.getByText("99+")).not.toBeNull();
   });

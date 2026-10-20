@@ -733,7 +733,7 @@ Bring the founder launch calendar, booking history, preferences, publication fai
 
 ## Task T13: Verify cross-route browser behavior and accessibility
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** critical

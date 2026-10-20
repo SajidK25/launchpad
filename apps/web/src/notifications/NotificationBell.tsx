@@ -91,7 +91,6 @@ export function NotificationBell({
       <button
         aria-expanded={open}
         aria-controls="notification-inbox"
-        aria-label={`Notifications, ${unreadCount} unread`}
         className="notification-bell-trigger"
         onClick={() => setOpen((value) => !value)}
         ref={buttonRef}
@@ -102,6 +101,7 @@ export function NotificationBell({
         <span aria-hidden="true" className="notification-unread-count">
           {unreadCount > 99 ? "99+" : unreadCount}
         </span>
+        <span className="sr-only">, {unreadCount} unread</span>
       </button>
       <span aria-atomic="true" aria-live="polite" className="sr-only">
         {countAnnouncement}
