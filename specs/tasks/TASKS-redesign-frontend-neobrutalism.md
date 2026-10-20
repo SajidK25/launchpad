@@ -250,7 +250,7 @@ Provide one public frame and one session-aware workspace frame with role navigat
 
 ## Task T5: Create the production homepage
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
