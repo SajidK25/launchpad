@@ -555,7 +555,7 @@ Reorganize the founder list, detail, editor, media, topics, status, and lifecycl
 
 ## Task T10: Redesign the reviewer workflow
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high

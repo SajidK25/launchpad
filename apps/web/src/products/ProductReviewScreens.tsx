@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import type { IdentityClient } from "../identity/client";
-import { navigate } from "../identity/Screens";
+import { navigate } from "../routing";
 import {
   ProductRequestError,
   type ProductClient,
@@ -84,10 +84,12 @@ export function StaffReviewQueue({ client }: { client: ProductClient }) {
                   <span className="staff-queue-pitch">
                     {item.product.pitch?.trim() || "No one-line pitch"}
                   </span>
-                  <span>
+                  <span className="staff-queue-state">In review</span>
+                  <span className="staff-queue-meta">
                     Submitted {formatReviewDate(item.submission.submittedAt)}
+                    <span aria-hidden="true">·</span>
+                    Version {item.submission.productVersion}
                   </span>
-                  <span>Version {item.submission.productVersion}</span>
                   <span className="staff-queue-flags">
                     {item.possibleDuplicate ? (
                       <span className="staff-flag staff-flag-warning">
@@ -180,7 +182,10 @@ export function StaffApprovedReviewList({ client }: { client: ProductClient }) {
                 <span className="staff-queue-pitch">
                   {item.product.pitch?.trim() || "No one-line pitch"}
                 </span>
-                <span>Approved {formatReviewDate(item.approvedAt)}</span>
+                <span className="staff-queue-state">Approved · private</span>
+                <span className="staff-queue-meta">
+                  Approved {formatReviewDate(item.approvedAt)}
+                </span>
                 <span className="staff-queue-open">
                   Open approved product →
                 </span>
@@ -280,6 +285,11 @@ export function StaffReviewDetail({
               <p className="product-intro">
                 {product.summary.pitch || "No one-line pitch"}
               </p>
+              <span
+                className={`product-status product-status-${product.summary.status}`}
+              >
+                {productStatusLabel(product.summary.status)}
+              </span>
             </div>
             <button
               className="secondary-button"
@@ -485,12 +495,15 @@ function StaffDecisionPanel({
     <section
       aria-labelledby="review-decision-title"
       className="staff-review-section staff-decision-panel"
+      data-current-status={currentStatus}
+      data-outcome={outcome}
     >
       <h2 id="review-decision-title">Review outcome</h2>
       <form noValidate onSubmit={(event) => void recordDecision(event)}>
         <label className="product-field" htmlFor="review-outcome">
           Decision
           <select
+            aria-describedby="review-decision-guidance"
             id="review-outcome"
             onChange={(event) =>
               setOutcome(event.target.value as ReviewDecisionInput["outcome"])
@@ -508,6 +521,17 @@ function StaffDecisionPanel({
             )}
           </select>
         </label>
+        <p
+          className="staff-decision-guidance"
+          id="review-decision-guidance"
+          role="status"
+        >
+          {outcome === "approved"
+            ? "Approval keeps this product private and makes it eligible for launch scheduling."
+            : outcome === "rejected"
+              ? "Rejection ends this submission. Give the founder a clear reason in the feedback."
+              : "Requesting changes returns this product to the founder for corrections. Explain what needs to change."}
+        </p>
         {outcome !== "approved" ? (
           <label className="product-field" htmlFor="review-feedback">
             Feedback for the founder
