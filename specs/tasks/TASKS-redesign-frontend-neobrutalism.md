@@ -191,7 +191,7 @@ Define the approved palette, dimensions, focus behavior, reduced-motion rules, a
 
 ## Task T4: Build public and workspace shells
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** critical
