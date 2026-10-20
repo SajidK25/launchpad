@@ -307,7 +307,7 @@ Replace the developer-facing root card with a public landing page that explains 
 
 ## Task T6: Integrate routing, shells, and homepage in App
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** critical

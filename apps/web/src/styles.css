@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "./ui/tokens.css";
 @import "./ui/components.css";
+@import "./shell/shell.css";
+@import "./home/home.css";
 @import "./launches/launches.css";
 
 .page-shell {

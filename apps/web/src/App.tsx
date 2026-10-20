@@ -1,38 +1,48 @@
-import { useEffect, useState } from "react";
-
-import { useConnectivity } from "./connectivity/useConnectivity";
+import { useEffect, useState, type ReactNode } from "react";
+import { createIdentityClient } from "./identity/client";
+import { IdentityRoutes } from "./identity/Screens";
 import { createProductClient } from "./products/client";
 import { ProductRoutes } from "./products/ProductScreens";
-import { createIdentityClient } from "./identity/client";
-import { IdentityRoutes, navigate } from "./identity/Screens";
 import { ProfileRoutes } from "./profiles/ProfileScreens";
-import { NotificationBell } from "./notifications/NotificationBell";
 import { LaunchRoutes, PublicLaunchPage } from "./launches/LaunchScreens";
-
-const statusCopy = {
-  connected: "Connected",
-  loading: "Checking connection",
-  unavailable: "Unavailable",
-} as const;
-
-const detailCopy = {
-  connected: "Launchpad can reach its required local services.",
-  loading: "Checking the local API and required services.",
-  unavailable: "Launchpad cannot reach the required local services right now.",
-} as const;
+import { AppErrorBoundary } from "./ui/AppErrorBoundary";
+import { UnavailableState } from "./ui/Primitives";
+import { HomePage } from "./home/HomePage";
+import { PublicShell, WorkspaceShell } from "./shell/AppShell";
+import { classifyRoute } from "./routing";
 
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
+  const [hash, setHash] = useState(window.location.hash);
   const [identityClient] = useState(() => createIdentityClient());
   const [productClient] = useState(() =>
     createProductClient(undefined, identityClient),
   );
-  const connectivity = useConnectivity();
+
   useEffect(() => {
-    const update = () => setPath(window.location.pathname);
+    const update = () => {
+      setPath(window.location.pathname);
+      setHash(window.location.hash);
+    };
     window.addEventListener("popstate", update);
-    return () => window.removeEventListener("popstate", update);
+    window.addEventListener("hashchange", update);
+    return () => {
+      window.removeEventListener("popstate", update);
+      window.removeEventListener("hashchange", update);
+    };
   }, []);
+
+  useEffect(() => {
+    const identifier = hash.slice(1);
+    if (!identifier) return;
+    try {
+      document
+        .getElementById(decodeURIComponent(identifier))
+        ?.scrollIntoView({ block: "start" });
+    } catch {
+      // Ignore malformed fragments; the route itself remains valid.
+    }
+  }, [hash, path]);
 
   useEffect(() => {
     if (window.history.state?.focusProductMain !== true) return;
@@ -40,87 +50,83 @@ export function App() {
     window.history.replaceState({}, "", window.location.href);
   }, [path]);
 
-  if (path !== "/") {
-    if (path === "/launches")
-      return <LaunchRoutes identityClient={identityClient} />;
-    const publicLaunchPath = path.match(/^\/launches\/([^/]+)\/?$/);
-    if (publicLaunchPath) {
-      let productId = "";
-      try {
-        productId = decodeURIComponent(publicLaunchPath[1]);
-      } catch {
-        // An invalid path encoding resolves to the same safe not-found view.
-      }
-      return (
-        <PublicLaunchPage
-          identityClient={identityClient}
-          productId={productId}
-        />
+  const route = classifyRoute(path);
+  let surface: ReactNode;
+
+  switch (route.type) {
+    case "home":
+      surface = (
+        <PublicShell>
+          <HomePage identityClient={identityClient} />
+        </PublicShell>
       );
-    }
-    if (path === "/products" || path.startsWith("/products/")) {
-      return (
-        <>
-          <NotificationBell identityClient={identityClient} />
+      break;
+    case "account":
+      surface = (
+        <PublicShell>
+          <IdentityRoutes client={identityClient} />
+        </PublicShell>
+      );
+      break;
+    case "founder-profile":
+      surface = (
+        <WorkspaceShell identityClient={identityClient}>
+          <ProfileRoutes identityClient={identityClient} />
+        </WorkspaceShell>
+      );
+      break;
+    case "public-profile":
+      surface = (
+        <PublicShell>
+          <ProfileRoutes identityClient={identityClient} />
+        </PublicShell>
+      );
+      break;
+    case "founder-products":
+    case "reviewer-products":
+      surface = (
+        <WorkspaceShell identityClient={identityClient}>
           <ProductRoutes
             identityClient={identityClient}
             path={path}
             client={productClient}
           />
-        </>
+        </WorkspaceShell>
       );
-    }
-    if (path === "/profile") {
-      return (
-        <>
-          <nav
-            aria-label="Founder workspace"
-            className="profile-workspace-link"
-          >
-            <a
-              href="/products"
-              onClick={(event) => {
-                event.preventDefault();
-                navigate("/products");
-              }}
-            >
-              Your product drafts
-            </a>
-          </nav>
-          <ProfileRoutes identityClient={identityClient} />
-        </>
+      break;
+    case "founder-launches":
+      surface = (
+        <WorkspaceShell identityClient={identityClient}>
+          <LaunchRoutes identityClient={identityClient} />
+        </WorkspaceShell>
       );
-    }
-    if (path.startsWith("/public/"))
-      return <ProfileRoutes identityClient={identityClient} />;
-    return <IdentityRoutes client={identityClient} />;
+      break;
+    case "public-launch":
+      surface = (
+        <PublicShell>
+          <PublicLaunchPage
+            identityClient={identityClient}
+            productId={route.productId}
+          />
+        </PublicShell>
+      );
+      break;
+    case "unavailable":
+      surface = (
+        <PublicShell>
+          <UnavailableState
+            title="This page isn’t available"
+            description="Check the address or return to the Launchpad home page."
+            action={
+              <a className="ui-action ui-action--primary" href="/">
+                Go to home
+              </a>
+            }
+          />
+        </PublicShell>
+      );
+      break;
   }
-  const { refresh, state } = connectivity;
 
-  return (
-    <main className="page-shell">
-      <section aria-labelledby="page-title" className="connectivity-card">
-        <p className="eyebrow">Local development</p>
-        <h1 id="page-title">Launchpad</h1>
-        <p
-          aria-atomic="true"
-          aria-live="polite"
-          className={`status status-${state}`}
-          role="status"
-        >
-          {statusCopy[state]}
-        </p>
-        <p className="status-detail">{detailCopy[state]}</p>
-        {state === "unavailable" ? (
-          <button
-            className="retry-button"
-            onClick={() => void refresh()}
-            type="button"
-          >
-            Check again
-          </button>
-        ) : null}
-      </section>
-    </main>
-  );
+  return <AppErrorBoundary>{surface}</AppErrorBoundary>;
 }
