@@ -3,13 +3,13 @@
 }
 
 :where(html) {
-  min-width: 20rem;
+  min-width: 0;
   scroll-behavior: smooth;
 }
 
 :where(body) {
   margin: 0;
-  min-width: 20rem;
+  min-width: 0;
   color: var(--color-ink);
   background: var(--color-cream);
   font-family: var(--font-sans);
