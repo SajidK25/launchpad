@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { ViewerProductQuery } from "@launchpad/contracts/src/graphql.generated";
-import { useCurrentSession, useLogout } from "../identity/useIdentity";
+import { useCurrentSession } from "../identity/useIdentity";
 import type { IdentityClient } from "../identity/client";
-import { navigate } from "../identity/Screens";
+import { navigate } from "../routing";
 import { ProductRequestError, type ProductClient } from "./client";
 import {
   StaffReviewDetail,
@@ -51,14 +51,13 @@ export function ProductRoutes({
   const session = useCurrentSession(identityClient);
   const reviewRoute = path.match(/^\/products\/review(?:\/([^/]+))?\/?$/);
   const route = path.match(/^\/products(?:\/([^/]+))?\/?$/);
-  const workspaceLabel = reviewRoute ? "Staff workspace" : "Founder workspace";
+  let content: React.ReactNode;
 
   if (!route && !reviewRoute)
-    return (
-      <ProductFrame
-        identityClient={identityClient}
-        workspaceLabel={workspaceLabel}
-      >
+    content = (
+      <section className="product-panel">
+        <p className="eyebrow">Product workspace</p>
+        <h1>Page unavailable</h1>
         <p role="alert">That product workspace page is unavailable.</p>
         <button
           className="secondary-button"
@@ -67,23 +66,18 @@ export function ProductRoutes({
         >
           Your products
         </button>
-      </ProductFrame>
+      </section>
     );
-  if (session.isPending)
-    return (
-      <ProductFrame
-        identityClient={identityClient}
-        workspaceLabel={workspaceLabel}
-      >
+  else if (session.isPending)
+    content = (
+      <section className="product-panel">
         <p role="status">Checking your account…</p>
-      </ProductFrame>
+      </section>
     );
-  if (session.isError || !session.data)
-    return (
-      <ProductFrame
-        identityClient={identityClient}
-        workspaceLabel={workspaceLabel}
-      >
+  else if (session.isError || !session.data)
+    content = (
+      <section className="product-panel">
+        <p className="eyebrow">Founder workspace</p>
         <h1>Your products</h1>
         <p role="alert">Sign in to view or edit your private product drafts.</p>
         <button
@@ -93,104 +87,42 @@ export function ProductRoutes({
         >
           Sign in
         </button>
-      </ProductFrame>
+      </section>
     );
-
-  return (
-    <ProductFrame
-      identityClient={identityClient}
-      workspaceLabel={workspaceLabel}
-    >
-      {reviewRoute ? (
-        canReviewQueue(session.data) ? (
-          reviewRoute[1] ? (
-            <StaffReviewDetail client={client} productId={reviewRoute[1]} />
-          ) : (
-            <StaffReviewQueue client={client} />
-          )
+  else
+    content = reviewRoute ? (
+      canReviewQueue(session.data) ? (
+        reviewRoute[1] ? (
+          <StaffReviewDetail client={client} productId={reviewRoute[1]} />
         ) : (
-          <section aria-labelledby="review-title" className="product-panel">
-            <p className="eyebrow">Staff workspace</p>
-            <h1 id="review-title">Staff review queue</h1>
-            <p role="alert" className="product-alert">
-              This queue is not available for your account.
-            </p>
-            <a href="/products" onClick={linkTo("/products")}>
-              Back to your products
-            </a>
-          </section>
+          <StaffReviewQueue client={client} />
         )
-      ) : route?.[1] ? (
-        <ProductEditor
-          client={client}
-          identityClient={identityClient}
-          productId={route[1]}
-          session={session.data}
-        />
       ) : (
-        <ProductHome client={client} session={session.data} />
-      )}
-    </ProductFrame>
-  );
-}
-
-function ProductFrame({
-  identityClient,
-  workspaceLabel,
-  children,
-}: {
-  identityClient: IdentityClient;
-  workspaceLabel: string;
-  children: React.ReactNode;
-}) {
-  const logout = useLogout(identityClient);
-  const [error, setError] = useState("");
-  async function signOut() {
-    setError("");
-    try {
-      await logout.mutateAsync();
-      navigate("/signin");
-    } catch {
-      setError("We could not sign you out. Please try again.");
-    }
-  }
-  return (
-    <main
-      aria-label={workspaceLabel}
-      className="page-shell product-shell"
-      id="product-main"
-      tabIndex={-1}
-    >
-      <div className="product-workspace">
-        <header className="product-topbar">
-          <a
-            className="product-brand"
-            href="/products"
-            onClick={linkTo("/products")}
-          >
-            Launchpad <span>{workspaceLabel}</span>
-          </a>
-          <nav aria-label="Your account" className="product-account-nav">
-            <a href="/profile" onClick={linkTo("/profile")}>
-              Profile
-            </a>
-            <button
-              disabled={logout.isPending}
-              onClick={() => void signOut()}
-              type="button"
-            >
-              {logout.isPending ? "Signing out…" : "Sign out"}
-            </button>
-          </nav>
-        </header>
-        {error ? (
+        <section aria-labelledby="review-title" className="product-panel">
+          <p className="eyebrow">Staff workspace</p>
+          <h1 id="review-title">Staff review queue</h1>
           <p role="alert" className="product-alert">
-            {error}
+            This queue is not available for your account.
           </p>
-        ) : null}
-        {children}
-      </div>
-    </main>
+          <a href="/products" onClick={linkTo("/products")}>
+            Back to your products
+          </a>
+        </section>
+      )
+    ) : route?.[1] ? (
+      <ProductEditor
+        client={client}
+        identityClient={identityClient}
+        productId={route[1]}
+        session={session.data}
+      />
+    ) : (
+      <ProductHome client={client} session={session.data} />
+    );
+  return (
+    <div className="product-route" id="product-main" tabIndex={-1}>
+      {content}
+    </div>
   );
 }
 

@@ -492,7 +492,7 @@ Apply shared hierarchy and state treatments to private profile editing and eligi
 
 ## Task T9: Redesign the founder product workspace
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** l
 > **Priority:** high
