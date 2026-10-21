@@ -514,6 +514,63 @@ class ProductRepository:
             ),
         )
 
+    async def list_public_launches(
+        self,
+        session: AsyncSession,
+        *,
+        day_start: datetime,
+        next_day_start: datetime,
+        limit: int,
+        after: tuple[str, UUID] | None,
+    ) -> list[Product]:
+        """Page only launched products whose launch time falls in the UTC day."""
+
+        sort_key = func.lower(Product.name)
+        statement = select(Product).where(
+            Product.status == "launched",
+            Product.launched_at >= day_start,
+            Product.launched_at < next_day_start,
+        )
+        if after is not None:
+            statement = statement.where(tuple_(sort_key, Product.id) > after)
+        return list(
+            (await session.scalars(statement.order_by(sort_key, Product.id).limit(limit))).all()
+        )
+
+    async def list_public_launch_logos(
+        self, session: AsyncSession, *, product_ids: tuple[UUID, ...]
+    ) -> dict[UUID, ProductAsset]:
+        """Batch-load only attached clean logos for the requested public page."""
+
+        if not product_ids:
+            return {}
+        assets = await session.scalars(
+            select(ProductAsset).where(
+                ProductAsset.product_id.in_(product_ids),
+                ProductAsset.kind == "logo",
+                ProductAsset.state == "clean",
+                ProductAsset.attached_at.is_not(None),
+            )
+        )
+        return {asset.product_id: asset for asset in assets}
+
+    async def list_public_launch_topics(
+        self, session: AsyncSession, *, product_ids: tuple[UUID, ...]
+    ) -> dict[UUID, tuple[str, ...]]:
+        """Batch-load the selected public topic labels in display order."""
+
+        if not product_ids:
+            return {}
+        rows = await session.execute(
+            select(ProductTopic.product_id, ProductTopic.selected_label)
+            .where(ProductTopic.product_id.in_(product_ids))
+            .order_by(ProductTopic.product_id, ProductTopic.position)
+        )
+        topics: dict[UUID, list[str]] = {}
+        for product_id, label in rows.tuples():
+            topics.setdefault(product_id, []).append(label)
+        return {product_id: tuple(labels) for product_id, labels in topics.items()}
+
     async def transition_launch_state(
         self,
         session: AsyncSession,

@@ -5,19 +5,276 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete, insert
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.auth.models import Account
 from app.modules.auth.staff import AuthAccessService
 from app.modules.products.models import Product, ProductAsset, ProductTopic, Topic
 from app.modules.products.policies import ProductNotFoundError
-from app.modules.products.service import ProductService
+from app.modules.products.repository import ProductRepository
+from app.modules.products.service import ProductService, ProductValidationError
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
+
+
+class RecordingPublicLaunchRepository:
+    """Small repository double for service date and validation rules."""
+
+    query: dict[str, object]
+
+    async def list_public_launches(
+        self,
+        session: AsyncSession,
+        *,
+        day_start: datetime,
+        next_day_start: datetime,
+        limit: int,
+        after: tuple[str, UUID] | None,
+    ) -> list[Product]:
+        self.query = {
+            "day_start": day_start,
+            "next_day_start": next_day_start,
+            "limit": limit,
+            "after": after,
+        }
+        return []
+
+    async def list_public_launch_logos(
+        self, session: AsyncSession, *, product_ids: tuple[UUID, ...]
+    ) -> dict[UUID, ProductAsset]:
+        return {}
+
+    async def list_public_launch_topics(
+        self, session: AsyncSession, *, product_ids: tuple[UUID, ...]
+    ) -> dict[UUID, tuple[str, ...]]:
+        return {}
+
+
+def test_public_launches_uses_api_clock_when_date_is_omitted() -> None:
+    async def verify() -> None:
+        now = datetime(2026, 10, 22, 18, 30, tzinfo=UTC)
+        repository = RecordingPublicLaunchRepository()
+        service = ProductService(
+            member_access=AuthAccessService(),
+            payload_codec=EmailPayloadCodec({"reads-test": b"r" * 32}, "reads-test"),
+            repository=cast(ProductRepository, repository),
+            clock=lambda: now,
+        )
+        page = await service.public_launches(cast(AsyncSession, None), requested_date=None)
+        assert page.today_date.isoformat() == "2026-10-22"
+        assert page.selected_date == page.today_date
+        assert repository.query["day_start"] == now.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+
+    asyncio.run(verify())
+
+
+def test_public_launches_validates_page_bounds_cursor_and_future_date() -> None:
+    async def verify() -> None:
+        repository = RecordingPublicLaunchRepository()
+        today = datetime(2026, 10, 22, tzinfo=UTC)
+        service = ProductService(
+            member_access=AuthAccessService(),
+            payload_codec=EmailPayloadCodec({"reads-test": b"r" * 32}, "reads-test"),
+            repository=cast(ProductRepository, repository),
+            clock=lambda: today,
+        )
+        session = cast(AsyncSession, None)
+        await service.public_launches(session, requested_date=None)
+        assert repository.query["limit"] == 21
+        for page_size in (0, -1, 51):
+            with pytest.raises(ProductValidationError, match="invalid page size"):
+                await service.public_launches(session, requested_date=None, first=page_size)
+        with pytest.raises(ProductValidationError, match="invalid cursor"):
+            await service.public_launches(session, requested_date=None, after="not-a-cursor")
+        with pytest.raises(ProductValidationError, match="future launch dates"):
+            await service.public_launches(session, requested_date=today.date() + timedelta(days=1))
+
+    asyncio.run(verify())
+
+
+@pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="requires check PostgreSQL")
+def test_public_launches_filter_utc_day_and_page_only_published_cards() -> None:
+    async def verify() -> None:
+        database = Database.connect(os.environ["DATABASE_URL"])
+        founder_id = uuid4()
+        topic_id = uuid4()
+        today = datetime(2026, 10, 22, tzinfo=UTC)
+        selected = today.date()
+        statuses = ("draft", "submitted", "changes_requested", "rejected", "approved", "scheduled")
+        launched_ids = [UUID(int=index) for index in range(10, 15)]
+        boundary_ids = (UUID(int=20), UUID(int=21), UUID(int=22))
+        now = datetime.now(UTC)
+        service = ProductService(
+            member_access=AuthAccessService(),
+            payload_codec=EmailPayloadCodec({"reads-test": b"r" * 32}, "reads-test"),
+            clock=lambda: datetime(2026, 10, 22, 12, tzinfo=UTC),
+        )
+        try:
+            await database.ensure_compatible()
+            sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+            async with sessions() as session, session.begin():
+                session.add(
+                    Account(
+                        id=founder_id,
+                        email_display=f"{founder_id}@example.test",
+                        email_key=f"{founder_id}@example.test",
+                        password_hash="integration-only-placeholder",
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                await session.flush()
+                await session.flush()
+                products = []
+                names = ("beta", "Alpha", "ALPHA", "delta", "Charlie")
+                for product_id, name in zip(launched_ids, names, strict=True):
+                    products.append(
+                        Product(
+                            id=product_id,
+                            founder_id=founder_id,
+                            status="launched",
+                            version=1,
+                            name=name,
+                            pitch=f"Pitch for {name}",
+                            description="Public detail not part of card",
+                            website_url="https://example.test",
+                            website_key=f"https://example.test/{product_id}",
+                            launched_at=today + timedelta(hours=1),
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                products.extend(
+                    [
+                        Product(
+                            id=boundary_ids[0],
+                            founder_id=founder_id,
+                            status="launched",
+                            version=1,
+                            name="before",
+                            pitch="Before",
+                            description="d",
+                            website_url="https://example.test",
+                            website_key="before",
+                            launched_at=today - timedelta(microseconds=1),
+                            created_at=now,
+                            updated_at=now,
+                        ),
+                        Product(
+                            id=boundary_ids[1],
+                            founder_id=founder_id,
+                            status="launched",
+                            version=1,
+                            name="after",
+                            pitch="After",
+                            description="d",
+                            website_url="https://example.test",
+                            website_key="after",
+                            launched_at=today + timedelta(days=1),
+                            created_at=now,
+                            updated_at=now,
+                        ),
+                    ]
+                )
+                for status in statuses:
+                    is_draft = status == "draft"
+                    products.append(
+                        Product(
+                            id=uuid4(),
+                            founder_id=founder_id,
+                            status=status,
+                            version=1,
+                            name=None if is_draft else f"private-{status}",
+                            pitch=None if is_draft else "Private",
+                            description=None if is_draft else "d",
+                            website_url=None if is_draft else "https://example.test",
+                            website_key=None if is_draft else f"private-{status}",
+                            launched_at=None,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                await session.execute(
+                    insert(Product).values(
+                        [
+                            {
+                                column.key: getattr(product, column.key)
+                                for column in Product.__table__.columns
+                            }
+                            for product in products
+                        ]
+                    )
+                )
+                session.add(Topic(id=topic_id, display_name="AI Tools", name_key="ai tools"))
+                await session.flush()
+                session.add_all(
+                    [
+                        ProductTopic(
+                            product_id=launched_ids[0],
+                            topic_id=topic_id,
+                            position=1,
+                            selected_label="AI tools",
+                        ),
+                        ProductAsset(
+                            id=UUID(int=30),
+                            product_id=launched_ids[0],
+                            kind="logo",
+                            state="clean",
+                            staging_key="reads/logo-stage",
+                            clean_key="reads/logo-clean",
+                            media_type="image/png",
+                            byte_count=100,
+                            position=None,
+                            expires_at=None,
+                            attached_at=now,
+                        ),
+                    ]
+                )
+            async with sessions() as session:
+                first = await service.public_launches(session, requested_date=selected, first=2)
+                second = await service.public_launches(
+                    session, requested_date=selected, first=2, after=first.next_cursor
+                )
+                third = await service.public_launches(
+                    session, requested_date=selected, first=2, after=second.next_cursor
+                )
+                assert [card.name for card in first.items + second.items + third.items] == [
+                    "Alpha",
+                    "ALPHA",
+                    "beta",
+                    "Charlie",
+                    "delta",
+                ]
+                assert first.items[0].id == min(launched_ids[1], launched_ids[2])
+                beta_card = next(card for card in first.items + second.items if card.name == "beta")
+                assert beta_card.logo is not None and beta_card.logo.id == UUID(int=30)
+                assert beta_card.topics == ("AI tools",)
+                assert first.next_cursor and second.next_cursor and third.next_cursor is None
+                empty = await service.public_launches(
+                    session, requested_date=selected - timedelta(days=2)
+                )
+                assert empty.items == () and empty.next_cursor is None
+                with pytest.raises(ProductValidationError, match="invalid cursor"):
+                    await service.public_launches(
+                        session,
+                        requested_date=selected - timedelta(days=2),
+                        after=first.next_cursor,
+                    )
+        finally:
+            async with database.engine.begin() as connection:
+                await connection.execute(delete(Product).where(Product.founder_id == founder_id))
+                await connection.execute(delete(Topic).where(Topic.id == topic_id))
+                await connection.execute(delete(Account).where(Account.id == founder_id))
+            await database.close()
+
+    asyncio.run(verify())
 
 
 @pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="requires check PostgreSQL")

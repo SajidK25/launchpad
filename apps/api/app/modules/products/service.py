@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -189,6 +190,27 @@ class PublicProductProjection:
     logo: ProductAssetResult | None
     screenshots: tuple[ProductAssetResult, ...]
     topics: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PublicLaunchCard:
+    """Small anonymous card projection for one published product."""
+
+    id: UUID
+    name: str
+    pitch: str
+    logo: ProductAssetResult | None
+    topics: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PublicLaunchPage:
+    """One bounded page of launched products for a UTC calendar date."""
+
+    today_date: date
+    selected_date: date
+    items: tuple[PublicLaunchCard, ...]
+    next_cursor: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -725,6 +747,59 @@ class ProductService:
             logo=next((asset for asset in views if asset.kind == "logo"), None),
             screenshots=tuple(asset for asset in views if asset.kind == "screenshot"),
             topics=tuple(topic.selected_label for topic in topics),
+        )
+
+    async def public_launches(
+        self,
+        session: AsyncSession,
+        *,
+        requested_date: date | None,
+        first: int = 20,
+        after: str | None = None,
+    ) -> PublicLaunchPage:
+        """Return a bounded, anonymous-safe page for one UTC date."""
+
+        today_date = self.clock().astimezone(UTC).date()
+        selected_date = requested_date or today_date
+        if selected_date > today_date:
+            raise ProductValidationError("future launch dates are unavailable", fields=("date",))
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        cursor = _parse_public_launch_cursor(after, selected_date) if after is not None else None
+        day_start = datetime.combine(selected_date, datetime.min.time(), tzinfo=UTC)
+        next_day_start = day_start + timedelta(days=1)
+        products = await self.repository.list_public_launches(
+            session,
+            day_start=day_start,
+            next_day_start=next_day_start,
+            limit=first + 1,
+            after=cursor,
+        )
+        visible = products[:first]
+        product_ids = tuple(product.id for product in visible)
+        logos = await self.repository.list_public_launch_logos(session, product_ids=product_ids)
+        topics = await self.repository.list_public_launch_topics(session, product_ids=product_ids)
+        items = tuple(
+            PublicLaunchCard(
+                id=product.id,
+                name=product.name,
+                pitch=product.pitch,
+                logo=_asset_view(logos[product.id]) if product.id in logos else None,
+                topics=tuple(topics.get(product.id, ())),
+            )
+            for product in visible
+            if product.name is not None and product.pitch is not None
+        )
+        next_cursor = (
+            _public_launch_cursor(selected_date, visible[-1].name, visible[-1].id)
+            if len(products) > first and visible and visible[-1].name is not None
+            else None
+        )
+        return PublicLaunchPage(
+            today_date=today_date,
+            selected_date=selected_date,
+            items=items,
+            next_cursor=next_cursor,
         )
 
     async def edit_launched_product(
@@ -1890,6 +1965,25 @@ def _parse_read_cursor(value: str) -> tuple[datetime, UUID]:
     except ValueError as error:
         raise ProductValidationError("invalid cursor", fields=("after",)) from error
     return timestamp, submission_id
+
+
+def _public_launch_cursor(selected_date: date, name: str, product_id: UUID) -> str:
+    payload = json.dumps(
+        [selected_date.isoformat(), name.lower(), str(product_id)], separators=(",", ":")
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _parse_public_launch_cursor(value: str, selected_date: date) -> tuple[str, UUID]:
+    try:
+        payload = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        cursor_date, name_key, product_text = json.loads(payload)
+        product_id = UUID(product_text)
+        if cursor_date != selected_date.isoformat() or not isinstance(name_key, str):
+            raise ValueError("cursor date or sort key is invalid")
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProductValidationError("invalid cursor", fields=("after",)) from error
+    return name_key, product_id
 
 
 def validate_submission_content(content: ProductContentInput) -> ProductContentInput:
