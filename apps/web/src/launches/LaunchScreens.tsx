@@ -10,6 +10,7 @@ import { createProductClient } from "../products/client";
 import { useViewerProducts } from "../products/useProducts";
 import type { IdentityClient } from "../identity/client";
 import { useCurrentSession } from "../identity/useIdentity";
+import { navigate } from "../routing";
 import { createNotificationClient } from "../notifications/client";
 import {
   createLaunchClient,
@@ -28,6 +29,7 @@ import {
   useRescheduleLaunch,
   useUpdateLaunchPreferences,
 } from "./useLaunches";
+import { LaunchDiscovery } from "./LaunchDiscovery";
 
 const preferenceFields = [
   ["reminderEmail", "Email reminders"],
@@ -149,6 +151,27 @@ export function PublicLaunchPage({
     );
 
   return <PublicLaunchDetails product={data} />;
+}
+
+export function PublicLaunchArchive({
+  date,
+  identityClient,
+}: {
+  date: string;
+  identityClient: IdentityClient;
+}) {
+  const client = useMemo(
+    () => createLaunchClient(undefined, identityClient),
+    [identityClient],
+  );
+
+  return (
+    <LaunchDiscovery
+      client={client}
+      date={date}
+      onDateChange={(nextDate) => navigate(`/launches/archive/${nextDate}`)}
+    />
+  );
 }
 
 function PublicLaunchDetails({

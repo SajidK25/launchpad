@@ -4,7 +4,11 @@ import { IdentityRoutes } from "./identity/Screens";
 import { createProductClient } from "./products/client";
 import { ProductRoutes } from "./products/ProductScreens";
 import { ProfileRoutes } from "./profiles/ProfileScreens";
-import { LaunchRoutes, PublicLaunchPage } from "./launches/LaunchScreens";
+import {
+  LaunchRoutes,
+  PublicLaunchArchive,
+  PublicLaunchPage,
+} from "./launches/LaunchScreens";
 import { AppErrorBoundary } from "./ui/AppErrorBoundary";
 import { UnavailableState } from "./ui/Primitives";
 import { HomePage } from "./home/HomePage";
@@ -99,6 +103,16 @@ export function App() {
         <WorkspaceShell identityClient={identityClient}>
           <LaunchRoutes identityClient={identityClient} />
         </WorkspaceShell>
+      );
+      break;
+    case "public-launch-archive":
+      surface = (
+        <PublicShell>
+          <PublicLaunchArchive
+            date={route.date}
+            identityClient={identityClient}
+          />
+        </PublicShell>
       );
       break;
     case "public-launch":

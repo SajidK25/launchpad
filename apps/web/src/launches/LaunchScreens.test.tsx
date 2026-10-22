@@ -9,7 +9,11 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IdentityClient } from "../identity/client";
-import { LaunchRoutes, PublicLaunchPage } from "./LaunchScreens";
+import {
+  LaunchRoutes,
+  PublicLaunchArchive,
+  PublicLaunchPage,
+} from "./LaunchScreens";
 import { LaunchDiscovery } from "./LaunchDiscovery";
 import type { LaunchClient } from "./client";
 
@@ -24,7 +28,10 @@ const mocks = vi.hoisted(() => ({
   rescheduleMutation: { isPending: false, mutateAsync: vi.fn() },
   cancelMutation: { isPending: false, mutateAsync: vi.fn() },
   preferenceMutation: { isPending: false, mutateAsync: vi.fn() },
+  navigate: vi.fn(),
 }));
+
+vi.mock("../routing", () => ({ navigate: mocks.navigate }));
 
 vi.mock("../identity/useIdentity", () => ({
   useCurrentSession: () => mocks.session,
@@ -166,6 +173,7 @@ function publicProduct(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   mocks.session = { data: memberSession(), isPending: false, isError: false };
+  mocks.navigate.mockReset();
   mocks.products = {
     data: { items: [] },
     isPending: false,
@@ -584,6 +592,31 @@ describe("anonymous public launch page", () => {
 });
 
 describe("guest launch discovery", () => {
+  it("composes a reloadable archive date and navigates adjacent selections", () => {
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-11-02",
+            selectedDate: "2026-10-20",
+            items: [],
+            nextCursor: null,
+          },
+        ],
+      },
+    });
+
+    render(
+      <PublicLaunchArchive
+        date="2026-10-20"
+        identityClient={{} as IdentityClient}
+      />,
+    );
+
+    expect(screen.getByText("October 20, 2026")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Previous day/ }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/launches/archive/2026-10-19");
+  });
   it("renders public product cards with only approved summary fields", () => {
     mocks.launches = discoveryQuery({
       data: {

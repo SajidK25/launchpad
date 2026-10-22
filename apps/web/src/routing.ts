@@ -13,6 +13,7 @@ export type AppRoute =
   | { type: "founder-products"; productId?: string }
   | { type: "reviewer-products"; productId?: string }
   | { type: "founder-launches" }
+  | { type: "public-launch-archive"; date: string }
   | { type: "public-launch"; productId: string }
   | { type: "unavailable" };
 
@@ -43,6 +44,17 @@ function pathSegments(pathname: string): string[] | null {
   return segments.some((segment) => segment.length === 0) ? null : segments;
 }
 
+function isUtcCalendarDate(value: string | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 export function classifyRoute(pathname: string): AppRoute {
   const segments = pathSegments(pathname);
   if (!segments) return unavailable;
@@ -65,6 +77,16 @@ export function classifyRoute(pathname: string): AppRoute {
   if (segments[0] === "launches" && segments.length === 2) {
     const productId = decodeIdentifier(segments[1]);
     return productId ? { type: "public-launch", productId } : unavailable;
+  }
+
+  if (
+    segments[0] === "launches" &&
+    segments[1] === "archive" &&
+    segments.length === 3
+  ) {
+    return isUtcCalendarDate(segments[2])
+      ? { type: "public-launch-archive", date: segments[2] }
+      : unavailable;
   }
 
   if (segments[0] === "products") {

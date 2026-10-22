@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   receivedIdentityClient: null as unknown,
   receivedProductClient: null as unknown,
   productFailure: false,
+  archiveDate: null as string | null,
 }));
 
 vi.mock("./identity/client", () => ({
@@ -73,6 +74,10 @@ vi.mock("./notifications/NotificationBell", () => ({
 }));
 vi.mock("./launches/LaunchScreens", () => ({
   LaunchRoutes: () => <div>launch routes</div>,
+  PublicLaunchArchive: ({ date }: { date: string }) => {
+    mocks.archiveDate = date;
+    return <div>public archive: {date}</div>;
+  },
   PublicLaunchPage: ({ productId }: { productId: string }) => (
     <div>public launch: {productId}</div>
   ),
@@ -122,6 +127,7 @@ beforeEach(() => {
   mocks.receivedIdentityClient = null;
   mocks.receivedProductClient = null;
   mocks.productFailure = false;
+  mocks.archiveDate = null;
   mockedCreateIdentityClient
     .mockReset()
     .mockReturnValue(mocks.identityClient as never);
@@ -176,6 +182,26 @@ describe("App", () => {
     expect(
       screen.getByRole("navigation", { name: "Public navigation" }),
     ).toBeTruthy();
+  });
+
+  it("renders direct archive loads in the public shell and preserves launch routes", async () => {
+    window.history.pushState({}, "", "/launches/archive/2026-10-20");
+    const view = render(<App />);
+
+    expect(screen.getByText("public archive: 2026-10-20")).toBeTruthy();
+    expect(mocks.archiveDate).toBe("2026-10-20");
+    expect(
+      screen.getByRole("navigation", { name: "Public navigation" }),
+    ).toBeTruthy();
+
+    setPath("/launches");
+    await waitFor(() => expect(screen.getByText("launch routes")).toBeTruthy());
+
+    setPath("/launches/product-1");
+    await waitFor(() =>
+      expect(screen.getByText("public launch: product-1")).toBeTruthy(),
+    );
+    view.unmount();
   });
 
   it("routes founder and reviewer work through role-specific workspace shells", () => {

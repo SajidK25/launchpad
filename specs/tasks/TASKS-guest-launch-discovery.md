@@ -394,7 +394,7 @@ Compose the shared discovery list into the homepage as primary content while ret
 
 ## Task T7: Add and compose dated archive routes
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** s
 > **Priority:** high
