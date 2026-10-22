@@ -1,9 +1,18 @@
 import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { IdentityClient } from "../identity/client";
 import type { createNotificationClient } from "../notifications/client";
 import { notificationKeys } from "../notifications/useNotifications";
-import type { LaunchBookingInput, LaunchClient } from "./client";
+import type {
+  LaunchBookingInput,
+  LaunchClient,
+  PublicLaunchPage,
+} from "./client";
 
 export type LaunchSession = Pick<
   Awaited<ReturnType<IdentityClient["currentSession"]>>,
@@ -23,7 +32,56 @@ export const launchKeys = {
     ["launches", accountId, "preferences"] as const,
   publicProduct: (productId: string) =>
     ["launches", "public-product", productId] as const,
+  publicLaunches: (date?: string) =>
+    ["launches", "public", date ?? "today"] as const,
 };
+
+export function usePublicLaunches(
+  client: LaunchClient,
+  selectedDate?: string,
+  first = 20,
+) {
+  const queryClient = useQueryClient();
+  const query = useInfiniteQuery<
+    PublicLaunchPage,
+    Error,
+    { pages: PublicLaunchPage[]; pageParams: Array<string | null> },
+    ReturnType<typeof launchKeys.publicLaunches>,
+    string | null
+  >({
+    queryKey: launchKeys.publicLaunches(selectedDate),
+    initialPageParam: null,
+    queryFn: ({ pageParam }) =>
+      client.fetchPublicLaunches({
+        ...(selectedDate === undefined ? {} : { date: selectedDate }),
+        first,
+        after: pageParam ?? undefined,
+      }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    refetchOnWindowFocus: true,
+  });
+
+  useEffect(() => {
+    if (selectedDate !== undefined) return;
+    const now = new Date();
+    const nextUtcMidnight = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1,
+    );
+    const timer = window.setTimeout(
+      () => {
+        void queryClient.resetQueries({
+          queryKey: launchKeys.publicLaunches(),
+        });
+      },
+      Math.max(0, nextUtcMidnight - now.getTime()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [queryClient, selectedDate]);
+
+  return query;
+}
 
 export function useLaunchBookings(
   client: LaunchClient,

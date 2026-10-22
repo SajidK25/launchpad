@@ -2,6 +2,86 @@ import { describe, expect, it, vi } from "vitest";
 import { createLaunchClient } from "./client";
 
 describe("launch client", () => {
+  it("fetches today anonymously without initializing a session", async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json({
+        data: {
+          publicLaunches: {
+            todayDate: "2026-11-01",
+            selectedDate: "2026-11-01",
+            items: [],
+            nextCursor: null,
+          },
+        },
+      }),
+    );
+    const identity = {
+      ensureSession: vi.fn(),
+      getCsrfToken: vi.fn(() => null),
+    };
+    const client = createLaunchClient(fetcher, identity);
+
+    await client.fetchPublicLaunches();
+
+    expect(identity.ensureSession).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/graphql",
+      expect.objectContaining({
+        body: expect.not.stringContaining('"date"'),
+      }),
+    );
+  });
+
+  it("sends an archive date and cursor using generated operation variables", async () => {
+    const fetcher = vi.fn(async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        variables: unknown;
+      };
+      expect(request.variables).toEqual({
+        date: "2026-10-31",
+        first: 20,
+        after: "cursor-next",
+      });
+      return Response.json({
+        data: {
+          publicLaunches: {
+            todayDate: "2026-11-01",
+            selectedDate: "2026-10-31",
+            items: [],
+            nextCursor: null,
+          },
+        },
+      });
+    });
+    const client = createLaunchClient(fetcher, {
+      ensureSession: vi.fn(),
+      getCsrfToken: vi.fn(() => null),
+    });
+
+    const page = await client.fetchPublicLaunches({
+      date: "2026-10-31",
+      first: 20,
+      after: "cursor-next",
+    });
+
+    expect(page.selectedDate).toBe("2026-10-31");
+  });
+
+  it("surfaces GraphQL errors instead of synthesizing an empty page", async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json({ errors: [{ message: "Launch list unavailable." }] }),
+    );
+    const client = createLaunchClient(fetcher, {
+      ensureSession: vi.fn(),
+      getCsrfToken: vi.fn(() => null),
+    });
+
+    await expect(client.fetchPublicLaunches()).rejects.toMatchObject({
+      name: "LaunchRequestError",
+      status: 200,
+    });
+  });
+
   it("serializes a UTC calendar date without converting through local time", async () => {
     const fetcher = vi.fn(
       async () =>

@@ -208,7 +208,7 @@ Expose the T1 projection as an anonymous publicLaunches(date, first, after) quer
 
 ## Task T4: Add the anonymous web query and paging state
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** s
 > **Priority:** high

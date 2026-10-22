@@ -1,10 +1,13 @@
 import type { components } from "@launchpad/contracts";
 import {
   PUBLIC_PRODUCT_QUERY,
+  PUBLIC_LAUNCHES_QUERY,
   VIEWER_LAUNCH_BOOKINGS_QUERY,
   VIEWER_LAUNCH_NOTIFICATION_PREFERENCES_QUERY,
   type PublicProductQuery,
   type PublicProductQueryVariables,
+  type PublicLaunchesQuery,
+  type PublicLaunchesQueryVariables,
   type ViewerLaunchBookingsQuery,
   type ViewerLaunchBookingsQueryVariables,
   type ViewerLaunchNotificationPreferencesQuery,
@@ -23,6 +26,7 @@ export type LaunchPreferences = Schemas["LaunchNotificationPreferences"];
 export type LaunchBookingPage =
   ViewerLaunchBookingsQuery["viewerLaunchBookings"];
 export type PublicProduct = PublicProductQuery["publicProduct"];
+export type PublicLaunchPage = PublicLaunchesQuery["publicLaunches"];
 
 export class LaunchRequestError extends Error {
   constructor(
@@ -147,6 +151,16 @@ export function createLaunchClient(
           false,
         )
       ).publicProduct,
+    fetchPublicLaunches: async (
+      variables: PublicLaunchesQueryVariables = {},
+    ): Promise<PublicLaunchPage> =>
+      (
+        await graphql<PublicLaunchesQuery>(
+          PUBLIC_LAUNCHES_QUERY,
+          variables,
+          false,
+        )
+      ).publicLaunches,
   };
 }
 
