@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date as Date
@@ -32,6 +33,10 @@ from app.modules.products.service import (
     SubmissionPeriod,
 )
 from app.modules.products.service import PublicLaunchPage as PublicLaunchResultPage
+from app.shared.observability.logging import log_event, request_context
+
+logger = logging.getLogger("launchpad.graphql")
+logger.setLevel(logging.INFO)
 
 
 @strawberry.type
@@ -198,14 +203,23 @@ def _service(info: strawberry.Info) -> ProductService:
 
 
 @asynccontextmanager
-async def _safe_read() -> AsyncIterator[None]:
-    """Keep private exception values out of GraphQL responses and server logs."""
+async def _safe_read(info: strawberry.Info, *, operation: str) -> AsyncIterator[None]:
+    """Return safe client errors and emit correlated, sanitized diagnostics."""
 
     try:
         yield
     except (PermissionError, ProductForbiddenError, ProductNotFoundError, ProductValidationError):
         raise
-    except Exception:
+    except Exception as error:
+        request_id = str(info.context.get("request_id") or "unknown")
+        with request_context(request_id):
+            log_event(
+                logger,
+                component="graphql",
+                operation=operation,
+                outcome="failed",
+                exception_type=type(error).__name__,
+            )
         raise RuntimeError("request could not be completed") from None
 
 
@@ -288,7 +302,7 @@ class PublicProductQuery:
     async def public_product(self, info: strawberry.Info, id: UUID) -> PublicProduct | None:
         """Read the explicit public projection only after persisted publication."""
 
-        async with _safe_read():
+        async with _safe_read(info, operation="publicProduct"):
             async with info.context["session_factory"]() as session:
                 result: PublicProductProjection | None = await _service(info).public_projection(
                     cast(AsyncSession, session), product_id=id
@@ -329,7 +343,7 @@ class PublicProductQuery:
     ) -> PublicLaunchPage:
         """Read one anonymous, launched-only date page."""
 
-        async with _safe_read():
+        async with _safe_read(info, operation="publicLaunches"):
             async with info.context["session_factory"]() as session:
                 page: PublicLaunchResultPage = await _service(info).public_launches(
                     cast(AsyncSession, session),
@@ -366,7 +380,7 @@ class ProductQuery:
     async def viewer_products(
         self, info: strawberry.Info, first: int = 20, after: str | None = None
     ) -> ProductPage:
-        async with _safe_read():
+        async with _safe_read(info, operation="viewerProducts"):
             member = _member(info)
             async with info.context["session_factory"]() as session:
                 page = await _service(info).owner_list(
@@ -378,7 +392,7 @@ class ProductQuery:
 
     @strawberry.field
     async def viewer_product(self, info: strawberry.Info, id: UUID) -> ProductDetail | None:
-        async with _safe_read():
+        async with _safe_read(info, operation="viewerProduct"):
             member = _member(info)
             async with info.context["session_factory"]() as session:
                 service = _service(info)
@@ -396,7 +410,7 @@ class ProductQuery:
     async def review_queue(
         self, info: strawberry.Info, first: int = 20, after: str | None = None
     ) -> ReviewPage:
-        async with _safe_read():
+        async with _safe_read(info, operation="reviewQueue"):
             member = _staff(info)
             async with info.context["session_factory"]() as session:
                 page = await _service(info).staff_queue(
@@ -417,7 +431,7 @@ class ProductQuery:
 
     @strawberry.field
     async def review_product(self, info: strawberry.Info, id: UUID) -> ReviewDetail | None:
-        async with _safe_read():
+        async with _safe_read(info, operation="reviewProduct"):
             member = _staff(info)
             async with info.context["session_factory"]() as session:
                 service = _service(info)
@@ -441,7 +455,7 @@ class ProductQuery:
     async def approved_reviews(
         self, info: strawberry.Info, first: int = 20, after: str | None = None
     ) -> ApprovedReviewPage:
-        async with _safe_read():
+        async with _safe_read(info, operation="approvedReviews"):
             member = _staff(info)
             async with info.context["session_factory"]() as session:
                 page: ApprovedReviewResultPage = await _service(info).approved_review_page(
@@ -463,7 +477,7 @@ class ProductQuery:
     async def topic_choices(
         self, info: strawberry.Info, first: int = 20, query: str | None = None
     ) -> list[TopicChoice]:
-        async with _safe_read():
+        async with _safe_read(info, operation="topicChoices"):
             member: MemberContext | None = info.context.get("member")
             async with info.context["session_factory"]() as session:
                 choices = await _service(info).topic_choices(

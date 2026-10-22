@@ -99,7 +99,10 @@ describe("HomePage", () => {
 
     discovery.onDateChange("2026-10-21");
 
-    expect(mocks.navigate).toHaveBeenCalledWith("/launches/archive/2026-10-21");
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      "/launches/archive/2026-10-21",
+      { focusMainContent: true },
+    );
   });
 
   it("routes an eligible member to the founder workspace", () => {

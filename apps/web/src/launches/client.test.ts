@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createLaunchClient } from "./client";
+import { createLaunchClient, LaunchRequestTimeoutError } from "./client";
 
 describe("launch client", () => {
   it("fetches today anonymously without initializing a session", async () => {
@@ -80,6 +80,36 @@ describe("launch client", () => {
       name: "LaunchRequestError",
       status: 200,
     });
+  });
+
+  it("times out a stalled public launch request and aborts its fetch", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    const fetcher = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          requestSignal = init?.signal ?? undefined;
+          requestSignal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
+    const client = createLaunchClient(fetcher, {
+      ensureSession: vi.fn(),
+      getCsrfToken: vi.fn(() => null),
+    });
+
+    try {
+      const request = client.fetchPublicLaunches();
+      const requestRejection = expect(request).rejects.toBeInstanceOf(
+        LaunchRequestTimeoutError,
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+      await requestRejection;
+      expect(requestSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("serializes a UTC calendar date without converting through local time", async () => {

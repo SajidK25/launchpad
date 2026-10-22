@@ -83,8 +83,17 @@ vi.mock("./launches/LaunchScreens", () => ({
   ),
 }));
 vi.mock("./launches/LaunchDiscovery", () => ({
-  LaunchDiscovery: () => (
-    <section aria-label="Today's launches">launch discovery</section>
+  LaunchDiscovery: ({
+    onDateChange,
+  }: {
+    onDateChange: (date: string) => void;
+  }) => (
+    <section aria-label="Today's launches">
+      launch discovery
+      <button onClick={() => onDateChange("2026-10-20")} type="button">
+        Choose archive date
+      </button>
+    </section>
   ),
 }));
 
@@ -202,6 +211,21 @@ describe("App", () => {
       expect(screen.getByText("public launch: product-1")).toBeTruthy(),
     );
     view.unmount();
+  });
+
+  it("moves focus into the public page after choosing an archive date from home", async () => {
+    window.history.pushState({}, "", "/");
+    render(<App />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Choose archive date" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("main").id).toBe("main-content"),
+    );
+    expect(document.activeElement).toBe(screen.getByRole("main"));
+    expect(window.location.pathname).toBe("/launches/archive/2026-10-20");
   });
 
   it("routes founder and reviewer work through role-specific workspace shells", () => {

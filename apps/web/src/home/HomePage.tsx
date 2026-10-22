@@ -93,7 +93,9 @@ export function HomePage({
 
       <LaunchDiscovery
         client={launchClient}
-        onDateChange={(date) => navigate(`/launches/archive/${date}`)}
+        onDateChange={(date) =>
+          navigate(`/launches/archive/${date}`, { focusMainContent: true })
+        }
       />
     </div>
   );

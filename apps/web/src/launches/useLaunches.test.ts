@@ -49,16 +49,24 @@ describe("launch query hooks", () => {
     await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
     await act(async () => result.current.fetchNextPage());
 
-    expect(client.fetchPublicLaunches).toHaveBeenNthCalledWith(1, {
-      date: "2026-10-31",
-      first: 20,
-      after: undefined,
-    });
-    expect(client.fetchPublicLaunches).toHaveBeenNthCalledWith(2, {
-      date: "2026-10-31",
-      first: 20,
-      after: "cursor-2",
-    });
+    expect(client.fetchPublicLaunches).toHaveBeenNthCalledWith(
+      1,
+      {
+        date: "2026-10-31",
+        first: 20,
+        after: undefined,
+      },
+      expect.any(AbortSignal),
+    );
+    expect(client.fetchPublicLaunches).toHaveBeenNthCalledWith(
+      2,
+      {
+        date: "2026-10-31",
+        first: 20,
+        after: "cursor-2",
+      },
+      expect.any(AbortSignal),
+    );
     await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
     expect(result.current.data?.pages.flatMap((page) => page.items)).toEqual([
       { id: "launch-1", name: "Alpha" },
@@ -73,16 +81,20 @@ describe("launch query hooks", () => {
     const wrapper = ({ children }: { children: ReactNode }) =>
       createElement(QueryClientProvider, { client: queryClient }, children);
     let midnight: (() => void) | undefined;
+    let midnightTimer: number | undefined;
     const originalSetTimeout = window.setTimeout.bind(window);
     const timer = vi
       .spyOn(window, "setTimeout")
       .mockImplementation((handler, timeout, ...args) => {
         if (Number(timeout) > 60 * 60 * 1000) midnight = handler as () => void;
-        return originalSetTimeout(
+        const timerId = originalSetTimeout(
           handler,
           timeout,
           ...args,
         ) as unknown as ReturnType<typeof window.setTimeout>;
+        if (Number(timeout) > 60 * 60 * 1000)
+          midnightTimer = timerId as unknown as number;
+        return timerId;
       });
     const clearTimer = vi.spyOn(window, "clearTimeout");
     const client = {
@@ -109,7 +121,7 @@ describe("launch query hooks", () => {
     } as unknown as LaunchClient;
 
     try {
-      const { result } = renderHook(() => usePublicLaunches(client), {
+      const { result, unmount } = renderHook(() => usePublicLaunches(client), {
         wrapper,
       });
       await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
@@ -122,11 +134,17 @@ describe("launch query hooks", () => {
         expect(client.fetchPublicLaunches).toHaveBeenCalledTimes(3),
       );
 
-      expect(client.fetchPublicLaunches).toHaveBeenLastCalledWith({
-        first: 20,
-        after: undefined,
-      });
+      expect(client.fetchPublicLaunches).toHaveBeenLastCalledWith(
+        {
+          first: 20,
+          after: undefined,
+        },
+        expect.any(AbortSignal),
+      );
       await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
+      unmount();
+      expect(midnightTimer).toBeDefined();
+      expect(clearTimer).toHaveBeenCalledWith(midnightTimer);
     } finally {
       timer.mockRestore();
       clearTimer.mockRestore();

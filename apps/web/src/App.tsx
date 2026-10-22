@@ -54,6 +54,12 @@ export function App() {
     window.history.replaceState({}, "", window.location.href);
   }, [path]);
 
+  useEffect(() => {
+    if (window.history.state?.focusMainContent !== true) return;
+    document.getElementById("main-content")?.focus();
+    window.history.replaceState({}, "", window.location.href);
+  }, [path]);
+
   const route = classifyRoute(path);
   let surface: ReactNode;
 

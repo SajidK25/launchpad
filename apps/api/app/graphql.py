@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from typing import Any, cast
+from uuid import uuid4
 
 import strawberry
 from fastapi import HTTPException, Request, Response
@@ -175,6 +176,8 @@ def context_getter(
                 except UnauthenticatedError:
                     secret = None
         response.headers["Cache-Control"] = "no-store"
+        request_id = uuid4().hex
+        response.headers["X-Request-ID"] = request_id
 
         def product_service_factory() -> ProductService:
             return ProductService(member_access=AuthAccessService(), payload_codec=payload_codec)
@@ -188,6 +191,7 @@ def context_getter(
 
         return {
             "member": member,
+            "request_id": request_id,
             "session_secret": secret,
             "session_factory": session_factory,
             "service_factory": profile_service_factory,

@@ -653,21 +653,31 @@ describe("guest launch discovery", () => {
     ).toBeTruthy();
     expect(
       screen
-        .getByRole("img", { name: /product name that wraps safely logo/ })
+        .getByRole("img", {
+          name: "A very long product name that wraps safely",
+        })
         .getAttribute("src"),
     ).toBe("/assets/logo.png");
-    expect(screen.getByText("Developer tools")).toBeTruthy();
-    expect(screen.getByText("Productivity")).toBeTruthy();
     expect(
       screen
-        .getByRole("link", {
-          name: "Explore A very long product name that wraps safely launch",
+        .getByRole("img", {
+          name: "A very long product name that wraps safely",
         })
-        .getAttribute("href"),
-    ).toBe("/launches/product-1");
+        .getAttribute("loading"),
+    ).toBe("lazy");
+    expect(screen.getByText("Developer tools")).toBeTruthy();
+    expect(screen.getByText("Productivity")).toBeTruthy();
+    const productLinks = screen.getAllByRole("link", {
+      name: "A very long product name that wraps safely",
+    });
+    expect(productLinks).toHaveLength(2);
+    expect(productLinks[0].getAttribute("href")).toBe("/launches/product-1");
     expect(
       screen.queryByText(/Private description|private\.png|rank/i),
     ).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain(
+      "Showing 1 launch for November 1, 2026",
+    );
   });
 
   it("shows loading, empty, and retryable failure states separately", () => {
@@ -686,6 +696,9 @@ describe("guest launch discovery", () => {
     expect(
       screen.getByRole("heading", { name: "No launches on this day" }),
     ).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain(
+      "No launches for November 1, 2026",
+    );
 
     const retry = vi.fn();
     mocks.launches = discoveryQuery({

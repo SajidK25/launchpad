@@ -82,7 +82,9 @@ def test_launch_migration_preserves_review_notice_and_allows_only_scheduled_chan
 ) -> None:
     async def verify() -> None:
         database = Database.connect(integration_settings_fixture.database_url)
-        founder_id, product_id, submission_id, decision_id = (uuid4() for _ in range(4))
+        founder_id, product_id, submission_id, decision_id, launched_id = (
+            uuid4() for _ in range(5)
+        )
         now = datetime.now(UTC)
         try:
             async with database.engine.begin() as connection:
@@ -153,6 +155,26 @@ def test_launch_migration_preserves_review_notice_and_allows_only_scheduled_chan
                     },
                 )
 
+            async with database.engine.begin() as connection:
+
+                def upgrade_to_launch_schema(sync_connection: Connection) -> None:
+                    config = _alembic_config()
+                    config.attributes["connection"] = sync_connection
+                    command.upgrade(config, "0013_launch_history_index")
+
+                await connection.run_sync(upgrade_to_launch_schema)
+                await connection.execute(
+                    text(
+                        "INSERT INTO products "
+                        "(id, founder_id, status, name, pitch, description, website_url, "
+                        "website_key, launched_at, created_at, updated_at) "
+                        "VALUES (:id, :founder, 'launched', 'Launched', 'Public pitch', "
+                        "'Public description', 'https://launched.example.test', "
+                        "'launched.example.test', :now, :now, :now)"
+                    ),
+                    {"id": launched_id, "founder": founder_id, "now": now},
+                )
+
             await database.prepare()
             assert await database.current_revision() == "0014_public_launch_index"
             async with database.engine.begin() as connection:
@@ -181,6 +203,13 @@ def test_launch_migration_preserves_review_notice_and_allows_only_scheduled_chan
                     )
                 ).one()
                 assert migrated_product == ("approved", None)
+                migrated_launched_product = (
+                    await connection.execute(
+                        text("SELECT status, launched_at FROM products WHERE id = :product"),
+                        {"product": launched_id},
+                    )
+                ).one()
+                assert migrated_launched_product == ("launched", now)
                 old_notice = (
                     await connection.execute(
                         text(
@@ -260,6 +289,46 @@ def test_launch_migration_preserves_review_notice_and_allows_only_scheduled_chan
                             "now": now,
                         },
                     )
+
+            async with database.engine.begin() as connection:
+                before_downgrade = (
+                    await connection.execute(
+                        text(
+                            "SELECT id, status, launched_at FROM products "
+                            "WHERE id IN (:approved, :launched) ORDER BY id"
+                        ),
+                        {"approved": product_id, "launched": launched_id},
+                    )
+                ).all()
+
+                def downgrade_index(sync_connection: Connection) -> None:
+                    config = _alembic_config()
+                    config.attributes["connection"] = sync_connection
+                    command.downgrade(config, "0013_launch_history_index")
+
+                await connection.run_sync(downgrade_index)
+
+            assert await database.current_revision() == "0013_launch_history_index"
+            async with database.engine.begin() as connection:
+                remaining_index = await connection.scalar(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = current_schema() "
+                        "AND tablename = 'products' "
+                        "AND indexname = 'ix_products_launched_at'"
+                    )
+                )
+                assert remaining_index is None
+                after_downgrade = (
+                    await connection.execute(
+                        text(
+                            "SELECT id, status, launched_at FROM products "
+                            "WHERE id IN (:approved, :launched) ORDER BY id"
+                        ),
+                        {"approved": product_id, "launched": launched_id},
+                    )
+                ).all()
+                assert after_downgrade == before_downgrade
         finally:
             await database.close()
 

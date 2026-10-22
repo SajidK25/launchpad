@@ -57,7 +57,12 @@ from app.shared.storage.objects import (
 )
 
 if TYPE_CHECKING:
-    from app.modules.products.repository import ProductRepository, TopicChoice
+    from app.modules.products.repository import (
+        ProductRepository,
+        PublicLaunchLogoRow,
+        PublicLaunchRow,
+        TopicChoice,
+    )
 
 
 class ProductValidationError(ValueError):
@@ -768,7 +773,7 @@ class ProductService:
         cursor = _parse_public_launch_cursor(after, selected_date) if after is not None else None
         day_start = datetime.combine(selected_date, datetime.min.time(), tzinfo=UTC)
         next_day_start = day_start + timedelta(days=1)
-        products = await self.repository.list_public_launches(
+        products: list[PublicLaunchRow] = await self.repository.list_public_launches(
             session,
             day_start=day_start,
             next_day_start=next_day_start,
@@ -777,21 +782,23 @@ class ProductService:
         )
         visible = products[:first]
         product_ids = tuple(product.id for product in visible)
-        logos = await self.repository.list_public_launch_logos(session, product_ids=product_ids)
+        logos: dict[UUID, PublicLaunchLogoRow] = await self.repository.list_public_launch_logos(
+            session, product_ids=product_ids
+        )
         topics = await self.repository.list_public_launch_topics(session, product_ids=product_ids)
         items = tuple(
             PublicLaunchCard(
                 id=product.id,
                 name=product.name,
                 pitch=product.pitch,
-                logo=_asset_view(logos[product.id]) if product.id in logos else None,
+                logo=_public_launch_logo_view(logos[product.id]) if product.id in logos else None,
                 topics=tuple(topics.get(product.id, ())),
             )
             for product in visible
             if product.name is not None and product.pitch is not None
         )
         next_cursor = (
-            _public_launch_cursor(selected_date, visible[-1].name, visible[-1].id)
+            _public_launch_cursor(selected_date, visible[-1].sort_key, visible[-1].id)
             if len(products) > first and visible and visible[-1].name is not None
             else None
         )
@@ -1967,9 +1974,9 @@ def _parse_read_cursor(value: str) -> tuple[datetime, UUID]:
     return timestamp, submission_id
 
 
-def _public_launch_cursor(selected_date: date, name: str, product_id: UUID) -> str:
+def _public_launch_cursor(selected_date: date, sort_key: str, product_id: UUID) -> str:
     payload = json.dumps(
-        [selected_date.isoformat(), name.lower(), str(product_id)], separators=(",", ":")
+        [selected_date.isoformat(), sort_key, str(product_id)], separators=(",", ":")
     ).encode("utf-8")
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
@@ -1984,6 +1991,16 @@ def _parse_public_launch_cursor(value: str, selected_date: date) -> tuple[str, U
     except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ProductValidationError("invalid cursor", fields=("after",)) from error
     return name_key, product_id
+
+
+def _public_launch_logo_view(asset: PublicLaunchLogoRow) -> ProductAssetResult:
+    return ProductAssetResult(
+        id=asset.id,
+        kind=cast(Literal["logo", "screenshot"], asset.kind),
+        state=asset.state,
+        media_type=cast(Literal["image/jpeg", "image/png", "image/webp"], asset.media_type),
+        byte_count=asset.byte_count,
+    )
 
 
 def validate_submission_content(content: ProductContentInput) -> ProductContentInput:

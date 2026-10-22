@@ -83,17 +83,27 @@ export function LaunchDiscovery({
           </button>
         </div>
       ) : items.length === 0 ? (
-        <div className="launch-empty launch-discovery-empty">
-          <span aria-hidden="true" className="launch-empty-mark">
-            0
-          </span>
-          <div>
-            <h3>No launches on this day</h3>
-            <p>Choose another date to explore launches.</p>
+        <>
+          <p className="sr-only" role="status">
+            No launches for{" "}
+            {selectedDate ? formatUtcDate(selectedDate) : "today"}.
+          </p>
+          <div className="launch-empty launch-discovery-empty">
+            <span aria-hidden="true" className="launch-empty-mark">
+              0
+            </span>
+            <div>
+              <h3>No launches on this day</h3>
+              <p>Choose another date to explore launches.</p>
+            </div>
           </div>
-        </div>
+        </>
       ) : (
         <>
+          <p className="sr-only" role="status">
+            Showing {items.length} {items.length === 1 ? "launch" : "launches"}{" "}
+            for {selectedDate ? formatUtcDate(selectedDate) : "today"}.
+          </p>
           <ul aria-label="Launched products" className="launch-discovery-list">
             {items.map((item) => (
               <LaunchCard item={item} key={item.id} />
@@ -123,12 +133,17 @@ function LaunchCard({ item }: { item: PublicLaunchPage["items"][number] }) {
   return (
     <li className="launch-discovery-card">
       <a
-        aria-label={`Explore ${item.name} launch`}
+        aria-label={item.logoUrl ? undefined : `LP logo for ${item.name}`}
         className="launch-discovery-card-link"
         href={`/launches/${encodeURIComponent(item.id)}`}
       >
         {item.logoUrl ? (
-          <img alt={`${item.name} logo`} src={item.logoUrl} />
+          <img
+            alt={item.name}
+            decoding="async"
+            loading="lazy"
+            src={item.logoUrl}
+          />
         ) : (
           <span aria-hidden="true" className="launch-discovery-logo-fallback">
             LP

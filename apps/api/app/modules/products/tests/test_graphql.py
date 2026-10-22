@@ -246,7 +246,11 @@ def test_composed_validator_accepts_existing_profile_and_bounded_product_roots()
     )
 
 
-def test_composed_router_is_post_only_and_redacts_unexpected_read_errors() -> None:
+def test_composed_router_is_post_only_and_redacts_unexpected_read_errors(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO", logger="launchpad.graphql")
+
     class SessionContext:
         async def __aenter__(self) -> object:
             return object()
@@ -263,6 +267,7 @@ def test_composed_router_is_post_only_and_redacts_unexpected_read_errors() -> No
             "member": MemberContext(account_id=uuid4(), verified=True, session_id=uuid4()),
             "session_factory": SessionContext,
             "product_service_factory": BrokenProductService,
+            "request_id": "review-test-request-id",
         }
 
     router = build_router(context_getter)
@@ -282,3 +287,13 @@ def test_composed_router_is_post_only_and_redacts_unexpected_read_errors() -> No
     assert response.json()["data"] is None
     assert response.json()["errors"][0]["message"] == "request could not be completed"
     assert "private-database-value" not in response.text
+    diagnostic = next(
+        record
+        for record in caplog.records
+        if getattr(record, "operation", None) == "viewerProducts"
+    )
+    assert diagnostic.component == "graphql"
+    assert diagnostic.outcome == "failed"
+    assert diagnostic.request_id == "review-test-request-id"
+    assert diagnostic.context == {"exception_type": "RuntimeError"}
+    assert "private-database-value" not in str(diagnostic.context)

@@ -51,12 +51,15 @@ export function usePublicLaunches(
   >({
     queryKey: launchKeys.publicLaunches(selectedDate),
     initialPageParam: null,
-    queryFn: ({ pageParam }) =>
-      client.fetchPublicLaunches({
-        ...(selectedDate === undefined ? {} : { date: selectedDate }),
-        first,
-        after: pageParam ?? undefined,
-      }),
+    queryFn: ({ pageParam, signal }) =>
+      client.fetchPublicLaunches(
+        {
+          ...(selectedDate === undefined ? {} : { date: selectedDate }),
+          first,
+          after: pageParam ?? undefined,
+        },
+        signal,
+      ),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchOnWindowFocus: true,
   });

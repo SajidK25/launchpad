@@ -42,6 +42,28 @@ class TopicChoice:
     display_name: str
 
 
+@dataclass(frozen=True, slots=True)
+class PublicLaunchRow:
+    """Card-only product columns plus PostgreSQL's exact cursor sort key."""
+
+    id: UUID
+    name: str | None
+    pitch: str | None
+    sort_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class PublicLaunchLogoRow:
+    """Public logo metadata without object keys or unrelated asset columns."""
+
+    id: UUID
+    product_id: UUID
+    kind: str
+    state: str
+    media_type: str
+    byte_count: int
+
+
 class TopicRepository:
     """Persist canonical topic identities without exposing private proposals."""
 
@@ -522,37 +544,61 @@ class ProductRepository:
         next_day_start: datetime,
         limit: int,
         after: tuple[str, UUID] | None,
-    ) -> list[Product]:
-        """Page only launched products whose launch time falls in the UTC day."""
+    ) -> list[PublicLaunchRow]:
+        """Select card columns and PostgreSQL's exact lower(name) cursor key."""
 
         sort_key = func.lower(Product.name)
-        statement = select(Product).where(
+        statement = select(
+            Product.id,
+            Product.name,
+            Product.pitch,
+            sort_key.label("sort_key"),
+        ).where(
             Product.status == "launched",
             Product.launched_at >= day_start,
             Product.launched_at < next_day_start,
         )
         if after is not None:
             statement = statement.where(tuple_(sort_key, Product.id) > after)
-        return list(
-            (await session.scalars(statement.order_by(sort_key, Product.id).limit(limit))).all()
-        )
+        rows = await session.execute(statement.order_by(sort_key, Product.id).limit(limit))
+        return [
+            PublicLaunchRow(id=row.id, name=row.name, pitch=row.pitch, sort_key=row.sort_key)
+            for row in rows
+        ]
 
     async def list_public_launch_logos(
         self, session: AsyncSession, *, product_ids: tuple[UUID, ...]
-    ) -> dict[UUID, ProductAsset]:
-        """Batch-load only attached clean logos for the requested public page."""
+    ) -> dict[UUID, PublicLaunchLogoRow]:
+        """Batch-load only public logo metadata, excluding private object keys."""
 
         if not product_ids:
             return {}
-        assets = await session.scalars(
-            select(ProductAsset).where(
+        rows = await session.execute(
+            select(
+                ProductAsset.id,
+                ProductAsset.product_id,
+                ProductAsset.kind,
+                ProductAsset.state,
+                ProductAsset.media_type,
+                ProductAsset.byte_count,
+            ).where(
                 ProductAsset.product_id.in_(product_ids),
                 ProductAsset.kind == "logo",
                 ProductAsset.state == "clean",
                 ProductAsset.attached_at.is_not(None),
             )
         )
-        return {asset.product_id: asset for asset in assets}
+        return {
+            row.product_id: PublicLaunchLogoRow(
+                id=row.id,
+                product_id=row.product_id,
+                kind=row.kind,
+                state=row.state,
+                media_type=row.media_type,
+                byte_count=row.byte_count,
+            )
+            for row in rows
+        }
 
     async def list_public_launch_topics(
         self, session: AsyncSession, *, product_ids: tuple[UUID, ...]
