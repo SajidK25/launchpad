@@ -72,7 +72,7 @@ Add the product-owned service and repository read for bounded pages of launches 
 
 ## Task T2: Add the launched-date query index
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** s
 > **Priority:** medium
@@ -98,6 +98,7 @@ Add a partial index on launched_at for launched products so the daily range quer
 - **declares matching partial model metadata** — GIVEN Product model metadata WHEN indexes are inspected THEN the index targets launched_at and has the status-launched predicate (supports R1, R5, R6)
 - **upgrades and downgrades cleanly** — GIVEN the previous migration head WHEN the new migration is applied and reverted on the check database THEN the index is created and removed (ARCH rollback scenario)
 - **preserves product rows** — GIVEN launched and non-launched rows WHEN migration runs THEN counts, statuses, and launched_at values are unchanged (guards migration regression risk)
+- **keeps the migration regression guard current** — GIVEN the new migration head WHEN the production migration scenario runs THEN it expects revision 0014, verifies the new index, and confirms existing product data is intact
 - **passes the migration quality category** — GIVEN the migration is present WHEN sh scripts/quality/run.sh runs in the configured check environment THEN its migrations category passes
 
 ### Implementation Notes
@@ -122,6 +123,7 @@ Add a partial index on launched_at for launched products so the daily range quer
 **Modified files:**
 - apps/api/app/modules/products/models.py (declare matching partial index)
 - apps/api/app/modules/products/tests/test_models.py (assert index column and predicate)
+- tests/integration/test_production_migrations.py (assert migration head, index, and row preservation)
 
 **Must NOT modify:**
 - apps/api/app/modules/products/service.py and repository.py (T1 owns query behavior)

@@ -154,7 +154,7 @@ def test_launch_migration_preserves_review_notice_and_allows_only_scheduled_chan
                 )
 
             await database.prepare()
-            assert await database.current_revision() == "0013_launch_history_index"
+            assert await database.current_revision() == "0014_public_launch_index"
             async with database.engine.begin() as connection:
                 history_index = await connection.scalar(
                     text(
@@ -165,6 +165,22 @@ def test_launch_migration_preserves_review_notice_and_allows_only_scheduled_chan
                     )
                 )
                 assert history_index == "ix_launch_bookings_founder_created"
+                public_launch_index = await connection.scalar(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = current_schema() "
+                        "AND tablename = 'products' "
+                        "AND indexname = 'ix_products_launched_at'"
+                    )
+                )
+                assert public_launch_index == "ix_products_launched_at"
+                migrated_product = (
+                    await connection.execute(
+                        text("SELECT status, launched_at FROM products WHERE id = :product"),
+                        {"product": product_id},
+                    )
+                ).one()
+                assert migrated_product == ("approved", None)
                 old_notice = (
                     await connection.execute(
                         text(

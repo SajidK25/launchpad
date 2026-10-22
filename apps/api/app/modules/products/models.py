@@ -65,6 +65,11 @@ class Product(ProductBase):
             "id",
             postgresql_where=text("status = 'approved'"),
         ),
+        Index(
+            "ix_products_launched_at",
+            "launched_at",
+            postgresql_where=text("status = 'launched'"),
+        ),
         Index("ix_products_website_key", "website_key"),
     )
 
