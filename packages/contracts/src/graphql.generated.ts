@@ -4,6 +4,8 @@ export type Scalars = {
   UUID: string;
   String: string;
   Boolean: boolean;
+  Date: string;
+  DateTime: string;
   Int: number;
 };
 
@@ -533,6 +535,43 @@ export const PUBLIC_PRODUCT_QUERY = `query PublicProduct($id: UUID!) {
       url
     }
     topics
+  }
+}` as const;
+
+export type PublicLaunchesQueryVariables = {
+  date?: string | null;
+  first?: number;
+  after?: string | null;
+};
+
+export type PublicLaunchesQuery = {
+  publicLaunches: {
+    todayDate: string;
+    selectedDate: string;
+    items: Array<{
+      id: string;
+      name: string;
+      pitch: string;
+      logoUrl: string | null;
+      topics: Array<string>;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const PUBLIC_LAUNCHES_QUERY =
+  `query PublicLaunches($date: Date, $first: Int! = 20, $after: String) {
+  publicLaunches(date: $date, first: $first, after: $after) {
+    todayDate
+    selectedDate
+    items {
+      id
+      name
+      pitch
+      logoUrl
+      topics
+    }
+    nextCursor
   }
 }` as const;
 

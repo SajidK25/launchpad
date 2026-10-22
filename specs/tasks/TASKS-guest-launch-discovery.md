@@ -133,7 +133,7 @@ Add a partial index on launched_at for launched products so the daily range quer
 
 ## Task T3: Expose public launches through GraphQL
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
@@ -168,6 +168,7 @@ Expose the T1 projection as an anonymous publicLaunches(date, first, after) quer
 - **preserves publicProduct** — GIVEN an existing launched product WHEN publicProduct is queried THEN its existing projection remains available and unchanged (guards existing public-detail behavior)
 - **preserves existing launch booking reads** — GIVEN a schema configuration that includes launch reads WHEN the root fields are inspected THEN viewerLaunchBookings and viewerLaunchNotificationPreferences remain present (guards ARCH reduced-schema regression risk)
 - **regenerates contract outputs** — GIVEN the updated operation WHEN sh scripts/quality/contracts.sh runs THEN schema and generated operation types match server schema and source operation (N2)
+- **types the Date scalar concretely** — GIVEN the generated archive operation uses GraphQL Date WHEN operation types are generated THEN its date variable is `string | null`, not `unknown`
 
 ### Implementation Notes
 
@@ -196,6 +197,8 @@ Expose the T1 projection as an anonymous publicLaunches(date, first, after) quer
 - packages/contracts/operations.graphql (publicLaunches operation)
 - packages/contracts/schema.graphql (generated schema)
 - packages/contracts/src/graphql.generated.ts (generated result/operation types)
+- scripts/quality/generate_graphql_types.py (map Date scalar to TypeScript string)
+- tests/quality/test_graphql_generation.py (guard concrete Date variable type)
 
 **Must NOT modify:**
 - apps/api/app/modules/products/service.py and repository.py (T1 owns public read behavior)

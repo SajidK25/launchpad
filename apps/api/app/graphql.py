@@ -44,6 +44,7 @@ _ALLOWED_ROOT_FIELDS = frozenset(
         "viewerLaunchBookings",
         "viewerLaunchNotificationPreferences",
         "publicProduct",
+        "publicLaunches",
     }
 )
 _MAX_QUERY_LENGTH = 8192

@@ -104,6 +104,21 @@ type ProductTopic {
   position: Int!
 }
 
+type PublicLaunchCard {
+  id: UUID!
+  name: String!
+  pitch: String!
+  logoUrl: String
+  topics: [String!]!
+}
+
+type PublicLaunchPage {
+  todayDate: Date!
+  selectedDate: Date!
+  items: [PublicLaunchCard!]!
+  nextCursor: String
+}
+
 type PublicProduct {
   id: UUID!
   name: String!
@@ -142,6 +157,11 @@ type Query {
   approvedReviews(first: Int! = 20, after: String = null): ApprovedReviewPage!
   topicChoices(first: Int! = 20, query: String = null): [TopicChoice!]!
   publicProduct(id: UUID!): PublicProduct
+  publicLaunches(
+    date: Date = null
+    first: Int! = 20
+    after: String = null
+  ): PublicLaunchPage!
   viewerNotificationInbox(
     first: Int! = 20
     after: String = null

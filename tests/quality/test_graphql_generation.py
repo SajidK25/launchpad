@@ -23,4 +23,5 @@ def test_product_operations_generate_concrete_nested_types(tmp_path: Path) -> No
     assert "export const REVIEW_QUEUE_QUERY" in generated
     assert "export const REVIEW_PRODUCT_QUERY" in generated
     assert "export const TOPIC_CHOICES_QUERY" in generated
+    assert "export type PublicLaunchesQueryVariables = {\n  date?: string | null;" in generated
     assert "unknown" not in generated

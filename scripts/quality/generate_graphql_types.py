@@ -20,6 +20,7 @@ from graphql.type import (
 
 SCALARS = {
     "Boolean": "boolean",
+    "Date": "string",
     "DateTime": "string",
     "Int": "number",
     "String": "string",
@@ -109,6 +110,8 @@ def generate(schema_path: Path, operations_path: Path) -> str:
             "  UUID: string;",
             "  String: string;",
             "  Boolean: boolean;",
+            "  Date: string;",
+            "  DateTime: string;",
             "  Int: number;",
             "};",
             "",

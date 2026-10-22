@@ -228,6 +228,21 @@ query PublicProduct($id: UUID!) {
   }
 }
 
+query PublicLaunches($date: Date, $first: Int! = 20, $after: String) {
+  publicLaunches(date: $date, first: $first, after: $after) {
+    todayDate
+    selectedDate
+    items {
+      id
+      name
+      pitch
+      logoUrl
+      topics
+    }
+    nextCursor
+  }
+}
+
 query TopicChoices($first: Int! = 20, $query: String) {
   topicChoices(first: $first, query: $query) {
     id

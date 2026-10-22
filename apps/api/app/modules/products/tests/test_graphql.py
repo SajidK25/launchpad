@@ -46,9 +46,17 @@ def test_composed_schema_preserves_profiles_and_adds_private_product_reads() -> 
         "viewerLaunchBookings",
         "viewerLaunchNotificationPreferences",
         "publicProduct",
+        "publicLaunches",
     }
     assert schema.mutation_type is None
     assert schema.subscription_type is None
+
+
+def test_public_launches_is_exposed_with_public_product_reads() -> None:
+    schema: GraphQLSchema = Schema(query=Query)._schema
+    root = schema.query_type
+    assert root is not None
+    assert "publicLaunches" in root.fields
 
 
 def test_feature_off_graphql_schema_keeps_profiles_without_product_fields() -> None:
@@ -110,6 +118,7 @@ def test_router_composes_public_product_and_launch_reads_without_private_product
         "viewerLaunchBookings",
         "viewerLaunchNotificationPreferences",
         "publicProduct",
+        "publicLaunches",
     }
 
 
@@ -174,6 +183,7 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "viewerLaunchBookings",
                     "viewerLaunchNotificationPreferences",
                     "publicProduct",
+                    "publicLaunches",
                 }
                 if products_enabled and launches_enabled
                 else {
@@ -195,6 +205,7 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "viewerLaunchBookings",
                     "viewerLaunchNotificationPreferences",
                     "publicProduct",
+                    "publicLaunches",
                 }
                 if launches_enabled
                 else {"viewerProfile", "publicProfile", "viewerNotificationInbox"}
@@ -229,6 +240,9 @@ def test_composed_validator_accepts_existing_profile_and_bounded_product_roots()
     validate_read_query(
         "query { viewerProducts(first: 10) { items { id version } nextCursor } "
         "topicChoices(first: 10) { id displayName } }"
+    )
+    validate_read_query(
+        "query { publicLaunches(first: 10) { todayDate items { id name pitch logoUrl topics } } }"
     )
 
 

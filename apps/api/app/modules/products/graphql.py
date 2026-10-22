@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date as Date
 from datetime import datetime
 from typing import cast
 from uuid import UUID
@@ -30,6 +31,7 @@ from app.modules.products.service import (
     StaffProductDetail,
     SubmissionPeriod,
 )
+from app.modules.products.service import PublicLaunchPage as PublicLaunchResultPage
 
 
 @strawberry.type
@@ -152,6 +154,23 @@ class PublicProduct:
     logo: PublicProductAsset | None
     screenshots: list[PublicProductAsset]
     topics: list[str]
+
+
+@strawberry.type
+class PublicLaunchCard:
+    id: UUID
+    name: str
+    pitch: str
+    logo_url: str | None
+    topics: list[str]
+
+
+@strawberry.type
+class PublicLaunchPage:
+    today_date: Date
+    selected_date: Date
+    items: list[PublicLaunchCard]
+    next_cursor: str | None
 
 
 def _member(info: strawberry.Info) -> MemberContext:
@@ -298,6 +317,44 @@ class PublicProductQuery:
                 logo=asset(result.logo),
                 screenshots=[cast(PublicProductAsset, asset(item)) for item in result.screenshots],
                 topics=list(result.topics),
+            )
+
+    @strawberry.field
+    async def public_launches(
+        self,
+        info: strawberry.Info,
+        date: Date | None = None,
+        first: int = 20,
+        after: str | None = None,
+    ) -> PublicLaunchPage:
+        """Read one anonymous, launched-only date page."""
+
+        async with _safe_read():
+            async with info.context["session_factory"]() as session:
+                page: PublicLaunchResultPage = await _service(info).public_launches(
+                    cast(AsyncSession, session),
+                    requested_date=date,
+                    first=first,
+                    after=after,
+                )
+            return PublicLaunchPage(
+                today_date=page.today_date,
+                selected_date=page.selected_date,
+                items=[
+                    PublicLaunchCard(
+                        id=item.id,
+                        name=item.name,
+                        pitch=item.pitch,
+                        logo_url=(
+                            f"/api/v1/products/{item.id}/assets/{item.logo.id}/public"
+                            if item.logo is not None
+                            else None
+                        ),
+                        topics=list(item.topics),
+                    )
+                    for item in page.items
+                ],
+                next_cursor=page.next_cursor,
             )
 
 
