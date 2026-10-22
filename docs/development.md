@@ -22,6 +22,27 @@ docker compose -p launchpad-dev ps
 
 Correct the named configuration or dependency problem and rerun the ordinary startup command. Preparation is safe to retry: it never resets volumes, downgrades migrations, deletes bucket objects, or exposes private objects. The `.env.example` values are development-only values, never production or Cloudflare credentials.
 
+### Check guest launch discovery locally
+
+Use the ordinary `launchpad-dev` stack and disposable local data for these checks. No production database, storage, email, or Cloudflare credential is required.
+
+The public launch routes have distinct purposes:
+
+- `/` shows launches for the API's current UTC date and keeps the public introduction and account actions compact.
+- `/launches/archive/YYYY-MM-DD` shows the selected UTC launch day. The date picker allows dates through the API's current UTC date; future dates are unavailable.
+- `/launches` remains the signed-in founder launch calendar.
+- `/launches/{productId}` remains the public detail page for one launched product.
+
+After starting the stack, use this smoke check:
+
+1. Open http://localhost:8080 in a signed-out browser session. Confirm the daily launch section loads without requiring sign-in and that registration and sign-in remain available.
+2. With a product already published through the normal local review, booking, and scheduler flow, open its launch date on the homepage or archive. Confirm its card shows only the logo, name, pitch, and topics; follow the card to `/launches/{productId}` and confirm the existing public detail page opens.
+3. Select a past UTC date with no local launches. Confirm the archive URL is reloadable and the page reports an empty day rather than a loading failure. Use Previous day, Next day, and direct date selection; Next day must be disabled on the API-reported current date.
+4. In browser developer tools, temporarily block the `/api/v1/graphql` request and reload the discovery page. Confirm it displays the failure message and Retry action instead of the empty-day message. Remove the block, choose Retry, and confirm the list or empty state returns.
+5. At a 320-pixel viewport, tab through the date controls and product links. Confirm focus remains visible and the page has no horizontal overflow.
+
+Do not insert a `launched` row directly, expose a private media URL, or change the host clock to manufacture the populated state. Use the normal local product lifecycle so the public-visibility boundary remains representative.
+
 ## Stop, restart, and preserve state
 
 ```sh

@@ -463,7 +463,7 @@ Add the reloadable /launches/archive/YYYY-MM-DD route and render the shared list
 
 ## Task T8: Document local guest discovery checks
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** xs
 > **Priority:** medium
