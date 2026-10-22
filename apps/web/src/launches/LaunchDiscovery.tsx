@@ -1,0 +1,171 @@
+import type { LaunchClient, PublicLaunchPage } from "./client";
+import { usePublicLaunches } from "./useLaunches";
+
+export function LaunchDiscovery({
+  client,
+  date,
+  onDateChange,
+}: {
+  client: LaunchClient;
+  date?: string;
+  onDateChange: (date: string) => void;
+}) {
+  const launches = usePublicLaunches(client, date);
+  const firstPage = launches.data?.pages[0];
+  const todayDate = firstPage?.todayDate;
+  const selectedDate = firstPage?.selectedDate ?? date;
+  const items = launches.data?.pages.flatMap((page) => page.items) ?? [];
+
+  return (
+    <section aria-labelledby="launch-discovery-title" className="launch-panel">
+      <header className="launch-section-heading launch-discovery-heading">
+        <div>
+          <p className="launch-kicker">PUBLIC RELEASES</p>
+          <h2 id="launch-discovery-title">
+            {selectedDate === todayDate
+              ? "Today’s launches"
+              : "Launches on this day"}
+          </h2>
+          {selectedDate ? (
+            <p className="launch-discovery-date-label">
+              {formatUtcDate(selectedDate)}
+            </p>
+          ) : null}
+        </div>
+        {selectedDate && todayDate ? (
+          <nav aria-label="Launch dates" className="launch-date-controls">
+            <button
+              aria-label="Previous launch day"
+              className="launch-button launch-button-outline"
+              onClick={() => onDateChange(shiftUtcDate(selectedDate, -1))}
+              type="button"
+            >
+              ← Previous day
+            </button>
+            <label className="launch-date-picker">
+              <span>Choose a UTC date</span>
+              <input
+                aria-label="Choose a UTC date"
+                max={todayDate}
+                onChange={(event) => {
+                  if (event.currentTarget.value)
+                    onDateChange(event.currentTarget.value);
+                }}
+                type="date"
+                value={selectedDate}
+              />
+            </label>
+            <button
+              aria-label="Next launch day"
+              className="launch-button launch-button-outline"
+              disabled={selectedDate >= todayDate}
+              onClick={() => onDateChange(shiftUtcDate(selectedDate, 1))}
+              type="button"
+            >
+              Next day →
+            </button>
+          </nav>
+        ) : null}
+      </header>
+
+      {launches.isPending ? (
+        <p className="launch-discovery-state" role="status">
+          Loading launches…
+        </p>
+      ) : launches.isError ? (
+        <div className="launch-discovery-state launch-discovery-error">
+          <p role="alert">Launches could not be loaded. Try again.</p>
+          <button
+            className="launch-button launch-button-yellow"
+            disabled={launches.isFetching}
+            onClick={() => void launches.refetch()}
+            type="button"
+          >
+            {launches.isFetching ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="launch-empty launch-discovery-empty">
+          <span aria-hidden="true" className="launch-empty-mark">
+            0
+          </span>
+          <div>
+            <h3>No launches on this day</h3>
+            <p>Choose another date to explore launches.</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <ul aria-label="Launched products" className="launch-discovery-list">
+            {items.map((item) => (
+              <LaunchCard item={item} key={item.id} />
+            ))}
+          </ul>
+          {launches.hasNextPage ? (
+            <div className="launch-discovery-more">
+              <button
+                className="launch-button launch-button-yellow"
+                disabled={launches.isFetchingNextPage}
+                onClick={() => void launches.fetchNextPage()}
+                type="button"
+              >
+                {launches.isFetchingNextPage
+                  ? "Loading more…"
+                  : "Load more launches"}
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+function LaunchCard({ item }: { item: PublicLaunchPage["items"][number] }) {
+  return (
+    <li className="launch-discovery-card">
+      <a
+        aria-label={`Explore ${item.name} launch`}
+        className="launch-discovery-card-link"
+        href={`/launches/${encodeURIComponent(item.id)}`}
+      >
+        {item.logoUrl ? (
+          <img alt={`${item.name} logo`} src={item.logoUrl} />
+        ) : (
+          <span aria-hidden="true" className="launch-discovery-logo-fallback">
+            LP
+          </span>
+        )}
+      </a>
+      <div className="launch-discovery-card-content">
+        <h3>
+          <a href={`/launches/${encodeURIComponent(item.id)}`}>{item.name}</a>
+        </h3>
+        <p className="launch-discovery-pitch">{item.pitch}</p>
+        {item.topics.length > 0 ? (
+          <ul
+            aria-label={`${item.name} topics`}
+            className="launch-discovery-topics"
+          >
+            {item.topics.map((topic) => (
+              <li key={topic}>{topic}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function shiftUtcDate(value: string, offset: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + offset));
+  return shifted.toISOString().slice(0, 10);
+}
+
+function formatUtcDate(value: string): string {
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "long",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00Z`));
+}

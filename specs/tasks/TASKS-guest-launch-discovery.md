@@ -275,7 +275,7 @@ Add the web client and query state for today's and archive pages. The homepage r
 
 ## Task T5: Build the shared public discovery list
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
