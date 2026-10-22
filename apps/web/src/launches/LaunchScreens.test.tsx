@@ -681,11 +681,9 @@ describe("guest launch discovery", () => {
     mocks.launches = discoveryQuery();
     renderLaunchDiscovery(onDateChange);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Previous launch day" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /Previous day/ }));
     expect(onDateChange).toHaveBeenLastCalledWith("2026-10-31");
-    fireEvent.click(screen.getByRole("button", { name: "Next launch day" }));
+    fireEvent.click(screen.getByRole("button", { name: /Next day/ }));
     expect(onDateChange).toHaveBeenLastCalledWith("2026-11-02");
     const date = screen.getByLabelText("Choose a UTC date");
     expect(date.getAttribute("max")).toBe("2026-11-02");
@@ -709,7 +707,7 @@ describe("guest launch discovery", () => {
     expect(
       (
         screen.getByRole("button", {
-          name: "Next launch day",
+          name: /Next day/,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);

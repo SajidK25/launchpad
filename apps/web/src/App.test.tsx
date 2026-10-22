@@ -1,6 +1,12 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { useConnectivity } from "./connectivity/useConnectivity";
@@ -71,6 +77,11 @@ vi.mock("./launches/LaunchScreens", () => ({
     <div>public launch: {productId}</div>
   ),
 }));
+vi.mock("./launches/LaunchDiscovery", () => ({
+  LaunchDiscovery: () => (
+    <section aria-label="Today's launches">launch discovery</section>
+  ),
+}));
 
 function BrokenProductRoute(): never {
   throw new Error("private product details and stack trace");
@@ -138,7 +149,7 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /ready to released/i }),
+      screen.getByRole("heading", { name: "Fresh products. Every day." }),
     ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain(
       "temporarily unavailable",
@@ -233,14 +244,14 @@ describe("App", () => {
     expect(window.history.state).toEqual({});
   });
 
-  it("does not run the homepage readiness query on non-home routes", () => {
+  it("does not run the homepage readiness query on non-home routes", async () => {
     window.history.pushState({}, "", "/profile");
     const view = render(<App />);
     expect(mockedUseConnectivity).not.toHaveBeenCalled();
 
     setPath("/");
-    view.rerender(<App />);
-    expect(mockedUseConnectivity).toHaveBeenCalledOnce();
+    await waitFor(() => expect(mockedUseConnectivity).toHaveBeenCalledOnce());
+    view.unmount();
   });
 
   it("shows a safe route fallback for malformed or unsupported paths", () => {

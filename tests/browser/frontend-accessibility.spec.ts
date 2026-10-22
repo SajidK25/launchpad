@@ -48,6 +48,14 @@ async function installFixtures(page: Page) {
       };
     else if (query.includes("viewerNotificationInbox"))
       data = { viewerNotificationInbox: { ...emptyPage, unreadCount: 0 } };
+    else if (query.includes("publicLaunches"))
+      data = {
+        publicLaunches: {
+          selectedDate: "2026-10-22",
+          todayDate: "2026-10-22",
+          ...emptyPage,
+        },
+      };
     else if (query.includes("viewerProfile"))
       data = {
         viewerProfile: {
@@ -102,7 +110,7 @@ test("representative public, account, founder, reviewer, and launch pages pass a
   fixtures.setSignedIn(false);
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /Take your product/ }),
+    page.getByRole("heading", { name: "Fresh products. Every day." }),
   ).toBeVisible();
   await expectNoSeriousAccessibilityIssues(page);
 

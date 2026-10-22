@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   session: null as unknown,
   connectivity: null as unknown,
   navigate: vi.fn(),
+  discoveryProps: null as unknown,
 }));
 
 vi.mock("../identity/useIdentity", () => ({
@@ -18,6 +19,16 @@ vi.mock("../connectivity/useConnectivity", () => ({
   useConnectivity: () => mocks.connectivity,
 }));
 vi.mock("../routing", () => ({ navigate: mocks.navigate }));
+vi.mock("../launches/LaunchDiscovery", () => ({
+  LaunchDiscovery: (props: { onDateChange: (date: string) => void }) => {
+    mocks.discoveryProps = props;
+    return (
+      <section aria-label="Today’s launches" data-testid="launch-discovery">
+        Today’s launch feed
+      </section>
+    );
+  },
+}));
 
 const identityClient = {} as IdentityClient;
 
@@ -39,35 +50,56 @@ function renderHome() {
   return render(<HomePage identityClient={identityClient} />);
 }
 
-function expectJourneyVisible() {
+function expectHomeDiscoveryVisible() {
   expect(
-    screen.getByRole("heading", { level: 1, name: /ready to released/i }),
+    screen.getByRole("heading", {
+      level: 1,
+      name: "Fresh products. Every day.",
+    }),
   ).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Prepare" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Get reviewed" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Choose a date" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Publish" })).toBeTruthy();
+  expect(screen.getByTestId("launch-discovery")).toBeTruthy();
 }
 
 beforeEach(() => {
   mocks.session = { data: null, isPending: false, isError: false };
   mocks.connectivity = { state: "connected", refresh: vi.fn() };
   mocks.navigate.mockReset();
+  mocks.discoveryProps = null;
 });
 
 afterEach(() => cleanup());
 
 describe("HomePage", () => {
-  it("explains only the existing prepare, review, schedule, and publish workflow", () => {
+  it("makes today’s launches primary with a compact introduction", () => {
     renderHome();
 
-    expectJourneyVisible();
+    expectHomeDiscoveryVisible();
     expect(
       screen.getByRole("link", { name: "Create your account" }),
     ).toBeTruthy();
     expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
-    expect(screen.getByText(/00:00 UTC/)).toBeTruthy();
-    expect(screen.queryByText(/search|rankings?|votes?|comments?/i)).toBeNull();
+    expect(screen.getByText(/Explore today’s releases/)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Prepare" })).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: /launch process/i }),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole("heading", { level: 1, name: "Fresh products. Every day." })
+        .compareDocumentPosition(screen.getByTestId("launch-discovery")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("routes a selected past date to its public archive", () => {
+    renderHome();
+    const discovery = mocks.discoveryProps as {
+      onDateChange: (date: string) => void;
+    };
+
+    discovery.onDateChange("2026-10-21");
+
+    expect(mocks.navigate).toHaveBeenCalledWith("/launches/archive/2026-10-21");
   });
 
   it("routes an eligible member to the founder workspace", () => {
@@ -109,7 +141,7 @@ describe("HomePage", () => {
     };
     renderHome();
 
-    expectJourneyVisible();
+    expectHomeDiscoveryVisible();
     expect(
       screen.getByRole("link", { name: "Create your account" }),
     ).toBeTruthy();
@@ -125,7 +157,7 @@ describe("HomePage", () => {
       mocks.connectivity = { state, refresh: vi.fn() };
       renderHome();
 
-      expectJourneyVisible();
+      expectHomeDiscoveryVisible();
       expect(screen.queryByRole("alert")).toBeNull();
     },
   );
@@ -135,7 +167,7 @@ describe("HomePage", () => {
     mocks.connectivity = { state: "unavailable", refresh };
     const view = renderHome();
 
-    expectJourneyVisible();
+    expectHomeDiscoveryVisible();
     expect(screen.getByRole("alert").textContent).toContain(
       "temporarily unavailable",
     );
@@ -144,7 +176,7 @@ describe("HomePage", () => {
 
     mocks.connectivity = { state: "connected", refresh };
     view.rerender(<HomePage identityClient={identityClient} />);
-    expectJourneyVisible();
+    expectHomeDiscoveryVisible();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });

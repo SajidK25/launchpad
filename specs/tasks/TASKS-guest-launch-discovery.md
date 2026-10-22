@@ -335,7 +335,7 @@ Create a reusable public list for homepage and archive use, with date controls, 
 
 ## Task T6: Make today's launches primary on the homepage
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** s
 > **Priority:** high

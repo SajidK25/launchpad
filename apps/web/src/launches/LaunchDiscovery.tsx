@@ -35,7 +35,6 @@ export function LaunchDiscovery({
         {selectedDate && todayDate ? (
           <nav aria-label="Launch dates" className="launch-date-controls">
             <button
-              aria-label="Previous launch day"
               className="launch-button launch-button-outline"
               onClick={() => onDateChange(shiftUtcDate(selectedDate, -1))}
               type="button"
@@ -56,7 +55,6 @@ export function LaunchDiscovery({
               />
             </label>
             <button
-              aria-label="Next launch day"
               className="launch-button launch-button-outline"
               disabled={selectedDate >= todayDate}
               onClick={() => onDateChange(shiftUtcDate(selectedDate, 1))}
