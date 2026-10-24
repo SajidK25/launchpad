@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,6 +66,12 @@ class VoteOutbox(Protocol):
     async def add(self, session: AsyncSession, event: OutboxEvent) -> UUID: ...
 
 
+class VoteSnapshotOutbox(Protocol):
+    """Outbox interface that enqueues one stable snapshot intent per UTC date."""
+
+    async def add_once(self, session: AsyncSession, event: OutboxEvent) -> UUID: ...
+
+
 class PublicLaunchProduct(Protocol):
     id: UUID
     name: str
@@ -98,6 +104,21 @@ class RankingRedis(Protocol):
     async def publish(self, channel: str, message: str) -> int: ...
     async def hgetall(self, name: str) -> dict[str, str]: ...
     async def expire(self, name: str, time: int) -> bool: ...
+
+
+class VoteSnapshotScheduler(Protocol):
+    async def schedule_for_launch_date(
+        self, session: AsyncSession, launch_date: date
+    ) -> UUID | None: ...
+
+    async def handle_outbox_event(
+        self,
+        session: AsyncSession,
+        *,
+        event_type: str,
+        aggregate_id: UUID,
+        payload: Mapping[str, object],
+    ) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -330,11 +351,13 @@ class VoteRankingProjectionService:
         products: VoteRankingProductAccess,
         repository: VoteRepository | None = None,
         redis: RankingRedis,
+        snapshots: VoteSnapshotScheduler | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.products = products
         self.repository = repository or VoteRepository()
         self.redis = redis
+        self.snapshots = snapshots
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def handle_outbox_event(
@@ -347,6 +370,16 @@ class VoteRankingProjectionService:
     ) -> None:
         """Recompute a product from PostgreSQL; replaying an event cannot double count."""
 
+        if event_type == "vote.snapshot_due.v1":
+            if self.snapshots is None:
+                raise RuntimeError("vote snapshot handler is not configured")
+            await self.snapshots.handle_outbox_event(
+                session,
+                event_type=event_type,
+                aggregate_id=aggregate_id,
+                payload=payload,
+            )
+            return
         if event_type not in {"product.launched.v1", "vote.changed.v1", "vote.review_decided.v1"}:
             raise PermanentEventError("unsupported ranking projection event")
         raw_id = payload.get("product_id")
@@ -358,6 +391,8 @@ class VoteRankingProjectionService:
             raise PermanentEventError("ranking event has invalid product or launch date") from error
         if product_id != aggregate_id:
             raise PermanentEventError("ranking event aggregate does not match payload")
+        if self.snapshots is not None:
+            await self.snapshots.schedule_for_launch_date(session, launch_date)
         today = self.clock().astimezone(UTC).date()
         if launch_date != today:
             return
@@ -468,9 +503,120 @@ class VoteRankingProjectionService:
         )
 
 
+class VoteSnapshotService:
+    """Freeze an enabled UTC date's public ranking exactly once at its cutoff."""
+
+    PAGE_SIZE = 50
+
+    def __init__(
+        self,
+        *,
+        products: VoteRankingProductAccess,
+        repository: VoteRepository,
+        outbox: VoteSnapshotOutbox,
+        codec: VotePayloadCodec,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.products = products
+        self.repository = repository
+        self.outbox = outbox
+        self.codec = codec
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def schedule_for_launch_date(
+        self, session: AsyncSession, launch_date: date
+    ) -> UUID | None:
+        """Persist one durable cutoff intent for an enabled ranking date."""
+
+        enabled_from = await self.repository.voting_enabled_from(session)
+        if enabled_from is None or launch_date < enabled_from:
+            return None
+        event_id = _daily_snapshot_event_id(launch_date)
+        cutoff_at = datetime.combine(launch_date + timedelta(days=1), datetime.min.time(), UTC)
+        key_id, encrypted_payload = self.codec.encode({"launch_date": launch_date.isoformat()})
+        return await self.outbox.add_once(
+            session,
+            OutboxEvent(
+                event_type="vote.snapshot_due.v1",
+                aggregate_id=event_id,
+                key_id=key_id,
+                encrypted_payload=encrypted_payload,
+                available_at=cutoff_at,
+                id=event_id,
+            ),
+        )
+
+    async def handle_outbox_event(
+        self,
+        session: AsyncSession,
+        *,
+        event_type: str,
+        aggregate_id: UUID,
+        payload: Mapping[str, object],
+    ) -> None:
+        """Persist a unique cutoff event without revising an existing archive."""
+
+        if event_type != "vote.snapshot_due.v1":
+            raise PermanentEventError("unsupported vote snapshot event")
+        try:
+            launch_date = date.fromisoformat(str(payload.get("launch_date")))
+        except (ValueError, TypeError) as error:
+            raise PermanentEventError("vote snapshot event has an invalid date") from error
+        if aggregate_id != _daily_snapshot_event_id(launch_date):
+            raise PermanentEventError("vote snapshot event identity does not match its date")
+        now = self.clock()
+        if now.tzinfo is None:
+            raise PermanentEventError("vote snapshot clock must be timezone-aware")
+        now = now.astimezone(UTC)
+        cutoff_at = datetime.combine(launch_date + timedelta(days=1), datetime.min.time(), UTC)
+        if now < cutoff_at:
+            raise PermanentEventError("vote snapshot event arrived before the UTC cutoff")
+        enabled_from = await self.repository.voting_enabled_from(session)
+        if enabled_from is None or launch_date < enabled_from:
+            return
+
+        products: list[PublicLaunchProduct] = []
+        cursor: str | None = None
+        while True:
+            page = await self.products.public_launches(
+                session,
+                requested_date=launch_date,
+                first=self.PAGE_SIZE,
+                after=cursor,
+            )
+            products.extend(page.items)
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+
+        values = await self.repository.snapshot_values_for_products(
+            session,
+            product_ids=tuple(product.id for product in products),
+            cutoff_at=cutoff_at,
+        )
+        ranked = [
+            LiveRankEntry(product.id, product.name, *values[product.id]) for product in products
+        ]
+        ranked.sort(key=_rank_sort_key)
+        await self.repository.create_daily_snapshot(
+            session,
+            launch_date=launch_date,
+            cutoff_at=cutoff_at,
+            created_at=now,
+            entries=[
+                (entry.product_id, rank, entry.score, entry.active_vote_count)
+                for rank, entry in enumerate(ranked, start=1)
+            ],
+        )
+
+
 def _ranking_keys(launch_date: date) -> tuple[str, str]:
     suffix = launch_date.isoformat()
     return f"launchpad:votes:ranking:{suffix}:scores", f"launchpad:votes:ranking:{suffix}:entries"
+
+
+def _daily_snapshot_event_id(launch_date: date) -> UUID:
+    return uuid5(NAMESPACE_URL, f"launchpad:daily-ranking:{launch_date.isoformat()}")
 
 
 def _rank_sort_key(entry: LiveRankEntry) -> tuple[bool, Decimal, int, str, str]:

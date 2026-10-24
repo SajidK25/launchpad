@@ -7,7 +7,7 @@ import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -266,6 +266,49 @@ def test_old_day_event_does_not_populate_current_live_projection() -> None:
         )
         assert redis.hashes == {}
         assert redis.messages == []
+
+    asyncio.run(verify())
+
+
+def test_snapshot_due_event_is_delegated_to_snapshot_service() -> None:
+    async def verify() -> None:
+        product = _product("Snapshot product")
+        snapshots = SimpleNamespace(scheduled=[], handled=[])
+
+        async def schedule(_session: AsyncSession, launch_date: date) -> UUID:
+            snapshots.scheduled.append(launch_date)
+            return uuid4()
+
+        async def handle(
+            _session: AsyncSession,
+            *,
+            event_type: str,
+            aggregate_id: UUID,
+            payload: dict[str, object],
+        ) -> None:
+            snapshots.handled.append((event_type, aggregate_id, payload))
+
+        snapshots.schedule_for_launch_date = schedule
+        snapshots.handle_outbox_event = handle
+        service = VoteRankingProjectionService(
+            products=cast(Any, _Products([product])),
+            repository=cast(Any, _VoteRepository({})),
+            redis=cast(Any, _Redis()),
+            snapshots=cast(Any, snapshots),
+            clock=lambda: datetime(2026, 10, 24, 14, tzinfo=UTC),
+        )
+        event_id = uuid4()
+        payload: dict[str, object] = {"launch_date": "2026-10-24"}
+
+        await service.handle_outbox_event(
+            cast(AsyncSession, object()),
+            event_type="vote.snapshot_due.v1",
+            aggregate_id=event_id,
+            payload=payload,
+        )
+
+        assert snapshots.scheduled == []
+        assert snapshots.handled == [("vote.snapshot_due.v1", event_id, payload)]
 
     asyncio.run(verify())
 

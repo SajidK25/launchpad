@@ -39,7 +39,12 @@ PRODUCT_EVENT_TYPES = frozenset(
     }
 )
 VOTE_RANKING_EVENT_TYPES = frozenset(
-    {"product.launched.v1", "vote.changed.v1", "vote.review_decided.v1"}
+    {
+        "product.launched.v1",
+        "vote.changed.v1",
+        "vote.review_decided.v1",
+        "vote.snapshot_due.v1",
+    }
 )
 
 

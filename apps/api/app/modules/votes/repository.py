@@ -7,14 +7,19 @@ from decimal import Decimal
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import extract, func, insert, select, text, update
+from sqlalchemy import extract, func, insert, or_, select, text, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.schema import Table
 from uuid6 import uuid7
 
 from app.modules.votes.models import (
+    DailyRankingEntry,
+    DailyRankingSnapshot,
     Vote,
     VoteIdempotencyReceipt,
     VoteRiskFlag,
+    VotingFeatureState,
 )
 
 
@@ -89,6 +94,14 @@ class VoteRepository:
             ),
             {"enabled_from": enabled_from, "created_at": now},
         )
+
+    async def voting_enabled_from(self, session: AsyncSession) -> date | None:
+        """Return the durable first UTC date with ranking enabled, if initialized."""
+
+        value = await session.scalar(
+            select(VotingFeatureState.enabled_from).where(VotingFeatureState.singleton_id == 1)
+        )
+        return value
 
     async def create_vote(
         self,
@@ -265,3 +278,109 @@ class VoteRepository:
             product_id: (int(count), Decimal(str(score))) for product_id, count, score in rows
         }
         return {product_id: values.get(product_id, (0, Decimal(0))) for product_id in product_ids}
+
+    async def snapshot_values_for_products(
+        self,
+        session: AsyncSession,
+        *,
+        product_ids: tuple[UUID, ...],
+        cutoff_at: datetime,
+    ) -> dict[UUID, tuple[int, Decimal]]:
+        """Aggregate votes active at cutoff, including later withdrawals or invalidations."""
+
+        if not product_ids:
+            return {}
+        cutoff = cutoff_at.astimezone(UTC)
+        day_start = cutoff - timedelta(days=1)
+        elapsed_six_hours = extract("epoch", Vote.cast_at - cutoff) / 21600
+        statement = (
+            select(
+                Vote.product_id,
+                func.count(Vote.id),
+                func.sum(func.power(2, elapsed_six_hours)),
+            )
+            .where(
+                Vote.product_id.in_(product_ids),
+                Vote.cast_at >= day_start,
+                Vote.cast_at < cutoff,
+                or_(Vote.withdrawn_at.is_(None), Vote.withdrawn_at >= cutoff),
+                or_(Vote.invalidated_at.is_(None), Vote.invalidated_at >= cutoff),
+            )
+            .group_by(Vote.product_id)
+        )
+        rows = await session.execute(statement)
+        values = {
+            product_id: (int(count), Decimal(str(score))) for product_id, count, score in rows
+        }
+        return {product_id: values.get(product_id, (0, Decimal(0))) for product_id in product_ids}
+
+    async def create_daily_snapshot(
+        self,
+        session: AsyncSession,
+        *,
+        launch_date: date,
+        cutoff_at: datetime,
+        created_at: datetime,
+        entries: list[tuple[UUID, int, Decimal, int]],
+    ) -> UUID:
+        """Insert a snapshot and all entries atomically, retaining any existing archive."""
+
+        snapshot_id = uuid7()
+        inserted_id = await session.scalar(
+            pg_insert(DailyRankingSnapshot)
+            .values(
+                id=snapshot_id,
+                launch_date=launch_date,
+                cutoff_at=cutoff_at,
+                created_at=created_at,
+                algorithm_version=1,
+            )
+            .on_conflict_do_nothing(index_elements=[DailyRankingSnapshot.launch_date])
+            .returning(DailyRankingSnapshot.id)
+        )
+        if inserted_id is None:
+            existing_id = await session.scalar(
+                select(DailyRankingSnapshot.id).where(
+                    DailyRankingSnapshot.launch_date == launch_date
+                )
+            )
+            if existing_id is None:
+                raise RuntimeError("daily snapshot conflict did not produce an existing archive")
+            return existing_id
+        if entries:
+            await session.execute(
+                insert(cast(Table, DailyRankingEntry.__table__)),
+                [
+                    {
+                        "id": uuid7(),
+                        "snapshot_id": inserted_id,
+                        "product_id": product_id,
+                        "rank": rank,
+                        "score": score,
+                        "active_vote_count": active_vote_count,
+                    }
+                    for product_id, rank, score, active_vote_count in entries
+                ],
+            )
+        return inserted_id
+
+    async def daily_snapshot(
+        self, session: AsyncSession, *, launch_date: date
+    ) -> tuple[DailyRankingSnapshot, list[DailyRankingEntry]] | None:
+        """Read an immutable header and its entries in their archived order."""
+
+        snapshot = await session.scalar(
+            select(DailyRankingSnapshot).where(DailyRankingSnapshot.launch_date == launch_date)
+        )
+        if snapshot is None:
+            return None
+        entries = list(
+            (
+                await session.scalars(
+                    select(DailyRankingEntry)
+                    .where(DailyRankingEntry.snapshot_id == snapshot.id)
+                    .order_by(DailyRankingEntry.rank)
+                )
+            ).all()
+        )
+        return snapshot, entries

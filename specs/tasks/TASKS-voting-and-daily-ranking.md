@@ -356,7 +356,7 @@ Consume committed vote and product-launch events to keep a rebuildable Redis pro
 
 ## Task T6: Freeze UTC daily ranking snapshots
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
@@ -409,6 +409,8 @@ Schedule one idempotent snapshot event per ranked UTC launch date and persist th
 **Modified files:**
 - `apps/api/app/modules/votes/repository.py` (atomic snapshot and archive persistence/read queries)
 - `apps/api/app/modules/votes/service.py` (cutoff scheduling and snapshot domain behavior)
+- `apps/api/app/shared/events/dispatcher.py` (route the stable cutoff event to the vote snapshot handler)
+- `apps/api/app/shared/events/tests/test_dispatcher.py` (guard snapshot-event routing and retry behavior)
 - `apps/worker/worker.py` (snapshot due-event handler)
 - `apps/worker/tests/test_vote_worker.py` (cutoff event replay and recovery cases)
 

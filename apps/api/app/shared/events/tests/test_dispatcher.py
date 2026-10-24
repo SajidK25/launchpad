@@ -278,6 +278,36 @@ def test_projection_failure_is_retried_without_acknowledging_event() -> None:
     asyncio.run(verify())
 
 
+def test_vote_snapshot_due_event_uses_vote_ranking_handler() -> None:
+    async def verify() -> None:
+        codec = EmailPayloadCodec({"test": b"x" * 32}, "test")
+        event = _outbox_event(
+            codec,
+            "vote.snapshot_due.v1",
+            {"launch_date": "2026-10-24"},
+        )
+        repository = _DispatcherRepository(event)
+        sender = _Sender()
+        handler = _VoteRankingHandler()
+
+        completed = await dispatch_due(
+            cast(AsyncSession, object()),
+            repository=cast(OutboxRepository, repository),
+            codec=codec,
+            sender=sender,
+            vote_ranking_handler=handler,
+        )
+
+        assert completed == 1
+        assert handler.calls == [
+            ("vote.snapshot_due.v1", event.aggregate_id, {"launch_date": "2026-10-24"})
+        ]
+        assert sender.sent == []
+        assert repository.non_email_completions == [event.id]
+
+    asyncio.run(verify())
+
+
 def test_allowlisted_email_events_keep_stable_delivery_behavior() -> None:
     async def verify() -> None:
         codec = EmailPayloadCodec({"test": b"x" * 32}, "test")
