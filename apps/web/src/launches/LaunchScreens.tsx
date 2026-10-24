@@ -14,6 +14,7 @@ import { navigate } from "../routing";
 import { createNotificationClient } from "../notifications/client";
 import {
   createLaunchClient,
+  type DailyRankingItem,
   LaunchRequestError,
   type LaunchBookingPage,
   type LaunchClient,
@@ -26,6 +27,7 @@ import {
   useLaunchLiveInvalidation,
   useLaunchPreferences,
   usePublicProduct,
+  useDailyProductRanking,
   useRescheduleLaunch,
   useUpdateLaunchPreferences,
 } from "./useLaunches";
@@ -133,6 +135,16 @@ export function PublicLaunchPage({
     [identityClient],
   );
   const publicProduct = usePublicProduct(client, productId);
+  const launchDate = publicProduct.data?.launchedAt
+    ? new Date(publicProduct.data.launchedAt).toISOString().slice(0, 10)
+    : undefined;
+  const ranking = useDailyProductRanking(
+    client,
+    launchDate,
+    productId,
+    1,
+    Boolean(publicProduct.data),
+  );
 
   if (publicProduct.isPending)
     return (
@@ -150,7 +162,9 @@ export function PublicLaunchPage({
       />
     );
 
-  return <PublicLaunchDetails product={data} />;
+  const rankingItem =
+    ranking.data?.pages.flatMap((page) => page.items)[0] ?? null;
+  return <PublicLaunchDetails product={data} ranking={rankingItem} />;
 }
 
 export function PublicLaunchArchive({
@@ -176,8 +190,10 @@ export function PublicLaunchArchive({
 
 function PublicLaunchDetails({
   product,
+  ranking,
 }: {
   product: NonNullable<PublicProduct>;
+  ranking: DailyRankingItem | null;
 }) {
   const launchedDate = new Intl.DateTimeFormat("en", {
     dateStyle: "long",
@@ -196,6 +212,17 @@ function PublicLaunchDetails({
               </p>
               <h1 id="public-launch-title">{product.name}</h1>
               <p className="public-launch-pitch">{product.pitch}</p>
+              {ranking &&
+              ranking.rank !== null &&
+              ranking.activeVoteCount !== null ? (
+                <p
+                  aria-label="Daily product ranking"
+                  className="public-launch-ranking"
+                >
+                  RANK #{ranking.rank} · {ranking.activeVoteCount}{" "}
+                  {ranking.activeVoteCount === 1 ? "vote" : "votes"}
+                </p>
+              ) : null}
               <a
                 aria-label={`Visit ${product.name} website (opens in a new tab)`}
                 className="launch-button launch-button-yellow public-launch-website"

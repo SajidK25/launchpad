@@ -631,7 +631,7 @@ Add a short-lived, signed, read-only ticket for the current public ranking strea
 
 ## Task T10: Render daily ranked launch cards and archives
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high

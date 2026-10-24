@@ -13,6 +13,7 @@ import type {
   LaunchClient,
   PublicCatalogPage,
   PublicCatalogTopicOptions,
+  DailyRankingPage,
   PublicLaunchPage,
 } from "./client";
 
@@ -36,6 +37,14 @@ export const launchKeys = {
     ["launches", "public-product", productId] as const,
   publicLaunches: (date?: string) =>
     ["launches", "public", date ?? "today"] as const,
+  dailyRanking: (date?: string, productId?: string, first = 20) =>
+    [
+      "launches",
+      "daily-ranking",
+      date ?? "today",
+      productId ?? "all",
+      first,
+    ] as const,
   publicCatalog: (search?: string, topicIds: readonly string[] = []) =>
     [
       "launches",
@@ -51,6 +60,61 @@ export const launchKeys = {
       normalizeTopicIds(selectedIds),
     ] as const,
 };
+
+export function useDailyProductRanking(
+  client: LaunchClient,
+  selectedDate?: string,
+  productId?: string,
+  first = 20,
+  enabled = true,
+) {
+  const queryClient = useQueryClient();
+  const query = useInfiniteQuery<
+    DailyRankingPage,
+    Error,
+    { pages: DailyRankingPage[]; pageParams: Array<string | null> },
+    ReturnType<typeof launchKeys.dailyRanking>,
+    string | null
+  >({
+    queryKey: launchKeys.dailyRanking(selectedDate, productId, first),
+    enabled,
+    initialPageParam: null,
+    queryFn: ({ pageParam, signal }) =>
+      client.fetchDailyProductRanking(
+        {
+          ...(selectedDate === undefined ? {} : { date: selectedDate }),
+          ...(productId === undefined ? {} : { productId }),
+          first,
+          after: pageParam ?? undefined,
+        },
+        signal,
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    refetchOnWindowFocus: true,
+  });
+
+  useEffect(() => {
+    if (!enabled || selectedDate !== undefined || productId !== undefined)
+      return;
+    const now = new Date();
+    const nextUtcMidnight = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1,
+    );
+    const timer = window.setTimeout(
+      () => {
+        void queryClient.resetQueries({
+          queryKey: launchKeys.dailyRanking(),
+        });
+      },
+      Math.max(0, nextUtcMidnight - now.getTime()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [enabled, productId, queryClient, selectedDate]);
+
+  return query;
+}
 
 export function usePublicCatalog(
   client: LaunchClient,

@@ -52,6 +52,7 @@ vi.mock("./useLaunches", () => ({
   useLaunchLiveInvalidation: vi.fn(),
   useLaunchPreferences: () => mocks.preferences,
   usePublicProduct: () => mocks.publicProduct,
+  useDailyProductRanking: () => mocks.launches,
   usePublicLaunches: () => mocks.launches,
   useRescheduleLaunch: () => mocks.rescheduleMutation,
   useUpdateLaunchPreferences: () => mocks.preferenceMutation,
@@ -128,6 +129,7 @@ function discoveryQuery(overrides: Record<string, unknown> = {}) {
           selectedDate: "2026-11-01",
           items: [],
           nextCursor: null,
+          hasSnapshot: false,
         },
       ],
     },
@@ -576,6 +578,33 @@ describe("anonymous public launch page", () => {
       isPending: false,
       isError: false,
     };
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-10-19",
+            selectedDate: "2026-10-16",
+            hasSnapshot: true,
+            items: [
+              {
+                product: {
+                  id: "product-1",
+                  name: "Launchpad demo",
+                  pitch: "A clear launch story",
+                  logoUrl: null,
+                  topics: [],
+                },
+                rank: 3,
+                activeVoteCount: 4,
+                score: 4,
+                viewerVoted: null,
+              },
+            ],
+            nextCursor: null,
+          },
+        ],
+      },
+    });
     view.rerender(
       <PublicLaunchPage
         identityClient={{} as IdentityClient}
@@ -588,6 +617,7 @@ describe("anonymous public launch page", () => {
     websiteLink.focus();
     expect(document.activeElement).toBe(websiteLink);
     expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("RANK #3 · 4 votes")).toBeTruthy();
   });
 });
 
@@ -626,17 +656,21 @@ describe("guest launch discovery", () => {
             selectedDate: "2026-11-01",
             items: [
               {
-                id: "product-1",
-                name: "A very long product name that wraps safely",
-                pitch: "A product pitch for the public launch card.",
-                logoUrl: "/assets/logo.png",
-                topics: ["Developer tools", "Productivity"],
-                description: "Private description is not a card field.",
-                screenshots: ["private.png"],
+                product: {
+                  id: "product-1",
+                  name: "A very long product name that wraps safely",
+                  pitch: "A product pitch for the public launch card.",
+                  logoUrl: "/assets/logo.png",
+                  topics: ["Developer tools", "Productivity"],
+                },
                 rank: 1,
+                activeVoteCount: 6,
+                score: 6,
+                viewerVoted: null,
               },
             ],
             nextCursor: null,
+            hasSnapshot: true,
           },
         ],
       },
@@ -672,9 +706,9 @@ describe("guest launch discovery", () => {
     });
     expect(productLinks).toHaveLength(2);
     expect(productLinks[0].getAttribute("href")).toBe("/launches/product-1");
-    expect(
-      screen.queryByText(/Private description|private\.png|rank/i),
-    ).toBeNull();
+    expect(screen.queryByText(/Private description|private\.png/)).toBeNull();
+    expect(screen.getByText("RANK #1")).toBeTruthy();
+    expect(screen.getByText("6 votes")).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain(
       "Showing 1 launch for November 1, 2026",
     );
@@ -769,11 +803,17 @@ describe("guest launch discovery", () => {
             selectedDate: "2026-11-01",
             items: [
               {
-                id: "product-1",
-                name: "Launchpad demo",
-                pitch: "A clear launch story",
-                logoUrl: null,
-                topics: [],
+                product: {
+                  id: "product-1",
+                  name: "Launchpad demo",
+                  pitch: "A clear launch story",
+                  logoUrl: null,
+                  topics: [],
+                },
+                rank: 1,
+                activeVoteCount: 1,
+                score: 1,
+                viewerVoted: null,
               },
             ],
             nextCursor: "cursor-next",

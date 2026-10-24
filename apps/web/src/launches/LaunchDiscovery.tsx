@@ -1,6 +1,6 @@
 import type { LaunchClient } from "./client";
-import { PublicLaunchCard } from "./PublicLaunchCard";
-import { usePublicLaunches } from "./useLaunches";
+import { RankedLaunchCard } from "../votes/RankedLaunchCard";
+import { useDailyProductRanking } from "./useLaunches";
 
 export function LaunchDiscovery({
   client,
@@ -11,7 +11,7 @@ export function LaunchDiscovery({
   date?: string;
   onDateChange: (date: string) => void;
 }) {
-  const launches = usePublicLaunches(client, date);
+  const launches = useDailyProductRanking(client, date);
   const firstPage = launches.data?.pages[0];
   const todayDate = firstPage?.todayDate;
   const selectedDate = firstPage?.selectedDate ?? date;
@@ -107,7 +107,7 @@ export function LaunchDiscovery({
           </p>
           <ul aria-label="Launched products" className="launch-discovery-list">
             {items.map((item) => (
-              <PublicLaunchCard item={item} key={item.id} />
+              <RankedLaunchCard item={item} key={item.product.id} />
             ))}
           </ul>
           {launches.hasNextPage ? (

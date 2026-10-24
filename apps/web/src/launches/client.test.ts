@@ -2,6 +2,35 @@ import { describe, expect, it, vi } from "vitest";
 import { createLaunchClient, LaunchRequestTimeoutError } from "./client";
 
 describe("launch client", () => {
+  it("fetches the ranked daily feed anonymously", async () => {
+    const page = {
+      todayDate: "2026-11-01",
+      selectedDate: "2026-10-31",
+      hasSnapshot: true,
+      items: [],
+      nextCursor: null,
+    };
+    const fetcher = vi.fn(async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        query: string;
+        variables: unknown;
+      };
+      expect(request.query).toContain("query DailyProductRanking");
+      expect(request.variables).toEqual({ date: "2026-10-31", first: 20 });
+      return Response.json({ data: { dailyProductRanking: page } });
+    });
+    const identity = {
+      ensureSession: vi.fn(),
+      getCsrfToken: vi.fn(() => null),
+    };
+    const client = createLaunchClient(fetcher, identity);
+
+    await expect(
+      client.fetchDailyProductRanking({ date: "2026-10-31", first: 20 }),
+    ).resolves.toEqual(page);
+    expect(identity.ensureSession).not.toHaveBeenCalled();
+  });
+
   it("fetches today anonymously without initializing a session", async () => {
     const fetcher = vi.fn(async () =>
       Response.json({

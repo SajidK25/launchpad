@@ -77,13 +77,20 @@ async function installFixtures(page: Page) {
           ),
         },
       };
-    else if (query.includes("publicLaunches")) {
+    else if (query.includes("dailyProductRanking")) {
       const variables = request as { variables?: { date?: string } };
       data = {
-        publicLaunches: {
+        dailyProductRanking: {
           selectedDate: variables.variables?.date ?? "2026-10-22",
           todayDate: "2026-10-22",
-          items: launchItems,
+          hasSnapshot: launchItems.length > 0,
+          items: launchItems.map((product, index) => ({
+            product,
+            rank: index + 1,
+            activeVoteCount: 0,
+            score: 0,
+            viewerVoted: null,
+          })),
           nextCursor: null,
         },
       };

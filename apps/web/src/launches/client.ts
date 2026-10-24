@@ -1,6 +1,7 @@
 import type { components } from "@launchpad/contracts";
 import {
   PUBLIC_PRODUCT_QUERY,
+  DAILY_PRODUCT_RANKING_QUERY,
   PUBLIC_LAUNCHES_QUERY,
   PUBLIC_PRODUCT_CATALOG_QUERY,
   PUBLIC_CATALOG_TOPICS_QUERY,
@@ -8,6 +9,8 @@ import {
   VIEWER_LAUNCH_NOTIFICATION_PREFERENCES_QUERY,
   type PublicProductQuery,
   type PublicProductQueryVariables,
+  type DailyProductRankingQuery,
+  type DailyProductRankingQueryVariables,
   type PublicLaunchesQuery,
   type PublicLaunchesQueryVariables,
   type PublicProductCatalogQuery,
@@ -33,6 +36,8 @@ export type LaunchPreferences = Schemas["LaunchNotificationPreferences"];
 export type LaunchBookingPage =
   ViewerLaunchBookingsQuery["viewerLaunchBookings"];
 export type PublicProduct = PublicProductQuery["publicProduct"];
+export type DailyRankingPage = DailyProductRankingQuery["dailyProductRanking"];
+export type DailyRankingItem = DailyRankingPage["items"][number];
 export type PublicLaunchPage = PublicLaunchesQuery["publicLaunches"];
 export type PublicCatalogPage =
   PublicProductCatalogQuery["publicProductCatalog"];
@@ -193,6 +198,18 @@ export function createLaunchClient(
           false,
         )
       ).publicProduct,
+    fetchDailyProductRanking: async (
+      variables: DailyProductRankingQueryVariables = {},
+      signal?: AbortSignal,
+    ): Promise<DailyRankingPage> =>
+      (
+        await graphql<DailyProductRankingQuery>(
+          DAILY_PRODUCT_RANKING_QUERY,
+          variables,
+          false,
+          signal,
+        )
+      ).dailyProductRanking,
     fetchPublicLaunches: async (
       variables: PublicLaunchesQueryVariables = {},
       signal?: AbortSignal,
