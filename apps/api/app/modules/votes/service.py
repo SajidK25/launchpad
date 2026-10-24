@@ -7,7 +7,8 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
@@ -23,7 +24,7 @@ from app.modules.votes.policies import (
     validate_idempotency_key,
 )
 from app.modules.votes.repository import VoteRepository
-from app.shared.events.outbox import OutboxEvent, OutboxRepository
+from app.shared.events.outbox import OutboxEvent, OutboxRepository, PermanentEventError
 
 _RISK_SIGNAL = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
 
@@ -63,6 +64,48 @@ class VoteOutbox(Protocol):
     """Transactional outbox interface using the command's database session."""
 
     async def add(self, session: AsyncSession, event: OutboxEvent) -> UUID: ...
+
+
+class PublicLaunchProduct(Protocol):
+    id: UUID
+    name: str
+
+
+class PublicLaunchPage(Protocol):
+    items: tuple[PublicLaunchProduct, ...]
+    next_cursor: str | None
+
+
+class VoteRankingProductAccess(Protocol):
+    async def public_launches(
+        self,
+        session: AsyncSession,
+        *,
+        requested_date: date | None,
+        first: int = 20,
+        after: str | None = None,
+    ) -> PublicLaunchPage: ...
+
+    async def public_projection(
+        self, session: AsyncSession, *, product_id: UUID
+    ) -> object | None: ...
+
+
+class RankingRedis(Protocol):
+    async def zadd(self, name: str, mapping: Mapping[str, float]) -> int: ...
+    async def hset(self, name: str, mapping: Mapping[str, str]) -> int: ...
+    async def delete(self, *names: str) -> int: ...
+    async def publish(self, channel: str, message: str) -> int: ...
+    async def hgetall(self, name: str) -> dict[str, str]: ...
+    async def expire(self, name: str, time: int) -> bool: ...
+
+
+@dataclass(frozen=True, slots=True)
+class LiveRankEntry:
+    product_id: UUID
+    name: str
+    active_vote_count: int
+    score: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,6 +316,171 @@ class VoteService:
                 available_at=now,
             ),
         )
+
+
+class VoteRankingProjectionService:
+    """Maintain a rebuildable Redis view from PostgreSQL's launched products and votes."""
+
+    CHANNEL_PREFIX = "launchpad:votes:ranking:"
+    PAGE_SIZE = 50
+
+    def __init__(
+        self,
+        *,
+        products: VoteRankingProductAccess,
+        repository: VoteRepository | None = None,
+        redis: RankingRedis,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.products = products
+        self.repository = repository or VoteRepository()
+        self.redis = redis
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def handle_outbox_event(
+        self,
+        session: AsyncSession,
+        *,
+        event_type: str,
+        aggregate_id: UUID,
+        payload: Mapping[str, object],
+    ) -> None:
+        """Recompute a product from PostgreSQL; replaying an event cannot double count."""
+
+        if event_type not in {"product.launched.v1", "vote.changed.v1", "vote.review_decided.v1"}:
+            raise PermanentEventError("unsupported ranking projection event")
+        raw_id = payload.get("product_id")
+        raw_date = payload.get("launch_date")
+        try:
+            product_id = UUID(str(raw_id))
+            launch_date = date.fromisoformat(str(raw_date))
+        except (ValueError, TypeError) as error:
+            raise PermanentEventError("ranking event has invalid product or launch date") from error
+        if product_id != aggregate_id:
+            raise PermanentEventError("ranking event aggregate does not match payload")
+        today = self.clock().astimezone(UTC).date()
+        if launch_date != today:
+            return
+        await self.repository.lock_projection_product(
+            session, product_id=product_id, launch_date=launch_date
+        )
+        product = await self.products.public_projection(session, product_id=product_id)
+        if product is None:
+            # Product may have been removed or is not public anymore; never cache it.
+            raise PermanentEventError("ranking event does not identify a public product")
+        name = getattr(product, "name", None)
+        launched_at = getattr(product, "launched_at", None)
+        if not isinstance(name, str) or not isinstance(launched_at, datetime):
+            raise PermanentEventError("public product projection is incomplete")
+        if launched_at.astimezone(UTC).date() != launch_date:
+            return
+        await self._store_product(session, product_id, name, launch_date)
+        await self._publish_invalidation(launch_date)
+
+    async def rebuild(self, session: AsyncSession, *, launch_date: date) -> list[LiveRankEntry]:
+        """Replace the selected current-day Redis projection from durable public rows."""
+
+        if launch_date != self.clock().astimezone(UTC).date():
+            raise ValueError("only the active UTC day can be rebuilt")
+        await self.repository.lock_projection_rebuild(session, launch_date=launch_date)
+        score_key, metadata_key = _ranking_keys(launch_date)
+        await self.redis.delete(score_key, metadata_key)
+        cursor: str | None = None
+        entries: list[LiveRankEntry] = []
+        while True:
+            page = await self.products.public_launches(
+                session,
+                requested_date=launch_date,
+                first=self.PAGE_SIZE,
+                after=cursor,
+            )
+            values = await self.repository.ranking_values_for_products(
+                session,
+                product_ids=tuple(product.id for product in page.items),
+                launch_date=launch_date,
+            )
+            for product in page.items:
+                count, score = values[product.id]
+                entry = LiveRankEntry(product.id, product.name, count, score)
+                entries.append(entry)
+                await self._write_entry(launch_date, entry)
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+        entries.sort(key=_rank_sort_key)
+        await self._publish_invalidation(launch_date)
+        return entries
+
+    async def read_projection(self, *, launch_date: date) -> list[LiveRankEntry]:
+        """Read and deterministically order projected entries for worker-level consumers."""
+
+        _, metadata_key = _ranking_keys(launch_date)
+        rows = await self.redis.hgetall(metadata_key)
+        entries = [
+            LiveRankEntry(
+                product_id=UUID(product_id),
+                name=str(json.loads(value)["name"]),
+                active_vote_count=int(json.loads(value)["active_vote_count"]),
+                score=Decimal(str(json.loads(value)["score"])),
+            )
+            for product_id, value in rows.items()
+        ]
+        entries.sort(key=_rank_sort_key)
+        return entries
+
+    async def _store_product(
+        self, session: AsyncSession, product_id: UUID, name: str, launch_date: date
+    ) -> LiveRankEntry:
+        count, score = await self.repository.ranking_values(
+            session, product_id=product_id, launch_date=launch_date
+        )
+        entry = LiveRankEntry(product_id, name, count, score)
+        await self._write_entry(launch_date, entry)
+        return entry
+
+    async def _write_entry(self, launch_date: date, entry: LiveRankEntry) -> None:
+        score_key, metadata_key = _ranking_keys(launch_date)
+        member = str(entry.product_id)
+        await self.redis.zadd(score_key, {member: float(entry.score)})
+        await self.redis.hset(
+            metadata_key,
+            mapping={
+                member: json.dumps(
+                    {
+                        "name": entry.name,
+                        "active_vote_count": entry.active_vote_count,
+                        "score": str(entry.score),
+                    },
+                    separators=(",", ":"),
+                )
+            },
+        )
+        now = self.clock().astimezone(UTC)
+        next_cutoff = datetime.combine(launch_date + timedelta(days=1), datetime.min.time(), UTC)
+        ttl_seconds = max(1, int((next_cutoff - now).total_seconds()))
+        await self.redis.expire(score_key, ttl_seconds)
+        await self.redis.expire(metadata_key, ttl_seconds)
+
+    async def _publish_invalidation(self, launch_date: date) -> None:
+        await self.redis.publish(
+            f"{self.CHANNEL_PREFIX}{launch_date.isoformat()}",
+            json.dumps({"type": "ranking.invalidated", "date": launch_date.isoformat()}),
+        )
+
+
+def _ranking_keys(launch_date: date) -> tuple[str, str]:
+    suffix = launch_date.isoformat()
+    return f"launchpad:votes:ranking:{suffix}:scores", f"launchpad:votes:ranking:{suffix}:entries"
+
+
+def _rank_sort_key(entry: LiveRankEntry) -> tuple[bool, Decimal, int, str, str]:
+    return (
+        entry.active_vote_count == 0,
+        -entry.score,
+        -entry.active_vote_count,
+        entry.name.casefold(),
+        str(entry.product_id),
+    )
 
 
 def _fingerprint(command: str, product_id: UUID) -> str:

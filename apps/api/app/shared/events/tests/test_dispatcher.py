@@ -148,6 +148,24 @@ class _ProductHandler:
         self.calls.append((event_type, aggregate_id, payload))
 
 
+class _VoteRankingHandler:
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.calls: list[tuple[str, UUID, dict[str, object]]] = []
+        self.error = error
+
+    async def handle_outbox_event(
+        self,
+        _session: AsyncSession,
+        *,
+        event_type: str,
+        aggregate_id: UUID,
+        payload: dict[str, object],
+    ) -> None:
+        if self.error is not None:
+            raise self.error
+        self.calls.append((event_type, aggregate_id, payload))
+
+
 def _outbox_event(
     codec: EmailPayloadCodec, event_type: str, payload: dict[str, object]
 ) -> SimpleNamespace:
@@ -191,6 +209,71 @@ def test_product_events_never_reach_email_sender_or_email_delivery() -> None:
         ]
         assert repository.non_email_completions == [product.id, purge.id]
         assert repository.email_completions == []
+
+    asyncio.run(verify())
+
+
+def test_product_launch_and_vote_events_use_projection_handler() -> None:
+    async def verify() -> None:
+        codec = EmailPayloadCodec({"test": b"x" * 32}, "test")
+        product_id = uuid4()
+        launch = _outbox_event(
+            codec,
+            "product.launched.v1",
+            {"product_id": str(product_id), "launch_date": "2026-10-24"},
+        )
+        launch.aggregate_id = product_id
+        vote = _outbox_event(
+            codec,
+            "vote.changed.v1",
+            {"product_id": str(product_id), "launch_date": "2026-10-24", "action": "cast"},
+        )
+        repository = _DispatcherRepository(launch, vote)
+        sender = _Sender()
+        products = _ProductHandler()
+        votes = _VoteRankingHandler()
+
+        completed = await dispatch_due(
+            cast(AsyncSession, object()),
+            repository=cast(OutboxRepository, repository),
+            codec=codec,
+            sender=sender,
+            product_handler=products,
+            vote_ranking_handler=votes,
+        )
+
+        assert completed == 2
+        assert sender.sent == []
+        assert products.calls == []
+        assert [call[0] for call in votes.calls] == [
+            "product.launched.v1",
+            "vote.changed.v1",
+        ]
+        assert repository.non_email_completions == [launch.id, vote.id]
+
+    asyncio.run(verify())
+
+
+def test_projection_failure_is_retried_without_acknowledging_event() -> None:
+    async def verify() -> None:
+        codec = EmailPayloadCodec({"test": b"x" * 32}, "test")
+        event = _outbox_event(
+            codec,
+            "vote.changed.v1",
+            {"product_id": str(uuid4()), "launch_date": "2026-10-24", "action": "cast"},
+        )
+        repository = _DispatcherRepository(event)
+        handler = _VoteRankingHandler(error=OSError("redis unavailable"))
+        completed = await dispatch_due(
+            cast(AsyncSession, object()),
+            repository=cast(OutboxRepository, repository),
+            codec=codec,
+            sender=_Sender(),
+            vote_ranking_handler=handler,
+        )
+        assert completed == 0
+        assert repository.retries == [event.id]
+        assert repository.non_email_completions == []
 
     asyncio.run(verify())
 

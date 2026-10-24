@@ -290,7 +290,7 @@ Extend successful scheduled-product publication to emit `product.launched.v1` in
 
 ## Task T5: Maintain the live ranking projection from outbox events
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** test-after
 > **Effort:** l
 > **Priority:** critical

@@ -20,6 +20,7 @@ from app.modules.notifications.live import notification_channel
 from app.modules.notifications.repository import NotificationRepository
 from app.modules.notifications.service import NotificationService
 from app.modules.products.service import ProductService
+from app.modules.votes.service import RankingRedis, VoteRankingProjectionService
 from app.shared.config.settings import Settings, load_settings
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
@@ -461,6 +462,10 @@ async def run_worker(health: ProgressHealth) -> None:
         notifications=notification_service,
         member_access=member_access,
     )
+    vote_ranking_handler = VoteRankingProjectionService(
+        products=product_service,
+        redis=cast(RankingRedis, redis),
+    )
     launch_email_handler = LaunchNoticeEmailHandler(
         bookings=launch_bookings,
         member_access=member_access,
@@ -486,6 +491,7 @@ async def run_worker(health: ProgressHealth) -> None:
                 redis=cast(RedisPublisher, redis),
                 notifications=notification_repository,
             ),
+            vote_ranking_handler=vote_ranking_handler,
         )
 
     def record_worker_progress() -> None:

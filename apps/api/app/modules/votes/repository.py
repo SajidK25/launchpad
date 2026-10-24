@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import insert, select, text, update
+from sqlalchemy import extract, func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
 
@@ -28,6 +29,31 @@ class VoteRepository:
         await session.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:member_id), hashtext(:product_id))"),
             {"member_id": str(member_id), "product_id": str(product_id)},
+        )
+
+    async def lock_projection_product(
+        self, session: AsyncSession, *, product_id: UUID, launch_date: date
+    ) -> None:
+        """Serialize product recomputations so delayed events cannot overwrite newer state."""
+
+        await session.execute(
+            text(
+                "SELECT pg_advisory_xact_lock_shared(hashtext('vote-ranking'), "
+                "hashtext(:launch_date))"
+            ),
+            {"launch_date": launch_date.isoformat()},
+        )
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:product_id), hashtext(:launch_date))"),
+            {"product_id": str(product_id), "launch_date": launch_date.isoformat()},
+        )
+
+    async def lock_projection_rebuild(self, session: AsyncSession, *, launch_date: date) -> None:
+        """Exclude event writers while replacing one date's Redis projection."""
+
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('vote-ranking'), hashtext(:launch_date))"),
+            {"launch_date": launch_date.isoformat()},
         )
 
     async def lock_idempotency_key(
@@ -128,7 +154,7 @@ class VoteRepository:
         )
         if saved is None:
             raise RuntimeError("locked vote could not be withdrawn")
-        return cast(Vote, saved)
+        return saved
 
     async def add_receipt(
         self,
@@ -189,3 +215,53 @@ class VoteRepository:
             )
         ).one()
         return flag
+
+    async def ranking_values(
+        self, session: AsyncSession, *, product_id: UUID, launch_date: date
+    ) -> tuple[int, Decimal]:
+        """Aggregate active vote count and normalized six-hour score for one launch."""
+
+        day_start = datetime.combine(launch_date, time.min, tzinfo=UTC)
+        day_end = day_start + timedelta(days=1)
+        elapsed_hours = extract("epoch", Vote.cast_at - day_start) / 21600
+        statement = select(
+            func.count(Vote.id),
+            func.coalesce(func.sum(func.power(2, elapsed_hours)), 0),
+        ).where(
+            Vote.product_id == product_id,
+            Vote.state == "active",
+            Vote.cast_at >= day_start,
+            Vote.cast_at < day_end,
+        )
+        count, score = (await session.execute(statement)).one()
+        return int(count), Decimal(str(score))
+
+    async def ranking_values_for_products(
+        self, session: AsyncSession, *, product_ids: tuple[UUID, ...], launch_date: date
+    ) -> dict[UUID, tuple[int, Decimal]]:
+        """Aggregate one public page in a single bounded query, including zero-vote rows."""
+
+        if not product_ids:
+            return {}
+        day_start = datetime.combine(launch_date, time.min, tzinfo=UTC)
+        day_end = day_start + timedelta(days=1)
+        elapsed_hours = extract("epoch", Vote.cast_at - day_start) / 21600
+        statement = (
+            select(
+                Vote.product_id,
+                func.count(Vote.id),
+                func.sum(func.power(2, elapsed_hours)),
+            )
+            .where(
+                Vote.product_id.in_(product_ids),
+                Vote.state == "active",
+                Vote.cast_at >= day_start,
+                Vote.cast_at < day_end,
+            )
+            .group_by(Vote.product_id)
+        )
+        rows = await session.execute(statement)
+        values = {
+            product_id: (int(count), Decimal(str(score))) for product_id, count, score in rows
+        }
+        return {product_id: values.get(product_id, (0, Decimal(0))) for product_id in product_ids}
