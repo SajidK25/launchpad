@@ -6,6 +6,7 @@ export type Scalars = {
   Boolean: boolean;
   Date: string;
   DateTime: string;
+  Decimal: number;
   Int: number;
 };
 
@@ -74,6 +75,109 @@ export const VIEWER_PROFILE_QUERY = `query ViewerProfile {
     photoUrl
     visibility
     version
+  }
+}` as const;
+
+export type DailyProductRankingQueryVariables = {
+  date?: string | null;
+  productId?: string | null;
+  first?: number | null;
+  after?: string | null;
+};
+
+export type DailyProductRankingQuery = {
+  dailyProductRanking: {
+    todayDate: string;
+    selectedDate: string;
+    hasSnapshot: boolean;
+    items: Array<{
+      product: {
+        id: string;
+        name: string;
+        pitch: string;
+        logoUrl: string | null;
+        topics: Array<string>;
+      };
+      rank: number | null;
+      activeVoteCount: number | null;
+      score: number | null;
+      viewerVoted: boolean | null;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const DAILY_PRODUCT_RANKING_QUERY =
+  `query DailyProductRanking($date: Date, $productId: UUID, $first: Int = 20, $after: String) {
+  dailyProductRanking(
+    date: $date
+    productId: $productId
+    first: $first
+    after: $after
+  ) {
+    todayDate
+    selectedDate
+    hasSnapshot
+    items {
+      product {
+        id
+        name
+        pitch
+        logoUrl
+        topics
+      }
+      rank
+      activeVoteCount
+      score
+      viewerVoted
+    }
+    nextCursor
+  }
+}` as const;
+
+export type PendingVoteReviewsQueryVariables = {
+  first?: number | null;
+  after?: string | null;
+};
+
+export type PendingVoteReviewsQuery = {
+  pendingVoteReviews: {
+    items: Array<{
+      id: string;
+      voteId: string;
+      memberId: string;
+      product: {
+        id: string;
+        name: string;
+        pitch: string;
+        logoUrl: string | null;
+        topics: Array<string>;
+      };
+      signalCode: string;
+      createdAt: string;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const PENDING_VOTE_REVIEWS_QUERY =
+  `query PendingVoteReviews($first: Int = 20, $after: String) {
+  pendingVoteReviews(first: $first, after: $after) {
+    items {
+      id
+      voteId
+      memberId
+      product {
+        id
+        name
+        pitch
+        logoUrl
+        topics
+      }
+      signalCode
+      createdAt
+    }
+    nextCursor
   }
 }` as const;
 

@@ -879,6 +879,64 @@ class ProductService:
             next_cursor=next_cursor,
         )
 
+    async def public_launch_cards_by_ids(
+        self,
+        session: AsyncSession,
+        *,
+        product_ids: tuple[UUID, ...],
+        launch_date: date | None = None,
+    ) -> tuple[PublicLaunchCard, ...]:
+        """Batch-load launched-only cards in the caller's rank order."""
+
+        unique_ids = tuple(dict.fromkeys(product_ids))
+        if not 1 <= len(unique_ids) <= 50:
+            if not unique_ids:
+                return ()
+            raise ProductValidationError("invalid public product batch", fields=("productIds",))
+        products = await self.repository.list_public_launch_cards_by_ids(
+            session, product_ids=unique_ids, launch_date=launch_date
+        )
+        visible = {product.id: product for product in products}
+        product_ids = tuple(product_id for product_id in unique_ids if product_id in visible)
+        logos: dict[UUID, PublicLaunchLogoRow] = await self.repository.list_public_launch_logos(
+            session, product_ids=product_ids
+        )
+        topics = await self.repository.list_public_launch_topics(session, product_ids=product_ids)
+        return tuple(
+            PublicLaunchCard(
+                id=product_id,
+                name=cast(str, visible[product_id].name),
+                pitch=cast(str, visible[product_id].pitch),
+                logo=_public_launch_logo_view(logos[product_id]) if product_id in logos else None,
+                topics=tuple(topics.get(product_id, ())),
+            )
+            for product_id in product_ids
+            if visible[product_id].name is not None and visible[product_id].pitch is not None
+        )
+
+    async def public_launch_cards_for_date(
+        self, session: AsyncSession, *, launch_date: date
+    ) -> tuple[PublicLaunchCard, ...]:
+        """Batch-load the launched-only candidate cards for one ranking date."""
+
+        products = await self.repository.list_public_launch_cards_for_date(
+            session, launch_date=launch_date
+        )
+        product_ids = tuple(product.id for product in products)
+        logos = await self.repository.list_public_launch_logos(session, product_ids=product_ids)
+        topics = await self.repository.list_public_launch_topics(session, product_ids=product_ids)
+        return tuple(
+            PublicLaunchCard(
+                id=product.id,
+                name=product.name,
+                pitch=product.pitch,
+                logo=_public_launch_logo_view(logos[product.id]) if product.id in logos else None,
+                topics=tuple(topics.get(product.id, ())),
+            )
+            for product in products
+            if product.name is not None and product.pitch is not None
+        )
+
     async def public_product_catalog(
         self,
         session: AsyncSession,

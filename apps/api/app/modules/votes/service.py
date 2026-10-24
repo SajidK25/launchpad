@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import re
@@ -18,6 +20,7 @@ from app.modules.auth.staff import AccountState
 from app.modules.votes.policies import (
     VoteConflictError,
     VoteNotFoundError,
+    VoteReadValidationError,
     require_open_launch_day,
     require_public_other_product,
     require_vote_reviewer,
@@ -74,11 +77,25 @@ class VoteSnapshotOutbox(Protocol):
 
 
 class PublicLaunchProduct(Protocol):
-    id: UUID
-    name: str
+    @property
+    def id(self) -> UUID: ...
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def pitch(self) -> str: ...
+
+    @property
+    def logo(self) -> object | None: ...
+
+    @property
+    def topics(self) -> tuple[str, ...]: ...
 
 
 class PublicLaunchPage(Protocol):
+    today_date: date
+    selected_date: date
     items: tuple[PublicLaunchProduct, ...]
     next_cursor: str | None
 
@@ -96,6 +113,18 @@ class VoteRankingProductAccess(Protocol):
     async def public_projection(
         self, session: AsyncSession, *, product_id: UUID
     ) -> object | None: ...
+
+    async def public_launch_cards_by_ids(
+        self,
+        session: AsyncSession,
+        *,
+        product_ids: tuple[UUID, ...],
+        launch_date: date | None = None,
+    ) -> tuple[PublicLaunchProduct, ...]: ...
+
+    async def public_launch_cards_for_date(
+        self, session: AsyncSession, *, launch_date: date
+    ) -> tuple[PublicLaunchProduct, ...]: ...
 
 
 class RankingRedis(Protocol):
@@ -151,6 +180,40 @@ class VoteReviewResult:
     outcome: str
     reason: str
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class VoteDailyRankingItem:
+    product: PublicLaunchProduct
+    rank: int | None
+    active_vote_count: int | None
+    score: Decimal | None
+    viewer_voted: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class VoteDailyRankingPage:
+    today_date: date
+    selected_date: date
+    has_snapshot: bool
+    items: tuple[VoteDailyRankingItem, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class VoteReviewQueueEntry:
+    flag_id: UUID
+    vote_id: UUID
+    member_id: UUID
+    product: PublicLaunchProduct
+    signal_code: str
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class VoteReviewQueuePage:
+    items: tuple[VoteReviewQueueEntry, ...]
+    next_cursor: str | None
 
 
 class VoteService:
@@ -444,6 +507,287 @@ class VoteReviewService:
             )
 
 
+class VoteReadService:
+    """Compose ranked reads through the votes repository and Products read port."""
+
+    PAGE_SIZE_MAX = 50
+
+    def __init__(
+        self,
+        *,
+        products: VoteRankingProductAccess,
+        repository: VoteRepository | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.products = products
+        self.repository = repository or VoteRepository()
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def daily_product_ranking(
+        self,
+        session: AsyncSession,
+        *,
+        requested_date: date | None = None,
+        product_id: UUID | None = None,
+        first: int = 20,
+        after: str | None = None,
+        viewer_id: UUID | None = None,
+    ) -> VoteDailyRankingPage:
+        """Return a public live page, frozen archive, or legacy unranked date."""
+
+        if not 1 <= first <= self.PAGE_SIZE_MAX:
+            raise VoteReadValidationError("invalid page size")
+        today_date = _utc(self.clock()).date()
+        selected_date = requested_date or today_date
+        if selected_date > today_date:
+            raise VoteReadValidationError("future launch dates are unavailable")
+        if product_id is not None and after is not None:
+            raise VoteReadValidationError("product lookup cannot use a page cursor")
+
+        enabled_from = await self.repository.voting_enabled_from(session)
+        if enabled_from is None or selected_date < enabled_from:
+            return await self._unranked_launches(
+                session,
+                today_date=today_date,
+                selected_date=selected_date,
+                product_id=product_id,
+                first=first,
+                after=after,
+            )
+
+        if selected_date < today_date:
+            return await self._snapshot_page(
+                session,
+                today_date=today_date,
+                selected_date=selected_date,
+                product_id=product_id,
+                first=first,
+                after=after,
+            )
+        return await self._live_page(
+            session,
+            today_date=today_date,
+            product_id=product_id,
+            first=first,
+            after=after,
+            viewer_id=viewer_id,
+        )
+
+    async def pending_vote_reviews(
+        self,
+        session: AsyncSession,
+        *,
+        reviewer: AccountState,
+        first: int = 20,
+        after: str | None = None,
+    ) -> VoteReviewQueuePage:
+        """Return a staff-only pending queue with no raw network or voter PII."""
+
+        require_vote_reviewer(reviewer)
+        if not 1 <= first <= self.PAGE_SIZE_MAX:
+            raise VoteReadValidationError("invalid page size")
+        after_value = None if after is None else _decode_review_cursor(after)
+        rows = await self.repository.pending_review_page(
+            session, limit=first + 1, after=after_value
+        )
+        visible_rows = rows[:first]
+        cards = await self.products.public_launch_cards_by_ids(
+            session, product_ids=tuple(vote.product_id for _flag, vote in visible_rows)
+        )
+        cards_by_id = {product.id: product for product in cards}
+        items = tuple(
+            VoteReviewQueueEntry(
+                flag_id=flag.id,
+                vote_id=vote.id,
+                member_id=flag.member_id,
+                product=cards_by_id[vote.product_id],
+                signal_code=flag.signal_code,
+                created_at=flag.created_at,
+            )
+            for flag, vote in visible_rows
+            if vote.product_id in cards_by_id
+        )
+        next_cursor = (
+            _encode_review_cursor(visible_rows[-1][0].created_at, visible_rows[-1][0].id)
+            if len(rows) > first and visible_rows
+            else None
+        )
+        return VoteReviewQueuePage(items=items, next_cursor=next_cursor)
+
+    async def _unranked_launches(
+        self,
+        session: AsyncSession,
+        *,
+        today_date: date,
+        selected_date: date,
+        product_id: UUID | None,
+        first: int,
+        after: str | None,
+    ) -> VoteDailyRankingPage:
+        if product_id is not None:
+            products = await self.products.public_launch_cards_by_ids(
+                session, product_ids=(product_id,), launch_date=selected_date
+            )
+            items = tuple(
+                VoteDailyRankingItem(product, None, None, None, None) for product in products
+            )
+            return VoteDailyRankingPage(today_date, selected_date, False, items, None)
+        page = await self.products.public_launches(
+            session,
+            requested_date=selected_date,
+            first=first,
+            after=after,
+        )
+        items = tuple(
+            VoteDailyRankingItem(product, None, None, None, None) for product in page.items
+        )
+        return VoteDailyRankingPage(
+            page.today_date, page.selected_date, False, items, page.next_cursor
+        )
+
+    async def _snapshot_page(
+        self,
+        session: AsyncSession,
+        *,
+        today_date: date,
+        selected_date: date,
+        product_id: UUID | None,
+        first: int,
+        after: str | None,
+    ) -> VoteDailyRankingPage:
+        if product_id is not None:
+            result = await self.repository.daily_snapshot_entry_for_product(
+                session, launch_date=selected_date, product_id=product_id
+            )
+            if result is None:
+                return VoteDailyRankingPage(today_date, selected_date, True, (), None)
+            _snapshot, entry = result
+            products = await self.products.public_launch_cards_by_ids(
+                session, product_ids=(entry.product_id,), launch_date=selected_date
+            )
+            items: tuple[VoteDailyRankingItem, ...] = (
+                (
+                    VoteDailyRankingItem(
+                        products[0], entry.rank, entry.active_vote_count, entry.score, None
+                    ),
+                )
+                if products
+                else ()
+            )
+            return VoteDailyRankingPage(today_date, selected_date, True, items, None)
+
+        after_rank = None if after is None else _decode_snapshot_cursor(after, selected_date)
+        snapshot, entries = await self.repository.daily_snapshot_page(
+            session,
+            launch_date=selected_date,
+            limit=first + 1,
+            after_rank=after_rank,
+        )
+        if snapshot is None:
+            return VoteDailyRankingPage(today_date, selected_date, False, (), None)
+        visible = entries[:first]
+        cards = await self.products.public_launch_cards_by_ids(
+            session,
+            product_ids=tuple(entry.product_id for entry in visible),
+            launch_date=selected_date,
+        )
+        cards_by_id = {product.id: product for product in cards}
+        items = tuple(
+            VoteDailyRankingItem(
+                cards_by_id[entry.product_id],
+                entry.rank,
+                entry.active_vote_count,
+                entry.score,
+                None,
+            )
+            for entry in visible
+            if entry.product_id in cards_by_id
+        )
+        next_cursor = (
+            _encode_snapshot_cursor(selected_date, visible[-1].rank)
+            if len(entries) > first and visible
+            else None
+        )
+        return VoteDailyRankingPage(today_date, selected_date, True, items, next_cursor)
+
+    async def _live_page(
+        self,
+        session: AsyncSession,
+        *,
+        today_date: date,
+        product_id: UUID | None,
+        first: int,
+        after: str | None,
+        viewer_id: UUID | None,
+    ) -> VoteDailyRankingPage:
+        cards: list[PublicLaunchProduct] = []
+        if product_id is not None:
+            cards.extend(
+                await self.products.public_launch_cards_for_date(session, launch_date=today_date)
+            )
+        else:
+            cursor: str | None = None
+            while True:
+                page = await self.products.public_launches(
+                    session, requested_date=today_date, first=self.PAGE_SIZE_MAX, after=cursor
+                )
+                cards.extend(page.items)
+                cursor = page.next_cursor
+                if cursor is None:
+                    break
+        values: dict[UUID, tuple[int, Decimal]] = {}
+        for start in range(0, len(cards), self.PAGE_SIZE_MAX):
+            batch = tuple(cards[start : start + self.PAGE_SIZE_MAX])
+            values.update(
+                await self.repository.ranking_values_for_products(
+                    session,
+                    product_ids=tuple(product.id for product in batch),
+                    launch_date=today_date,
+                )
+            )
+        ranked = [LiveRankEntry(product.id, product.name, *values[product.id]) for product in cards]
+        ranked.sort(key=_rank_sort_key)
+        ranks = {entry.product_id: position for position, entry in enumerate(ranked, start=1)}
+        cards_by_id = {product.id: product for product in cards}
+        if product_id is not None:
+            selected = next((entry for entry in ranked if entry.product_id == product_id), None)
+            visible_ranked = [] if selected is None else [selected]
+        else:
+            cursor_key = None if after is None else _decode_live_cursor(after, today_date)
+            visible_ranked = [
+                entry
+                for entry in ranked
+                if cursor_key is None or _rank_sort_key(entry) > cursor_key
+            ][: first + 1]
+        visible = visible_ranked[:first]
+        viewer_votes = (
+            await self.repository.active_vote_product_ids(
+                session,
+                member_id=viewer_id,
+                product_ids=tuple(entry.product_id for entry in visible),
+                launch_date=today_date,
+            )
+            if viewer_id is not None
+            else set()
+        )
+        items = tuple(
+            VoteDailyRankingItem(
+                product=cards_by_id[entry.product_id],
+                rank=ranks[entry.product_id],
+                active_vote_count=entry.active_vote_count,
+                score=entry.score,
+                viewer_voted=entry.product_id in viewer_votes if viewer_id is not None else None,
+            )
+            for entry in visible
+        )
+        next_cursor = (
+            _encode_live_cursor(today_date, _rank_sort_key(visible[-1]))
+            if product_id is None and len(visible_ranked) > first and visible
+            else None
+        )
+        return VoteDailyRankingPage(today_date, today_date, True, items, next_cursor)
+
+
 class VoteRankingProjectionService:
     """Maintain a rebuildable Redis view from PostgreSQL's launched products and votes."""
 
@@ -722,6 +1066,88 @@ def _ranking_keys(launch_date: date) -> tuple[str, str]:
 
 def _daily_snapshot_event_id(launch_date: date) -> UUID:
     return uuid5(NAMESPACE_URL, f"launchpad:daily-ranking:{launch_date.isoformat()}")
+
+
+def _encode_cursor(values: Mapping[str, object]) -> str:
+    payload = json.dumps(values, sort_keys=True, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def _decode_cursor(value: str) -> dict[str, object]:
+    try:
+        padded = value + "=" * (-len(value) % 4)
+        decoded = json.loads(base64.urlsafe_b64decode(padded).decode())
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise VoteReadValidationError("invalid page cursor") from error
+    if not isinstance(decoded, dict):
+        raise VoteReadValidationError("invalid page cursor")
+    return decoded
+
+
+def _encode_snapshot_cursor(launch_date: date, rank: int) -> str:
+    return _encode_cursor({"kind": "snapshot", "date": launch_date.isoformat(), "rank": rank})
+
+
+def _decode_snapshot_cursor(value: str, launch_date: date) -> int:
+    decoded = _decode_cursor(value)
+    try:
+        cursor_date = date.fromisoformat(str(decoded["date"]))
+        rank = int(str(decoded["rank"]))
+    except (KeyError, TypeError, ValueError) as error:
+        raise VoteReadValidationError("invalid archive cursor") from error
+    if decoded.get("kind") != "snapshot" or cursor_date != launch_date or rank < 1:
+        raise VoteReadValidationError("archive cursor does not match the selected date")
+    return rank
+
+
+def _encode_live_cursor(launch_date: date, rank_key: tuple[bool, Decimal, int, str, str]) -> str:
+    return _encode_cursor(
+        {
+            "kind": "live",
+            "date": launch_date.isoformat(),
+            "zero_votes": rank_key[0],
+            "score": str(rank_key[1]),
+            "count": rank_key[2],
+            "name": rank_key[3],
+            "product_id": rank_key[4],
+        }
+    )
+
+
+def _decode_live_cursor(value: str, launch_date: date) -> tuple[bool, Decimal, int, str, str]:
+    decoded = _decode_cursor(value)
+    try:
+        cursor_date = date.fromisoformat(str(decoded["date"]))
+        rank_key = (
+            bool(decoded["zero_votes"]),
+            Decimal(str(decoded["score"])),
+            int(str(decoded["count"])),
+            str(decoded["name"]),
+            str(UUID(str(decoded["product_id"]))),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise VoteReadValidationError("invalid ranking cursor") from error
+    if decoded.get("kind") != "live" or cursor_date != launch_date:
+        raise VoteReadValidationError("ranking cursor does not match the selected date")
+    return rank_key
+
+
+def _encode_review_cursor(created_at: datetime, flag_id: UUID) -> str:
+    return _encode_cursor(
+        {"kind": "review", "created_at": created_at.isoformat(), "flag_id": str(flag_id)}
+    )
+
+
+def _decode_review_cursor(value: str) -> tuple[datetime, UUID]:
+    decoded = _decode_cursor(value)
+    try:
+        created_at = datetime.fromisoformat(str(decoded["created_at"]))
+        flag_id = UUID(str(decoded["flag_id"]))
+    except (KeyError, TypeError, ValueError) as error:
+        raise VoteReadValidationError("invalid review cursor") from error
+    if decoded.get("kind") != "review" or created_at.tzinfo is None:
+        raise VoteReadValidationError("invalid review cursor")
+    return created_at, flag_id
 
 
 def _rank_sort_key(entry: LiveRankEntry) -> tuple[bool, Decimal, int, str, str]:

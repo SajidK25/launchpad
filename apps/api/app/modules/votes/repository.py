@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import extract, func, insert, or_, select, text, update
+from sqlalchemy import extract, func, insert, or_, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.schema import Table
@@ -456,3 +456,89 @@ class VoteRepository:
             ).all()
         )
         return snapshot, entries
+
+    async def daily_snapshot_page(
+        self,
+        session: AsyncSession,
+        *,
+        launch_date: date,
+        limit: int,
+        after_rank: int | None = None,
+    ) -> tuple[DailyRankingSnapshot | None, list[DailyRankingEntry]]:
+        """Read an immutable archive by its unique date and stable rank cursor."""
+
+        snapshot = await session.scalar(
+            select(DailyRankingSnapshot).where(DailyRankingSnapshot.launch_date == launch_date)
+        )
+        if snapshot is None:
+            return None, []
+        statement = select(DailyRankingEntry).where(DailyRankingEntry.snapshot_id == snapshot.id)
+        if after_rank is not None:
+            statement = statement.where(DailyRankingEntry.rank > after_rank)
+        entries = list(
+            (await session.scalars(statement.order_by(DailyRankingEntry.rank).limit(limit))).all()
+        )
+        return snapshot, entries
+
+    async def daily_snapshot_entry_for_product(
+        self, session: AsyncSession, *, launch_date: date, product_id: UUID
+    ) -> tuple[DailyRankingSnapshot, DailyRankingEntry] | None:
+        """Resolve a product's archived rank directly without walking prior ranks."""
+
+        result = await session.execute(
+            select(DailyRankingSnapshot, DailyRankingEntry)
+            .join(DailyRankingEntry, DailyRankingEntry.snapshot_id == DailyRankingSnapshot.id)
+            .where(
+                DailyRankingSnapshot.launch_date == launch_date,
+                DailyRankingEntry.product_id == product_id,
+            )
+        )
+        row = result.one_or_none()
+        return None if row is None else (row[0], row[1])
+
+    async def active_vote_product_ids(
+        self,
+        session: AsyncSession,
+        *,
+        member_id: UUID,
+        product_ids: tuple[UUID, ...],
+        launch_date: date,
+    ) -> set[UUID]:
+        """Return only the viewer's own active votes for one launch date."""
+
+        if not product_ids:
+            return set()
+        day_start = datetime.combine(launch_date, time.min, tzinfo=UTC)
+        next_day = day_start + timedelta(days=1)
+        return set(
+            await session.scalars(
+                select(Vote.product_id).where(
+                    Vote.member_id == member_id,
+                    Vote.product_id.in_(product_ids),
+                    Vote.state == "active",
+                    Vote.cast_at >= day_start,
+                    Vote.cast_at < next_day,
+                )
+            )
+        )
+
+    async def pending_review_page(
+        self,
+        session: AsyncSession,
+        *,
+        limit: int,
+        after: tuple[datetime, UUID] | None = None,
+    ) -> list[tuple[VoteRiskFlag, Vote]]:
+        """Page pending flags with minimal vote context, excluding network data."""
+
+        statement = (
+            select(VoteRiskFlag, Vote)
+            .join(Vote, Vote.id == VoteRiskFlag.vote_id)
+            .where(VoteRiskFlag.state == "pending")
+        )
+        if after is not None:
+            statement = statement.where(tuple_(VoteRiskFlag.created_at, VoteRiskFlag.id) > after)
+        rows = await session.execute(
+            statement.order_by(VoteRiskFlag.created_at, VoteRiskFlag.id).limit(limit)
+        )
+        return [(flag, vote) for flag, vote in rows.tuples()]

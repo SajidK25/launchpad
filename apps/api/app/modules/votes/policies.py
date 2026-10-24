@@ -35,6 +35,10 @@ class VoteInfrastructureError(VoteError):
     """A required persistence or ranking dependency is unavailable."""
 
 
+class VoteReadValidationError(VoteError):
+    """The public or staff ranking read arguments are malformed or out of range."""
+
+
 def require_voting_member(account: AccountState | None) -> AccountState:
     """Require an existing verified member that is not suspended."""
 

@@ -20,6 +20,58 @@ query ViewerProfile {
   }
 }
 
+query DailyProductRanking(
+  $date: Date
+  $productId: UUID
+  $first: Int = 20
+  $after: String
+) {
+  dailyProductRanking(
+    date: $date
+    productId: $productId
+    first: $first
+    after: $after
+  ) {
+    todayDate
+    selectedDate
+    hasSnapshot
+    items {
+      product {
+        id
+        name
+        pitch
+        logoUrl
+        topics
+      }
+      rank
+      activeVoteCount
+      score
+      viewerVoted
+    }
+    nextCursor
+  }
+}
+
+query PendingVoteReviews($first: Int = 20, $after: String) {
+  pendingVoteReviews(first: $first, after: $after) {
+    items {
+      id
+      voteId
+      memberId
+      product {
+        id
+        name
+        pitch
+        logoUrl
+        topics
+      }
+      signalCode
+      createdAt
+    }
+    nextCursor
+  }
+}
+
 query ViewerProducts($first: Int! = 20, $after: String) {
   viewerProducts(first: $first, after: $after) {
     items {

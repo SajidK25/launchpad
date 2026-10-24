@@ -9,6 +9,22 @@ type ApprovedReviewPage {
   nextCursor: String
 }
 
+type DailyRankingEntry {
+  product: PublicLaunchCard!
+  rank: Int
+  activeVoteCount: Int
+  score: Decimal
+  viewerVoted: Boolean
+}
+
+type DailyRankingPage {
+  todayDate: Date!
+  selectedDate: Date!
+  hasSnapshot: Boolean!
+  items: [DailyRankingEntry!]!
+  nextCursor: String
+}
+
 """
 Date (isoformat)
 """
@@ -18,6 +34,11 @@ scalar Date
 Date with time (isoformat)
 """
 scalar DateTime
+
+"""
+Decimal (fixed-point)
+"""
+scalar Decimal
 
 type LaunchBookingEntry {
   id: UUID!
@@ -63,6 +84,20 @@ enum NotificationKindEnum {
   REVIEW_APPROVED
   REVIEW_REJECTED
   REVIEW_CHANGES_REQUESTED
+}
+
+type PendingVoteReviewEntry {
+  id: UUID!
+  voteId: UUID!
+  memberId: UUID!
+  product: PublicLaunchCard!
+  signalCode: String!
+  createdAt: DateTime!
+}
+
+type PendingVoteReviewPage {
+  items: [PendingVoteReviewEntry!]!
+  nextCursor: String
 }
 
 type ProductAsset {
@@ -197,6 +232,16 @@ type Query {
     after: String = null
   ): LaunchBookingPage!
   viewerLaunchNotificationPreferences: LaunchNotificationPreferences!
+  dailyProductRanking(
+    date: Date = null
+    productId: UUID = null
+    first: Int! = 20
+    after: String = null
+  ): DailyRankingPage!
+  pendingVoteReviews(
+    first: Int! = 20
+    after: String = null
+  ): PendingVoteReviewPage!
 }
 
 type ReviewDetail {

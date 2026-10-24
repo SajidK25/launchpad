@@ -28,6 +28,10 @@ from app.modules.products.policies import ProductForbiddenError, ProductNotFound
 from app.modules.products.service import ProductService, ProductValidationError
 from app.modules.users.graphql import ProfileQuery
 from app.modules.users.service import ProfileService
+from app.modules.votes.graphql import VoteQuery
+from app.modules.votes.policies import VoteForbiddenError, VoteReadValidationError
+from app.modules.votes.repository import VoteRepository
+from app.modules.votes.service import VoteRankingProductAccess, VoteReadService
 from app.shared.config.settings import Settings
 from app.shared.email.codec import EmailPayloadCodec
 
@@ -48,6 +52,8 @@ _ALLOWED_ROOT_FIELDS = frozenset(
         "publicLaunches",
         "publicProductCatalog",
         "publicCatalogTopics",
+        "dailyProductRanking",
+        "pendingVoteReviews",
     }
 )
 _MAX_QUERY_LENGTH = 8192
@@ -64,6 +70,7 @@ class Query(
     NotificationQuery,
     LaunchQuery,
     LaunchPreferenceQuery,
+    VoteQuery,
 ):
     """The application's single read root; no mutation or subscription exists."""
 
@@ -75,7 +82,12 @@ class ProductsWithoutLaunchesQuery(ProfileQuery, ProductQuery, NotificationQuery
 
 @strawberry.type
 class LaunchesWithoutProductsQuery(
-    ProfileQuery, PublicProductQuery, NotificationQuery, LaunchQuery, LaunchPreferenceQuery
+    ProfileQuery,
+    PublicProductQuery,
+    NotificationQuery,
+    LaunchQuery,
+    LaunchPreferenceQuery,
+    VoteQuery,
 ):
     """Composed launch read root without private product reads."""
 
@@ -102,6 +114,10 @@ class PrivateReadRouter(GraphQLRouter):
                 encoded["message"] = "product unavailable"
             elif isinstance(error.original_error, ProductValidationError):
                 encoded["message"] = "invalid product query"
+            elif isinstance(error.original_error, VoteForbiddenError):
+                encoded["message"] = "vote review access is forbidden"
+            elif isinstance(error.original_error, VoteReadValidationError):
+                encoded["message"] = "invalid vote query"
             else:
                 encoded["message"] = "request could not be completed"
         return response
@@ -191,6 +207,12 @@ def context_getter(
                 payload_codec=payload_codec,
             )
 
+        def vote_read_service_factory() -> VoteReadService:
+            return VoteReadService(
+                products=cast(VoteRankingProductAccess, product_service_factory()),
+                repository=VoteRepository(),
+            )
+
         return {
             "member": member,
             "request_id": request_id,
@@ -199,6 +221,7 @@ def context_getter(
             "service_factory": profile_service_factory,
             "product_service_factory": product_service_factory,
             "launch_booking_service_factory": launch_booking_service_factory,
+            "vote_read_service_factory": vote_read_service_factory,
             "notification_service_factory": lambda: NotificationService(
                 member_access=AuthAccessService(), payload_codec=payload_codec
             ),

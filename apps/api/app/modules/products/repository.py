@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import cast
 from uuid import UUID
 
@@ -679,6 +679,68 @@ class ProductRepository:
         if after is not None:
             statement = statement.where(tuple_(sort_key, Product.id) > after)
         rows = await session.execute(statement.order_by(sort_key, Product.id).limit(limit))
+        return [
+            PublicLaunchRow(id=row.id, name=row.name, pitch=row.pitch, sort_key=row.sort_key)
+            for row in rows
+        ]
+
+    async def list_public_launch_cards_by_ids(
+        self,
+        session: AsyncSession,
+        *,
+        product_ids: tuple[UUID, ...],
+        launch_date: date | None,
+    ) -> list[PublicLaunchRow]:
+        """Batch-select card columns for launched products only."""
+
+        if not product_ids:
+            return []
+        sort_key = func.lower(Product.name)
+        statement = select(
+            Product.id,
+            Product.name,
+            Product.pitch,
+            sort_key.label("sort_key"),
+        ).where(
+            Product.id.in_(product_ids),
+            Product.status == "launched",
+            Product.launched_at.is_not(None),
+        )
+        if launch_date is not None:
+            day_start = datetime.combine(launch_date, datetime.min.time(), UTC)
+            next_day_start = day_start + timedelta(days=1)
+            statement = statement.where(
+                Product.launched_at >= day_start,
+                Product.launched_at < next_day_start,
+            )
+        rows = await session.execute(statement)
+        return [
+            PublicLaunchRow(id=row.id, name=row.name, pitch=row.pitch, sort_key=row.sort_key)
+            for row in rows
+        ]
+
+    async def list_public_launch_cards_for_date(
+        self, session: AsyncSession, *, launch_date: date
+    ) -> list[PublicLaunchRow]:
+        """Select all public ranking candidates for one day in stable display order."""
+
+        day_start = datetime.combine(launch_date, datetime.min.time(), UTC)
+        next_day_start = day_start + timedelta(days=1)
+        sort_key = func.lower(Product.name)
+        rows = await session.execute(
+            select(
+                Product.id,
+                Product.name,
+                Product.pitch,
+                sort_key.label("sort_key"),
+            )
+            .where(
+                Product.status == "launched",
+                Product.launched_at >= day_start,
+                Product.launched_at < next_day_start,
+            )
+            .order_by(sort_key, Product.id)
+        )
         return [
             PublicLaunchRow(id=row.id, name=row.name, pitch=row.pitch, sort_key=row.sort_key)
             for row in rows

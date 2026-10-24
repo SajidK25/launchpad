@@ -488,7 +488,7 @@ Implement the authorized review queue and explicit clear/invalidate actions. Fla
 
 ## Task T8: Expose public ranking and reviewer reads in GraphQL
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** test-after
 > **Effort:** l
 > **Priority:** high
@@ -546,10 +546,14 @@ Expose current-day and archived daily ranking reads plus a reviewer-only pending
 
 **Modified files:**
 - `apps/api/app/graphql.py` (compose vote queries and allowed roots)
+- `apps/api/app/modules/votes/repository.py` (keyset snapshot/review reads and viewer vote-state lookup)
+- `apps/api/app/modules/votes/service.py` (ranked/live/archived read composition and privacy-safe review page)
+- `apps/api/app/modules/products/service.py` and `repository.py` (batch launched-only public-card lookup by product IDs)
 - `apps/api/app/modules/products/tests/test_graphql.py` (update exact root expectations)
 - `tests/integration/test_graphql_composition.py` (verify feature flag/root combinations)
 - `packages/contracts/operations.graphql` (canonical ranking/review query operations)
-- `packages/contracts/src/generated.ts`, `packages/contracts/src/graphql.generated.ts`, `packages/contracts/openapi.json`, and generated GraphQL/OpenAPI files under `apps/web/src/generated/` (regenerate only where source schemas require changes)
+- `packages/contracts/schema.graphql`, `packages/contracts/src/generated.ts`, `packages/contracts/src/graphql.generated.ts`, `packages/contracts/openapi.json`, and generated GraphQL/OpenAPI files under `apps/web/src/generated/` (regenerate only where source schemas require changes)
+- `scripts/quality/generate_graphql_types.py` (map GraphQL `Decimal` scores to strict TypeScript `number` values)
 
 **Must NOT modify:**
 - `apps/api/app/modules/products/repository.py` (existing public product filter remains authoritative)

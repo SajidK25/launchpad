@@ -49,6 +49,8 @@ def test_composed_schema_preserves_profiles_and_adds_private_product_reads() -> 
         "publicLaunches",
         "publicProductCatalog",
         "publicCatalogTopics",
+        "dailyProductRanking",
+        "pendingVoteReviews",
     }
     assert schema.mutation_type is None
     assert schema.subscription_type is None
@@ -125,6 +127,8 @@ def test_router_composes_public_product_and_launch_reads_without_private_product
         "publicLaunches",
         "publicProductCatalog",
         "publicCatalogTopics",
+        "dailyProductRanking",
+        "pendingVoteReviews",
     }
 
 
@@ -192,6 +196,8 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "publicLaunches",
                     "publicProductCatalog",
                     "publicCatalogTopics",
+                    "dailyProductRanking",
+                    "pendingVoteReviews",
                 }
                 if products_enabled and launches_enabled
                 else {
@@ -216,6 +222,8 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "publicLaunches",
                     "publicProductCatalog",
                     "publicCatalogTopics",
+                    "dailyProductRanking",
+                    "pendingVoteReviews",
                 }
                 if launches_enabled
                 else {"viewerProfile", "publicProfile", "viewerNotificationInbox"}
