@@ -32,6 +32,10 @@ from app.modules.products.service import (
     StaffProductDetail,
     SubmissionPeriod,
 )
+from app.modules.products.service import PublicCatalogPage as PublicCatalogResultPage
+from app.modules.products.service import (
+    PublicCatalogTopicOptions as PublicCatalogTopicOptionsResult,
+)
 from app.modules.products.service import PublicLaunchPage as PublicLaunchResultPage
 from app.shared.observability.logging import log_event, request_context
 
@@ -176,6 +180,24 @@ class PublicLaunchPage:
     selected_date: Date
     items: list[PublicLaunchCard]
     next_cursor: str | None
+
+
+@strawberry.type
+class PublicCatalogPage:
+    items: list[PublicLaunchCard]
+    next_cursor: str | None
+
+
+@strawberry.type
+class PublicCatalogTopicChoice:
+    id: UUID
+    display_name: str
+
+
+@strawberry.type
+class PublicCatalogTopicOptions:
+    choices: list[PublicCatalogTopicChoice]
+    selected: list[PublicCatalogTopicChoice]
 
 
 def _member(info: strawberry.Info) -> MemberContext:
@@ -369,6 +391,75 @@ class PublicProductQuery:
                     for item in page.items
                 ],
                 next_cursor=page.next_cursor,
+            )
+
+    @strawberry.field
+    async def public_product_catalog(
+        self,
+        info: strawberry.Info,
+        search: str | None = None,
+        topic_ids: list[UUID] | None = None,
+        first: int = 20,
+        after: str | None = None,
+    ) -> PublicCatalogPage:
+        """Search all launched products using anonymous-safe card projections."""
+
+        async with _safe_read(info, operation="publicProductCatalog"):
+            async with info.context["session_factory"]() as session:
+                page: PublicCatalogResultPage = await _service(info).public_product_catalog(
+                    cast(AsyncSession, session),
+                    search=search,
+                    topic_ids=tuple(topic_ids or ()),
+                    first=first,
+                    after=after,
+                )
+            return PublicCatalogPage(
+                items=[
+                    PublicLaunchCard(
+                        id=item.id,
+                        name=item.name,
+                        pitch=item.pitch,
+                        logo_url=(
+                            f"/api/v1/products/{item.id}/assets/{item.logo.id}/public"
+                            if item.logo is not None
+                            else None
+                        ),
+                        topics=list(item.topics),
+                    )
+                    for item in page.items
+                ],
+                next_cursor=page.next_cursor,
+            )
+
+    @strawberry.field
+    async def public_catalog_topics(
+        self,
+        info: strawberry.Info,
+        query: str | None = None,
+        selected_ids: list[UUID] | None = None,
+        first: int = 20,
+    ) -> PublicCatalogTopicOptions:
+        """Return topic labels attached to products that are launched now."""
+
+        async with _safe_read(info, operation="publicCatalogTopics"):
+            async with info.context["session_factory"]() as session:
+                options: PublicCatalogTopicOptionsResult = await _service(
+                    info
+                ).public_catalog_topics(
+                    cast(AsyncSession, session),
+                    query=query,
+                    selected_ids=tuple(selected_ids or ()),
+                    first=first,
+                )
+            return PublicCatalogTopicOptions(
+                choices=[
+                    PublicCatalogTopicChoice(id=item.topic_id, display_name=item.display_name)
+                    for item in options.choices
+                ],
+                selected=[
+                    PublicCatalogTopicChoice(id=item.topic_id, display_name=item.display_name)
+                    for item in options.selected
+                ],
             )
 
 

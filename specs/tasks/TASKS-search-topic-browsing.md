@@ -81,7 +81,7 @@ Implement the products-domain read behavior for searching and browsing the full 
 
 ## Task T2: Expose Catalog Reads and Add PostgreSQL Search Indexes
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** m
 > **Priority:** high
@@ -149,6 +149,13 @@ Expose T1's read services through the existing anonymous products GraphQL bounda
 - `apps/api/app/modules/products/tests/test_topics.py` (founder proposal operation remains owner-scoped and unchanged)
 - `apps/api/app/shared/config/settings.py` (no new flag or search-service configuration)
 - `apps/api/app/modules/launches` (publication and scheduling are unchanged)
+
+### Verification Evidence
+
+- Backend regression set: 51 passed, including product GraphQL/read/topic tests, composition/privacy, and migration checks.
+- `sh scripts/quality/contracts.sh --check`: passed; generated GraphQL contracts are current.
+- Ruff check, Ruff format check, and targeted mypy for GraphQL production/test modules: passed.
+- 10,000 launched-product performance scenario: 80 serial first-page reads (20 each for blank, short-term, multi-term, and topic-filtered queries) measured p95 at 0.021 seconds in the local Docker check environment. Concurrency profile was 1; this is a local baseline, not a production load test.
 
 ---
 

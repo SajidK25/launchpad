@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from math import ceil
+from time import perf_counter
 from uuid import UUID, uuid4
 
 from app.modules.auth.models import Account, Session
 from app.modules.auth.sessions import SessionService, SignInResult
+from app.modules.auth.staff import AuthAccessService
 from app.modules.products.models import (
     Product,
     ProductAsset,
@@ -15,10 +18,12 @@ from app.modules.products.models import (
     ProductTopic,
     Topic,
 )
+from app.modules.products.service import ProductService
 from app.modules.users.models import Profile, ProfileLink
 from app.modules.users.routes import router as users_router
 from app.shared.config.settings import load_settings
 from app.shared.db.database import Database
+from app.shared.email.codec import EmailPayloadCodec
 from app.shared.security.passwords import hash_password
 from app.shared.storage.objects import PrivateObjectStore
 from conftest import IntegrationSettings
@@ -46,9 +51,11 @@ def test_composed_graphql_keeps_private_products_topics_and_media_scoped(
     ) = product_ids
     submission_ids = (uuid4(), uuid4())
     topic_id = uuid4()
+    private_topic_id = uuid4()
     asset_id = uuid4()
     public_asset_id = uuid4()
     topic_name = f"Secret Launch {topic_id.hex[:8]}"
+    private_topic_name = f"Private Proposal {private_topic_id.hex[:8]}"
     now = datetime.now(UTC)
     password = "a secure GraphQL test password!"
     password_hash = hash_password(password)
@@ -191,7 +198,20 @@ def test_composed_graphql_keeps_private_products_topics_and_media_scoped(
                     ),
                 ]
             )
-            session.add(Topic(id=topic_id, display_name=topic_name, name_key=topic_name.casefold()))
+            session.add_all(
+                [
+                    Topic(
+                        id=topic_id,
+                        display_name=topic_name,
+                        name_key=topic_name.casefold(),
+                    ),
+                    Topic(
+                        id=private_topic_id,
+                        display_name=private_topic_name,
+                        name_key=private_topic_name.casefold(),
+                    ),
+                ]
+            )
             await session.flush()
             session.add_all(
                 [
@@ -200,6 +220,12 @@ def test_composed_graphql_keeps_private_products_topics_and_media_scoped(
                         topic_id=topic_id,
                         position=1,
                         selected_label=topic_name.upper(),
+                    ),
+                    ProductTopic(
+                        product_id=owner_pending_id,
+                        topic_id=private_topic_id,
+                        position=2,
+                        selected_label=private_topic_name,
                     ),
                     ProductTopic(
                         product_id=other_pending_id,
@@ -255,7 +281,7 @@ def test_composed_graphql_keeps_private_products_topics_and_media_scoped(
         sessions = async_sessionmaker(database.engine, expire_on_commit=False)
         async with sessions() as session, session.begin():
             await session.execute(delete(Product).where(Product.id.in_(product_ids)))
-            await session.execute(delete(Topic).where(Topic.id == topic_id))
+            await session.execute(delete(Topic).where(Topic.id.in_((topic_id, private_topic_id))))
             await session.execute(delete(ProfileLink).where(ProfileLink.account_id == staff_id))
             await session.execute(delete(Profile).where(Profile.account_id == staff_id))
             await session.execute(delete(Session).where(Session.account_id.in_(account_ids)))
@@ -326,6 +352,39 @@ def test_composed_graphql_keeps_private_products_topics_and_media_scoped(
                     "topics": ["Public topic"],
                 }
             ]
+            catalog = query(
+                client,
+                'query { publicProductCatalog(search: "DISCOVERY", first: 10) '
+                "{ items { id name pitch logoUrl topics } nextCursor } }",
+            )
+            assert catalog["data"]["publicProductCatalog"]["items"] == page["items"]
+            assert "description" not in catalog["data"]["publicProductCatalog"]["items"][0]
+            topic_options = query(
+                client,
+                f'query {{ publicCatalogTopics(selectedIds: ["{topic_id}", '
+                f'"{private_topic_id}"]) {{ choices {{ id displayName }} '
+                "selected { id displayName } } }",
+            )
+            expected_topic = {"id": str(topic_id), "displayName": topic_name}
+            assert topic_options["data"]["publicCatalogTopics"]["choices"] == [expected_topic]
+            assert topic_options["data"]["publicCatalogTopics"]["selected"] == [expected_topic]
+            signed_in_catalog = query(
+                client,
+                'query { publicProductCatalog(search: "DISCOVERY") { items { id } } }',
+                owner_id,
+            )
+            assert signed_in_catalog["data"]["publicProductCatalog"]["items"] == [
+                {"id": str(public_launched_id)}
+            ]
+            invalid_catalog_queries = (
+                f'query {{ publicProductCatalog(search: "{"x" * 201}") {{ items {{ id }} }} }}',
+                "query { publicCatalogTopics(first: 51) { choices { id } } }",
+                'query { publicProductCatalog(after: "malformed") { items { id } } }',
+            )
+            for invalid_catalog_query in invalid_catalog_queries:
+                invalid = query(client, invalid_catalog_query)
+                assert invalid["data"] is None
+                assert invalid["errors"][0]["message"] == "invalid product query"
             public_product = query(
                 client,
                 f'query {{ publicProduct(id: "{public_launched_id}") '
@@ -388,7 +447,8 @@ def test_composed_graphql_keeps_private_products_topics_and_media_scoped(
                 owner_id,
             )
             assert own_detail["data"]["viewerProduct"]["topics"] == [
-                {"displayName": topic_name.upper(), "position": 1}
+                {"displayName": topic_name.upper(), "position": 1},
+                {"displayName": private_topic_name, "position": 2},
             ]
             assert own_detail["data"]["viewerProduct"]["submission"] == {
                 "id": str(submission_ids[0]),
@@ -403,7 +463,8 @@ def test_composed_graphql_keeps_private_products_topics_and_media_scoped(
                 owner_id,
             )
             assert owner_topic["data"]["topicChoices"] == [
-                {"id": str(topic_id), "displayName": topic_name.upper()}
+                {"id": str(private_topic_id), "displayName": private_topic_name},
+                {"id": str(topic_id), "displayName": topic_name.upper()},
             ]
             assert (
                 query(client, "query { topicChoices { id displayName } }")["data"]["topicChoices"]
@@ -529,3 +590,111 @@ def test_composed_graphql_keeps_private_products_topics_and_media_scoped(
         asyncio.run(cleanup())
         asyncio.run(route_database.close())
         redis.close()
+
+
+def test_public_catalog_first_page_p95_at_ten_thousand_products(
+    integration_settings_fixture: IntegrationSettings,
+) -> None:
+    """Measure serial first-page service reads against a 10,000-product catalog."""
+
+    async def verify() -> None:
+        database = Database.connect(integration_settings_fixture.database_url)
+        await database.ensure_compatible()
+        sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+        founder_id, topic_id = uuid4(), uuid4()
+        product_ids = [uuid4() for _ in range(10_000)]
+        now = datetime.now(UTC)
+        try:
+            async with sessions() as session, session.begin():
+                session.add(
+                    Account(
+                        id=founder_id,
+                        email_display=f"catalog-benchmark-{founder_id}@example.test",
+                        email_key=f"catalog-benchmark-{founder_id}@example.test",
+                        password_hash="test-hash",
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                session.add(
+                    Topic(
+                        id=topic_id,
+                        display_name="Benchmark Topic",
+                        name_key=f"benchmark-{topic_id.hex[:8]}",
+                        first_launched_at=now,
+                    )
+                )
+                await session.flush()
+                await session.execute(
+                    insert(Product.__table__),
+                    [
+                        {
+                            "id": product_id,
+                            "founder_id": founder_id,
+                            "status": "launched",
+                            "version": 1,
+                            "name": f"Catalog {index:05d}",
+                            "pitch": "Needle launch for search workload",
+                            "description": "Extra searchable public details",
+                            "website_url": f"https://catalog-{index:05d}.example.test",
+                            "website_key": f"catalog-{index:05d}.example.test",
+                            "launched_at": now - timedelta(seconds=index),
+                            "created_at": now,
+                            "updated_at": now,
+                        }
+                        for index, product_id in enumerate(product_ids)
+                    ],
+                )
+                session.add_all(
+                    [
+                        ProductTopic(
+                            product_id=product_id,
+                            topic_id=topic_id,
+                            position=1,
+                            selected_label="Benchmark Topic",
+                        )
+                        for product_id in product_ids[::10]
+                    ]
+                )
+
+            service = ProductService(
+                member_access=AuthAccessService(),
+                payload_codec=EmailPayloadCodec(
+                    {"catalog-benchmark": b"b" * 32}, "catalog-benchmark"
+                ),
+            )
+            workloads = (
+                (None, ()),
+                ("needle", ()),
+                ("catalog needle", ()),
+                (None, (topic_id,)),
+            )
+            measurements: list[float] = []
+            for search, selected_topics in workloads:
+                for _ in range(20):
+                    started = perf_counter()
+                    async with sessions() as session:
+                        page = await service.public_product_catalog(
+                            session,
+                            search=search,
+                            topic_ids=selected_topics,
+                            first=20,
+                        )
+                    measurements.append(perf_counter() - started)
+                    assert len(page.items) == 20
+            ordered = sorted(measurements)
+            p95 = ordered[ceil(len(ordered) * 0.95) - 1]
+            print(
+                "catalog workload: 10,000 launched products; serial concurrency=1; "
+                "20 samples each for blank, short-term, multi-term, and topic-filtered "
+                f"first pages; p95={p95:.3f}s"
+            )
+            assert p95 <= 1.0
+        finally:
+            async with sessions() as session, session.begin():
+                await session.execute(delete(Product).where(Product.id.in_(product_ids)))
+                await session.execute(delete(Topic).where(Topic.id == topic_id))
+                await session.execute(delete(Account).where(Account.id == founder_id))
+            await database.close()
+
+    asyncio.run(verify())

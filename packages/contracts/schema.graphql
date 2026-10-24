@@ -104,6 +104,21 @@ type ProductTopic {
   position: Int!
 }
 
+type PublicCatalogPage {
+  items: [PublicLaunchCard!]!
+  nextCursor: String
+}
+
+type PublicCatalogTopicChoice {
+  id: UUID!
+  displayName: String!
+}
+
+type PublicCatalogTopicOptions {
+  choices: [PublicCatalogTopicChoice!]!
+  selected: [PublicCatalogTopicChoice!]!
+}
+
 type PublicLaunchCard {
   id: UUID!
   name: String!
@@ -162,6 +177,17 @@ type Query {
     first: Int! = 20
     after: String = null
   ): PublicLaunchPage!
+  publicProductCatalog(
+    search: String = null
+    topicIds: [UUID!] = null
+    first: Int! = 20
+    after: String = null
+  ): PublicCatalogPage!
+  publicCatalogTopics(
+    query: String = null
+    selectedIds: [UUID!] = null
+    first: Int! = 20
+  ): PublicCatalogTopicOptions!
   viewerNotificationInbox(
     first: Int! = 20
     after: String = null

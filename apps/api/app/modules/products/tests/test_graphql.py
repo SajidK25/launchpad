@@ -47,6 +47,8 @@ def test_composed_schema_preserves_profiles_and_adds_private_product_reads() -> 
         "viewerLaunchNotificationPreferences",
         "publicProduct",
         "publicLaunches",
+        "publicProductCatalog",
+        "publicCatalogTopics",
     }
     assert schema.mutation_type is None
     assert schema.subscription_type is None
@@ -57,6 +59,8 @@ def test_public_launches_is_exposed_with_public_product_reads() -> None:
     root = schema.query_type
     assert root is not None
     assert "publicLaunches" in root.fields
+    assert "publicProductCatalog" in root.fields
+    assert "publicCatalogTopics" in root.fields
 
 
 def test_feature_off_graphql_schema_keeps_profiles_without_product_fields() -> None:
@@ -119,6 +123,8 @@ def test_router_composes_public_product_and_launch_reads_without_private_product
         "viewerLaunchNotificationPreferences",
         "publicProduct",
         "publicLaunches",
+        "publicProductCatalog",
+        "publicCatalogTopics",
     }
 
 
@@ -184,6 +190,8 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "viewerLaunchNotificationPreferences",
                     "publicProduct",
                     "publicLaunches",
+                    "publicProductCatalog",
+                    "publicCatalogTopics",
                 }
                 if products_enabled and launches_enabled
                 else {
@@ -206,6 +214,8 @@ def test_app_mounts_product_rest_and_graphql_only_when_enabled(
                     "viewerLaunchNotificationPreferences",
                     "publicProduct",
                     "publicLaunches",
+                    "publicProductCatalog",
+                    "publicCatalogTopics",
                 }
                 if launches_enabled
                 else {"viewerProfile", "publicProfile", "viewerNotificationInbox"}
@@ -244,6 +254,14 @@ def test_composed_validator_accepts_existing_profile_and_bounded_product_roots()
     validate_read_query(
         "query { publicLaunches(first: 10) { todayDate items { id name pitch logoUrl topics } } }"
     )
+    validate_read_query(
+        'query { publicProductCatalog(search: "launch", topicIds: []) '
+        "{ items { id name pitch topics } nextCursor } }"
+    )
+    validate_read_query(
+        'query { publicCatalogTopics(query: "cloud", selectedIds: []) '
+        "{ choices { id displayName } selected { id displayName } } }"
+    )
 
 
 def test_composed_router_is_post_only_and_redacts_unexpected_read_errors(
@@ -261,6 +279,9 @@ def test_composed_router_is_post_only_and_redacts_unexpected_read_errors(
     class BrokenProductService:
         async def owner_list(self, *args: object, **kwargs: object) -> None:
             raise RuntimeError("private-database-value")
+
+        async def public_product_catalog(self, *args: object, **kwargs: object) -> None:
+            raise RuntimeError("private-catalog-database-value")
 
     async def context_getter(request: Request, response: Response) -> dict[str, object]:
         return {
@@ -283,17 +304,36 @@ def test_composed_router_is_post_only_and_redacts_unexpected_read_errors(
             "/api/v1/graphql",
             json={"query": "query { viewerProducts { nextCursor } }"},
         )
+        catalog_response = client.post(
+            "/api/v1/graphql",
+            json={"query": "query { publicProductCatalog { items { id } } }"},
+        )
     assert response.status_code == 200
     assert response.json()["data"] is None
     assert response.json()["errors"][0]["message"] == "request could not be completed"
     assert "private-database-value" not in response.text
+    assert catalog_response.json()["data"] is None
+    assert catalog_response.json()["errors"][0]["message"] == "request could not be completed"
+    assert "private-catalog-database-value" not in catalog_response.text
     diagnostic = next(
         record
         for record in caplog.records
         if getattr(record, "operation", None) == "viewerProducts"
     )
-    assert diagnostic.component == "graphql"
-    assert diagnostic.outcome == "failed"
-    assert diagnostic.request_id == "review-test-request-id"
-    assert diagnostic.context == {"exception_type": "RuntimeError"}
-    assert "private-database-value" not in str(diagnostic.context)
+    diagnostic_values = cast(Any, diagnostic)
+    assert diagnostic_values.component == "graphql"
+    assert diagnostic_values.outcome == "failed"
+    assert diagnostic_values.request_id == "review-test-request-id"
+    assert diagnostic_values.context == {"exception_type": "RuntimeError"}
+    assert "private-database-value" not in str(diagnostic_values.context)
+    catalog_diagnostic = next(
+        record
+        for record in caplog.records
+        if getattr(record, "operation", None) == "publicProductCatalog"
+    )
+    catalog_diagnostic_values = cast(Any, catalog_diagnostic)
+    assert catalog_diagnostic_values.component == "graphql"
+    assert catalog_diagnostic_values.outcome == "failed"
+    assert catalog_diagnostic_values.request_id == "review-test-request-id"
+    assert catalog_diagnostic_values.context == {"exception_type": "RuntimeError"}
+    assert "private-catalog-database-value" not in str(catalog_diagnostic_values.context)

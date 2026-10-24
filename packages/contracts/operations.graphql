@@ -249,3 +249,38 @@ query TopicChoices($first: Int! = 20, $query: String) {
     displayName
   }
 }
+
+query PublicProductCatalog(
+  $search: String
+  $topicIds: [UUID!] = []
+  $first: Int! = 20
+  $after: String
+) {
+  publicProductCatalog(search: $search, topicIds: $topicIds, first: $first, after: $after) {
+    items {
+      id
+      name
+      pitch
+      logoUrl
+      topics
+    }
+    nextCursor
+  }
+}
+
+query PublicCatalogTopics(
+  $query: String
+  $selectedIds: [UUID!] = []
+  $first: Int! = 20
+) {
+  publicCatalogTopics(query: $query, selectedIds: $selectedIds, first: $first) {
+    choices {
+      id
+      displayName
+    }
+    selected {
+      id
+      displayName
+    }
+  }
+}

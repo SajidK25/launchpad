@@ -594,3 +594,75 @@ export const TOPIC_CHOICES_QUERY =
     displayName
   }
 }` as const;
+
+export type PublicProductCatalogQueryVariables = {
+  search?: string | null;
+  topicIds?: Array<string> | null;
+  first?: number;
+  after?: string | null;
+};
+
+export type PublicProductCatalogQuery = {
+  publicProductCatalog: {
+    items: Array<{
+      id: string;
+      name: string;
+      pitch: string;
+      logoUrl: string | null;
+      topics: Array<string>;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const PUBLIC_PRODUCT_CATALOG_QUERY =
+  `query PublicProductCatalog($search: String, $topicIds: [UUID!] = [], $first: Int! = 20, $after: String) {
+  publicProductCatalog(
+    search: $search
+    topicIds: $topicIds
+    first: $first
+    after: $after
+  ) {
+    items {
+      id
+      name
+      pitch
+      logoUrl
+      topics
+    }
+    nextCursor
+  }
+}` as const;
+
+export type PublicCatalogTopicsQueryVariables = {
+  query?: string | null;
+  selectedIds?: Array<string> | null;
+  first?: number;
+};
+
+export type PublicCatalogTopicsQuery = {
+  publicCatalogTopics: {
+    choices: Array<{
+      id: string;
+      displayName: string;
+    }>;
+    selected: Array<{
+      id: string;
+      displayName: string;
+    }>;
+  };
+};
+
+export const PUBLIC_CATALOG_TOPICS_QUERY =
+  `query PublicCatalogTopics($query: String, $selectedIds: [UUID!] = [], $first: Int! = 20) {
+  publicCatalogTopics(query: $query, selectedIds: $selectedIds, first: $first) {
+    choices {
+      id
+      displayName
+    }
+    selected {
+      id
+      displayName
+    }
+  }
+}` as const;

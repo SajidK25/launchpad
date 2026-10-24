@@ -46,6 +46,8 @@ _ALLOWED_ROOT_FIELDS = frozenset(
         "viewerLaunchNotificationPreferences",
         "publicProduct",
         "publicLaunches",
+        "publicProductCatalog",
+        "publicCatalogTopics",
     }
 )
 _MAX_QUERY_LENGTH = 8192
