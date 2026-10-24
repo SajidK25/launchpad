@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import delete, func, select, tuple_, update
+from sqlalchemy import and_, delete, exists, func, or_, select, tuple_, update
 from sqlalchemy import insert as sa_insert
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +49,17 @@ class PublicLaunchRow:
     id: UUID
     name: str | None
     pitch: str | None
+    sort_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class PublicCatalogRow:
+    """Small public card projection plus the catalog keyset position."""
+
+    id: UUID
+    name: str
+    pitch: str
+    launched_at: datetime
     sort_key: str
 
 
@@ -135,6 +146,113 @@ class TopicRepository:
 
 class ProductRepository:
     """Persist owner-scoped draft rows and their optimistic version."""
+
+    async def list_public_catalog(
+        self,
+        session: AsyncSession,
+        *,
+        terms: tuple[str, ...],
+        topic_ids: tuple[UUID, ...],
+        limit: int,
+        after: tuple[datetime, str, UUID] | None,
+    ) -> list[PublicCatalogRow]:
+        """Search launched products and return only the public card columns."""
+
+        sort_key = func.lower(Product.name)
+        statement = select(
+            Product.id,
+            Product.name,
+            Product.pitch,
+            Product.launched_at,
+            sort_key.label("sort_key"),
+        ).where(Product.status == "launched", Product.launched_at.is_not(None))
+        for term in terms:
+            escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            statement = statement.where(
+                or_(
+                    Product.name.ilike(pattern, escape="\\"),
+                    Product.pitch.ilike(pattern, escape="\\"),
+                    Product.description.ilike(pattern, escape="\\"),
+                )
+            )
+        if topic_ids:
+            statement = statement.where(
+                exists(
+                    select(1).where(
+                        ProductTopic.product_id == Product.id,
+                        ProductTopic.topic_id.in_(topic_ids),
+                    )
+                )
+            )
+        if after is not None:
+            statement = statement.where(
+                or_(
+                    Product.launched_at < after[0],
+                    and_(
+                        Product.launched_at == after[0],
+                        tuple_(sort_key, Product.id) > (after[1], after[2]),
+                    ),
+                )
+            )
+        rows = await session.execute(
+            statement.order_by(Product.launched_at.desc(), sort_key, Product.id).limit(limit)
+        )
+        return [
+            PublicCatalogRow(
+                id=row.id,
+                name=cast(str, row.name),
+                pitch=cast(str, row.pitch),
+                launched_at=cast(datetime, row.launched_at),
+                sort_key=row.sort_key,
+            )
+            for row in rows
+        ]
+
+    async def list_public_catalog_topic_choices(
+        self,
+        session: AsyncSession,
+        *,
+        query: str | None,
+        limit: int,
+    ) -> list[TopicChoice]:
+        """Return topics attached to currently launched products only."""
+
+        statement = (
+            select(Topic.id, Topic.display_name)
+            .join(ProductTopic, ProductTopic.topic_id == Topic.id)
+            .join(Product, Product.id == ProductTopic.product_id)
+            .where(Product.status == "launched", Product.launched_at.is_not(None))
+            .group_by(Topic.id, Topic.display_name, Topic.name_key)
+        )
+        if query is not None and query.strip():
+            statement = statement.where(
+                Topic.name_key.startswith(canonical_topic_key(query), autoescape=True)
+            )
+        rows = await session.execute(statement.order_by(Topic.name_key, Topic.id).limit(limit))
+        return [TopicChoice(topic_id=row.id, display_name=row.display_name) for row in rows]
+
+    async def list_public_catalog_selected_topics(
+        self, session: AsyncSession, *, topic_ids: tuple[UUID, ...]
+    ) -> list[TopicChoice]:
+        """Hydrate selected labels only while each topic remains publicly used."""
+
+        if not topic_ids:
+            return []
+        statement = (
+            select(Topic.id, Topic.display_name)
+            .join(ProductTopic, ProductTopic.topic_id == Topic.id)
+            .join(Product, Product.id == ProductTopic.product_id)
+            .where(
+                Product.status == "launched",
+                Product.launched_at.is_not(None),
+                Topic.id.in_(topic_ids),
+            )
+            .group_by(Topic.id, Topic.display_name, Topic.name_key)
+            .order_by(Topic.name_key, Topic.id)
+        )
+        rows = await session.execute(statement)
+        return [TopicChoice(topic_id=row.id, display_name=row.display_name) for row in rows]
 
     async def list_owner_products(
         self,

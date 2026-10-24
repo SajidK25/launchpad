@@ -59,6 +59,7 @@ from app.shared.storage.objects import (
 if TYPE_CHECKING:
     from app.modules.products.repository import (
         ProductRepository,
+        PublicCatalogRow,
         PublicLaunchLogoRow,
         PublicLaunchRow,
         TopicChoice,
@@ -216,6 +217,22 @@ class PublicLaunchPage:
     selected_date: date
     items: tuple[PublicLaunchCard, ...]
     next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PublicCatalogPage:
+    """One bounded page of public cards matching catalog filters."""
+
+    items: tuple[PublicLaunchCard, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PublicCatalogTopicOptions:
+    """Bounded public topic suggestions and still-public selected labels."""
+
+    choices: tuple[TopicChoice, ...]
+    selected: tuple[TopicChoice, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -808,6 +825,91 @@ class ProductService:
             items=items,
             next_cursor=next_cursor,
         )
+
+    async def public_product_catalog(
+        self,
+        session: AsyncSession,
+        *,
+        search: str | None = None,
+        topic_ids: tuple[UUID, ...] = (),
+        first: int = 20,
+        after: str | None = None,
+    ) -> PublicCatalogPage:
+        """Return a bounded public catalog page using normalized, validated filters."""
+
+        if search is not None and len(search) > 200:
+            raise ProductValidationError("search text is too long", fields=("search",))
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        normalized_search = " ".join((search or "").split())
+        terms = tuple(normalized_search.split())
+        normalized_topic_ids = tuple(sorted(set(topic_ids), key=str))
+        if len(normalized_topic_ids) > 20:
+            raise ProductValidationError("too many topics", fields=("topicIds",))
+        filter_fingerprint = _public_catalog_filter_fingerprint(terms, normalized_topic_ids)
+        cursor = (
+            _parse_public_catalog_cursor(after, filter_fingerprint) if after is not None else None
+        )
+        products: list[PublicCatalogRow] = await self.repository.list_public_catalog(
+            session,
+            terms=terms,
+            topic_ids=normalized_topic_ids,
+            limit=first + 1,
+            after=cursor,
+        )
+        visible = products[:first]
+        product_ids = tuple(product.id for product in visible)
+        logos: dict[UUID, PublicLaunchLogoRow] = await self.repository.list_public_launch_logos(
+            session, product_ids=product_ids
+        )
+        topics = await self.repository.list_public_launch_topics(session, product_ids=product_ids)
+        items = tuple(
+            PublicLaunchCard(
+                id=product.id,
+                name=product.name,
+                pitch=product.pitch,
+                logo=_public_launch_logo_view(logos[product.id]) if product.id in logos else None,
+                topics=tuple(topics.get(product.id, ())),
+            )
+            for product in visible
+        )
+        next_cursor = (
+            _public_catalog_cursor(
+                filter_fingerprint,
+                visible[-1].launched_at,
+                visible[-1].sort_key,
+                visible[-1].id,
+            )
+            if len(products) > first and visible
+            else None
+        )
+        return PublicCatalogPage(items=items, next_cursor=next_cursor)
+
+    async def public_catalog_topics(
+        self,
+        session: AsyncSession,
+        *,
+        query: str | None = None,
+        selected_ids: tuple[UUID, ...] = (),
+        first: int = 20,
+    ) -> PublicCatalogTopicOptions:
+        """Return bounded launched-only topic suggestions and selected labels."""
+
+        if query is not None and len(query) > 200:
+            raise ProductValidationError("search text is too long", fields=("query",))
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        normalized_ids = tuple(sorted(set(selected_ids), key=str))
+        if len(normalized_ids) > 20:
+            raise ProductValidationError("too many topics", fields=("selectedIds",))
+        normalized_query = query.strip() if query and query.strip() else None
+        choices = await self.repository.list_public_catalog_topic_choices(
+            session, query=normalized_query, limit=first
+        )
+        selected = await self.repository.list_public_catalog_selected_topics(
+            session, topic_ids=normalized_ids
+        )
+        return PublicCatalogTopicOptions(choices=tuple(choices), selected=tuple(selected))
 
     async def edit_launched_product(
         self,
@@ -1991,6 +2093,51 @@ def _parse_public_launch_cursor(value: str, selected_date: date) -> tuple[str, U
     except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ProductValidationError("invalid cursor", fields=("after",)) from error
     return name_key, product_id
+
+
+def _public_catalog_filter_fingerprint(terms: tuple[str, ...], topic_ids: tuple[UUID, ...]) -> str:
+    payload = json.dumps(
+        [tuple(term.casefold() for term in terms), tuple(sorted(map(str, topic_ids)))],
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _public_catalog_cursor(
+    filter_fingerprint: str,
+    launched_at: datetime,
+    sort_key: str,
+    product_id: UUID,
+) -> str:
+    payload = json.dumps(
+        [filter_fingerprint, launched_at.isoformat(), sort_key, str(product_id)],
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _parse_public_catalog_cursor(value: str, filter_fingerprint: str) -> tuple[datetime, str, UUID]:
+    try:
+        payload = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+        decoded = json.loads(payload)
+        if not isinstance(decoded, list) or len(decoded) != 4:
+            raise ValueError("catalog cursor must have four fields")
+        cursor_fingerprint, timestamp_value, sort_key, product_value = decoded
+        if (
+            not isinstance(cursor_fingerprint, str)
+            or not hmac.compare_digest(cursor_fingerprint, filter_fingerprint)
+            or not isinstance(timestamp_value, str)
+            or not isinstance(sort_key, str)
+            or not isinstance(product_value, str)
+        ):
+            raise ValueError("catalog cursor does not match the request")
+        launched_at = datetime.fromisoformat(timestamp_value)
+        product_id = UUID(product_value)
+        if launched_at.tzinfo is None:
+            raise ValueError("catalog cursor timestamp has no timezone")
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProductValidationError("invalid cursor", fields=("after",)) from error
+    return launched_at, sort_key, product_id
 
 
 def _public_launch_logo_view(asset: PublicLaunchLogoRow) -> ProductAssetResult:
