@@ -75,7 +75,7 @@ Create durable PostgreSQL tables for vote history, idempotency receipts, risk fl
 
 ## Task T2: Implement vote lifecycle and concurrency rules
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
