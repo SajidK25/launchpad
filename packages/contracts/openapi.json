@@ -1028,6 +1028,23 @@
         "title": "VoteInput",
         "type": "object"
       },
+      "VoteLiveTicketResponse": {
+        "description": "Short-lived anonymous ticket for the current public ranking stream.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "ticket": {
+            "title": "Ticket",
+            "type": "string"
+          }
+        },
+        "required": ["ticket", "expires_at"],
+        "title": "VoteLiveTicketResponse",
+        "type": "object"
+      },
       "VoteResponse": {
         "description": "Confirmed vote state returned only after the transaction commits.",
         "properties": {
@@ -3003,6 +3020,24 @@
           }
         },
         "summary": "Cast Vote"
+      }
+    },
+    "/api/v1/votes/live-ticket": {
+      "post": {
+        "operationId": "issue_live_ticket_api_v1_votes_live_ticket_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteLiveTicketResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Issue Live Ticket"
       }
     },
     "/api/v1/votes/reviews/{flag_id}/decision": {

@@ -552,6 +552,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/votes/live-ticket": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Issue Live Ticket */
+    post: operations["issue_live_ticket_api_v1_votes_live_ticket_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/votes/reviews/{flag_id}/decision": {
     parameters: {
       query?: never;
@@ -1142,6 +1159,19 @@ export interface components {
        * Format: uuid
        */
       product_id: string;
+    };
+    /**
+     * VoteLiveTicketResponse
+     * @description Short-lived anonymous ticket for the current public ranking stream.
+     */
+    VoteLiveTicketResponse: {
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /** Ticket */
+      ticket: string;
     };
     /**
      * VoteResponse
@@ -2394,6 +2424,26 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  issue_live_ticket_api_v1_votes_live_ticket_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VoteLiveTicketResponse"];
         };
       };
     };

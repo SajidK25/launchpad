@@ -15,6 +15,7 @@ from app.modules.notifications.live import NotificationRedis
 from app.modules.notifications.routes import router as notifications_router
 from app.modules.products.routes import router as products_router
 from app.modules.users.routes import router as users_router
+from app.modules.votes.live import VoteLiveRedis, ticket_service_for_settings, vote_live_router
 from app.modules.votes.routes import router as votes_router
 from app.shared.config.settings import load_settings
 from app.shared.db.database import Database
@@ -121,6 +122,13 @@ def create_app(service: HealthService | None = None) -> FastAPI:
                     settings=settings,
                     database=database,
                     redis=Redis.from_url(str(settings.redis_url)),
+                )
+            )
+            app.include_router(
+                vote_live_router(
+                    settings=settings,
+                    redis=cast(VoteLiveRedis, AsyncRedis.from_url(str(settings.redis_url))),
+                    tickets=ticket_service_for_settings(settings),
                 )
             )
     return app

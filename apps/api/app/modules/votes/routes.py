@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.modules.auth.sessions import MemberContext, SessionService, UnauthenticatedError
 from app.modules.auth.staff import AccountState, AuthAccessService
 from app.modules.products.service import ProductService
+from app.modules.votes.live import ticket_service_for_settings
 from app.modules.votes.policies import (
     VoteChallengeError,
     VoteConflictError,
@@ -64,6 +65,13 @@ class VoteReviewDecisionResponse(BaseModel):
     outcome: Literal["cleared", "invalidated"]
     reason: str
     created_at: datetime
+
+
+class VoteLiveTicketResponse(BaseModel):
+    """Short-lived anonymous ticket for the current public ranking stream."""
+
+    ticket: str
+    expires_at: datetime
 
 
 async def verify_turnstile(*, settings: Settings, token: str, remote_ip: str | None) -> bool:
@@ -138,6 +146,7 @@ def router(
     session_factory = async_sessionmaker(database.engine, expire_on_commit=False)
     session_service = SessionService()
     routes = APIRouter(prefix="/api/v1")
+    ticket_service = ticket_service_for_settings(settings)
 
     async def db_session() -> AsyncIterator[AsyncSession]:
         async with session_factory() as session:
@@ -236,6 +245,34 @@ def router(
             if count > limit:
                 signals.append(signal)
         return signals[0] if signals else None
+
+    @routes.post("/votes/live-ticket", response_model=VoteLiveTicketResponse)
+    async def issue_live_ticket(request: Request) -> VoteLiveTicketResponse:
+        try:
+            validate_origin(request.headers.get("origin"), settings.trusted_web_origins)
+            source = request.client.host if request.client else "unknown"
+            source_digest = hashlib.sha256(source.encode()).hexdigest()
+            count = await asyncio.to_thread(
+                _increment_velocity,
+                redis,
+                f"live-ticket:{source_digest}",
+                settings.vote_velocity_window_seconds,
+            )
+            limit = settings.vote_source_velocity_limit or 60
+            if count > limit:
+                raise HTTPException(status_code=429, detail="try again later")
+            ticket = ticket_service.issue()
+            return VoteLiveTicketResponse(ticket=ticket.token, expires_at=ticket.expires_at)
+        except HTTPException:
+            raise
+        except RequestSecurityError as error:
+            raise HTTPException(status_code=403, detail="request rejected") from error
+        except Exception as error:
+            if isinstance(error, RedisError):
+                raise HTTPException(
+                    status_code=503, detail="service temporarily unavailable"
+                ) from None
+            raise HTTPException(status_code=503, detail="service temporarily unavailable") from None
 
     async def require_challenge(*, token: str | None, remote_ip: str | None) -> bool:
         if not token:

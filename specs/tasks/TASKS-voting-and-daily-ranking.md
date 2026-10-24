@@ -566,7 +566,7 @@ Expose current-day and archived daily ranking reads plus a reviewer-only pending
 
 ## Task T9: Add public ranking WebSocket tickets and invalidations
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
@@ -620,6 +620,8 @@ Add a short-lived, signed, read-only ticket for the current public ranking strea
 **Modified files:**
 - `apps/api/app/modules/votes/routes.py` (live-ticket issuance)
 - `apps/api/app/main.py` (mount public live socket route under product/launch availability)
+- `apps/api/app/modules/votes/tests/test_routes.py` (include the new public ticket route in route coverage)
+- `packages/contracts/openapi.json` and `packages/contracts/src/generated.ts` (regenerated ticket endpoint contract)
 
 **Must NOT modify:**
 - `apps/api/app/modules/notifications/live.py` (private account socket is a regression hotspot)
