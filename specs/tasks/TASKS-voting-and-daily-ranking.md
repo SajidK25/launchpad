@@ -891,18 +891,18 @@ Provide staff reviewers a paged view of pending suspicious-vote flags and explic
 
 ## Task T14: Configure default-off voting for local and production Compose
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** high
 > **Depends on:** T3
 > **Satisfies REQs:** R11, N1
-> **Footprint slice:** Runtime configuration in local and production Compose files; no application policy changes.
+> **Footprint slice:** Add one shared score half-life setting to repository calculation paths, then configure safe defaults and explicit runtime values in local and production Compose.
 > **High-risk areas touched:** Production configuration and deployment (H).
 
 ### Description
 
-Pass voting and ranking configuration to the intended API/worker services while keeping vote writes disabled by default. Keep the Turnstile secret server-side and make only the public site key available to the web build when required.
+Pass voting and ranking configuration to the intended API/worker services while keeping vote writes disabled by default. Use one shared six-hour half-life setting for read, projection, and snapshot calculations. Keep the Turnstile secret server-side and make only the public site key available to the web build when required.
 
 ### Verification Checklist
 
@@ -910,21 +910,22 @@ Pass voting and ranking configuration to the intended API/worker services while 
 - **Production Compose renders** — run `docker compose -f compose.production.yaml --env-file <release-env-file> config --quiet` with a protected validation env file — expected: exit code 0 without printing values.
 - **Default-off behavior** — inspect rendered service environment using a script that prints only booleans/key names — expected: write flag resolves false unless explicitly enabled.
 - **Shared score settings** — inspect rendered API and worker configuration — expected: both use the same configured six-hour staging half-life value so projection and snapshot calculations cannot drift.
+- **Configurable half-life** — load settings with the default and an explicit staging value — expected: the default is 21600 seconds, positive configured values are accepted, and ranking/snapshot queries use the repository’s single shared value.
 - **Secret placement** — inspect API, worker, and web service environment — expected: Turnstile secret is available only to API; worker/web do not receive it; public site key may be exposed to web.
 - **Existing services preserved** — run `docker compose -f compose.yaml config --services` and production equivalent — expected: API, worker, scheduler, database, cache, and web service names remain present.
 - **No sample-secret edits** — inspect staged diff — expected: `.env.example` and existing user configuration changes are preserved.
 
 ### Implementation Notes
 
-- **Module(s):** local and production deployment configuration.
+- **Module(s):** vote score configuration plus local and production deployment configuration.
 - **Pattern reference:** existing environment propagation and least-privilege service configuration in `compose.yaml` and `compose.production.yaml`.
-- **Key decisions:** writes default off; secrets never enter the web image/environment; no destructive rollout config.
+- **Key decisions:** writes default off; API and worker share one half-life setting; secrets never enter the web image or worker environment; no destructive rollout config.
 - **Libraries:** Docker Compose v2.
 - **High-risk callouts:** A misrouted secret or accidentally enabled write switch can affect production; rendered-config assertions must not print secret values.
 
 ### Scope Boundaries
 
-- Do NOT modify application defaults or settings fields (T3 owns those).
+- Do NOT change the default-off application write setting or enable production vote writes.
 - Do NOT enable production voting as part of this task.
 - Do NOT change unrelated services, secrets, or deployment workflow behavior.
 
@@ -936,6 +937,12 @@ Pass voting and ranking configuration to the intended API/worker services while 
 **Modified files:**
 - `compose.yaml` (local vote/ranking settings and safe defaults)
 - `compose.production.yaml` (production service configuration and secret boundaries)
+- `apps/api/app/shared/config/settings.py` (shared positive six-hour default score half-life)
+- `apps/api/app/modules/votes/repository.py` (use the configured half-life for live and snapshot aggregation)
+- `apps/api/app/graphql.py` (configure public ranking reads from the shared setting)
+- `apps/worker/worker.py` (configure projection and snapshot services from the same setting)
+- `apps/api/app/shared/config/tests/test_settings.py` (default and configured score setting checks)
+- `apps/api/app/modules/votes/tests/test_repository.py` (shared score value usage checks)
 
 **Must NOT modify:**
 - `.env.example` (preserve existing environment sample state)

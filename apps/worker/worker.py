@@ -467,7 +467,7 @@ async def run_worker(health: ProgressHealth) -> None:
         notifications=notification_service,
         member_access=member_access,
     )
-    vote_repository = VoteRepository()
+    vote_repository = VoteRepository(score_half_life_seconds=settings.vote_score_half_life_seconds)
     vote_snapshot_service = VoteSnapshotService(
         products=product_service,
         repository=vote_repository,

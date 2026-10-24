@@ -210,7 +210,9 @@ def context_getter(
         def vote_read_service_factory() -> VoteReadService:
             return VoteReadService(
                 products=cast(VoteRankingProductAccess, product_service_factory()),
-                repository=VoteRepository(),
+                repository=VoteRepository(
+                    score_half_life_seconds=settings.vote_score_half_life_seconds
+                ),
             )
 
         return {

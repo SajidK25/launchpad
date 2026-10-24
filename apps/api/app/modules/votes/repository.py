@@ -22,10 +22,20 @@ from app.modules.votes.models import (
     VoteRiskFlag,
     VotingFeatureState,
 )
+from app.shared.config.settings import DEFAULT_VOTE_SCORE_HALF_LIFE_SECONDS
 
 
 class VoteRepository:
     """Keep all vote persistence and serialization inside the votes feature."""
+
+    def __init__(
+        self,
+        *,
+        score_half_life_seconds: int = DEFAULT_VOTE_SCORE_HALF_LIFE_SECONDS,
+    ) -> None:
+        if score_half_life_seconds < 1:
+            raise ValueError("vote score half-life must be positive")
+        self.score_half_life_seconds = score_half_life_seconds
 
     async def lock_member_product(
         self, session: AsyncSession, *, member_id: UUID, product_id: UUID
@@ -304,11 +314,11 @@ class VoteRepository:
     async def ranking_values(
         self, session: AsyncSession, *, product_id: UUID, launch_date: date
     ) -> tuple[int, Decimal]:
-        """Aggregate active vote count and normalized six-hour score for one launch."""
+        """Aggregate active vote count and normalized recency score for one launch."""
 
         day_start = datetime.combine(launch_date, time.min, tzinfo=UTC)
         day_end = day_start + timedelta(days=1)
-        elapsed_hours = extract("epoch", Vote.cast_at - day_start) / 21600
+        elapsed_hours = extract("epoch", Vote.cast_at - day_start) / self.score_half_life_seconds
         statement = select(
             func.count(Vote.id),
             func.coalesce(func.sum(func.power(2, elapsed_hours)), 0),
@@ -330,7 +340,7 @@ class VoteRepository:
             return {}
         day_start = datetime.combine(launch_date, time.min, tzinfo=UTC)
         day_end = day_start + timedelta(days=1)
-        elapsed_hours = extract("epoch", Vote.cast_at - day_start) / 21600
+        elapsed_hours = extract("epoch", Vote.cast_at - day_start) / self.score_half_life_seconds
         statement = (
             select(
                 Vote.product_id,
@@ -358,18 +368,18 @@ class VoteRepository:
         product_ids: tuple[UUID, ...],
         cutoff_at: datetime,
     ) -> dict[UUID, tuple[int, Decimal]]:
-        """Aggregate votes active at cutoff, including later withdrawals or invalidations."""
+        """Aggregate votes at cutoff using the configured half-life."""
 
         if not product_ids:
             return {}
         cutoff = cutoff_at.astimezone(UTC)
         day_start = cutoff - timedelta(days=1)
-        elapsed_six_hours = extract("epoch", Vote.cast_at - cutoff) / 21600
+        elapsed_half_life = extract("epoch", Vote.cast_at - cutoff) / self.score_half_life_seconds
         statement = (
             select(
                 Vote.product_id,
                 func.count(Vote.id),
-                func.sum(func.power(2, elapsed_six_hours)),
+                func.sum(func.power(2, elapsed_half_life)),
             )
             .where(
                 Vote.product_id.in_(product_ids),

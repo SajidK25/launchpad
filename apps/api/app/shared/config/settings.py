@@ -29,6 +29,9 @@ class ConfigurationError(ValueError):
     """Safe configuration error that names fields but never includes their values."""
 
 
+DEFAULT_VOTE_SCORE_HALF_LIFE_SECONDS = 6 * 60 * 60
+
+
 class Settings(BaseModel):
     """Application settings loaded from `LAUNCHPAD_`-prefixed environment variables."""
 
@@ -39,6 +42,7 @@ class Settings(BaseModel):
     launches_enabled: bool = False
     review_writes_enabled: bool = False
     vote_writes_enabled: bool = False
+    vote_score_half_life_seconds: int = Field(default=DEFAULT_VOTE_SCORE_HALF_LIFE_SECONDS, ge=1)
     turnstile_secret_key: SecretStr | None = None
     turnstile_site_verify_url: AnyHttpUrl = AnyHttpUrl(
         "https://challenges.cloudflare.com/turnstile/v0/siteverify"
