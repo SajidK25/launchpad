@@ -48,6 +48,19 @@ def require_voting_member(account: AccountState | None) -> AccountState:
     return account
 
 
+def require_vote_reviewer(account: AccountState | None) -> AccountState:
+    """Require a verified, active reviewer or admin for explicit flag decisions."""
+
+    if (
+        account is None
+        or not account.verified
+        or account.suspended_at is not None
+        or account.role not in {"reviewer", "admin"}
+    ):
+        raise VoteForbiddenError("vote review access is unavailable for this account")
+    return account
+
+
 def require_public_other_product(*, member_id: object, owner_id: object, launched: bool) -> None:
     """Require a publicly launched product owned by another account."""
 

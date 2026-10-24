@@ -57,6 +57,7 @@ def test_vote_commands_are_rest_only_and_use_expected_methods() -> None:
     assert operations == {
         ("/api/v1/votes", "POST"),
         ("/api/v1/votes/{product_id}", "DELETE"),
+        ("/api/v1/votes/reviews/{flag_id}/decision", "POST"),
     }
     assert "VoteInput" in app.openapi()["components"]["schemas"]
 

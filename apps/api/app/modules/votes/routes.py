@@ -4,18 +4,20 @@ import asyncio
 import base64
 import hashlib
 from collections.abc import AsyncIterator, Callable
-from typing import Annotated, cast
+from datetime import datetime
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 import httpx2
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, field_validator
 from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.auth.sessions import MemberContext, SessionService, UnauthenticatedError
-from app.modules.auth.staff import AuthAccessService
+from app.modules.auth.staff import AccountState, AuthAccessService
 from app.modules.products.service import ProductService
 from app.modules.votes.policies import (
     VoteChallengeError,
@@ -24,15 +26,44 @@ from app.modules.votes.policies import (
     VoteInfrastructureError,
     VoteNotFoundError,
     VoteRateLimitError,
+    require_vote_reviewer,
 )
 from app.modules.votes.schemas import VoteInput, VoteResponse
-from app.modules.votes.service import VoteProductAccess, VoteService
+from app.modules.votes.service import VoteProductAccess, VoteReviewService, VoteService
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
 from app.shared.events.outbox import OutboxRepository
 from app.shared.security.csrf import RequestSecurityError, require_csrf, validate_origin
 from app.shared.security.rate_limit import RateLimitExceeded, RateLimitUnavailable
+
+
+class VoteReviewDecisionInput(BaseModel):
+    """Bounded reviewer outcome and rationale for one pending risk flag."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["cleared", "invalidated"]
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if not 1 <= len(normalized) <= 2000:
+            raise ValueError("reason must contain between 1 and 2000 characters")
+        return normalized
+
+
+class VoteReviewDecisionResponse(BaseModel):
+    """Auditable result returned after the review transaction succeeds."""
+
+    id: UUID
+    flag_id: UUID
+    reviewer_account_id: UUID
+    outcome: Literal["cleared", "invalidated"]
+    reason: str
+    created_at: datetime
 
 
 async def verify_turnstile(*, settings: Settings, token: str, remote_ip: str | None) -> bool:
@@ -93,6 +124,7 @@ def router(
     database: Database,
     redis: Redis,
     service_factory: Callable[[], VoteService] | None = None,
+    review_service_factory: Callable[[], VoteReviewService] | None = None,
     challenge_verifier: Callable[[str, str | None], object] | None = None,
 ) -> APIRouter:
     """Build origin-bound, CSRF-protected member vote commands."""
@@ -137,6 +169,22 @@ def router(
             outbox=OutboxRepository(),
             codec=codec,
             writes_enabled=lambda: settings.vote_writes_enabled,
+        )
+
+    def review_service() -> VoteReviewService:
+        if review_service_factory is not None:
+            return review_service_factory()
+        member_access = AuthAccessService()
+        products = ProductService(
+            member_access=member_access,
+            outbox_repository=OutboxRepository(),
+            payload_codec=codec,
+        )
+        return VoteReviewService(
+            member_access=member_access,
+            product_access=cast(VoteProductAccess, products),
+            outbox=OutboxRepository(),
+            codec=codec,
         )
 
     async def authorize_write(
@@ -284,6 +332,48 @@ def router(
                     turnstile_token=x_turnstile_token,
                     session=session,
                     request=request,
+                )
+            except HTTPException:
+                raise
+            except Exception as error:
+                raise map_vote_error(error) from error
+
+    @routes.post(
+        "/votes/reviews/{flag_id}/decision",
+        response_model=VoteReviewDecisionResponse,
+    )
+    async def decide_vote_review(
+        flag_id: UUID,
+        payload: VoteReviewDecisionInput,
+        request: Request,
+        session: DbSession,
+        x_csrf_token: str | None = Header(default=None),
+    ) -> VoteReviewDecisionResponse:
+        async with session.begin():
+            try:
+                member = await authorize_write(request, session, x_csrf_token)
+                require_vote_reviewer(
+                    AccountState(
+                        member.account_id,
+                        member.verified,
+                        member.role,
+                        member.suspended_at,
+                    )
+                )
+                result = await review_service().decide(
+                    session,
+                    reviewer_id=member.account_id,
+                    flag_id=flag_id,
+                    outcome=payload.outcome,
+                    reason=payload.reason,
+                )
+                return VoteReviewDecisionResponse(
+                    id=result.id,
+                    flag_id=result.flag_id,
+                    reviewer_account_id=result.reviewer_account_id,
+                    outcome=cast(Literal["cleared", "invalidated"], result.outcome),
+                    reason=result.reason,
+                    created_at=result.created_at,
                 )
             except HTTPException:
                 raise

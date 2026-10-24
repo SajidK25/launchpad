@@ -18,6 +18,7 @@ from app.modules.votes.models import (
     DailyRankingSnapshot,
     Vote,
     VoteIdempotencyReceipt,
+    VoteReviewDecision,
     VoteRiskFlag,
     VotingFeatureState,
 )
@@ -228,6 +229,77 @@ class VoteRepository:
             )
         ).one()
         return flag
+
+    async def lock_risk_flag(self, session: AsyncSession, *, flag_id: UUID) -> VoteRiskFlag | None:
+        """Lock one review flag so only one reviewer can resolve it."""
+
+        return cast(
+            VoteRiskFlag | None,
+            await session.scalar(
+                select(VoteRiskFlag).where(VoteRiskFlag.id == flag_id).with_for_update()
+            ),
+        )
+
+    async def decide_risk_flag(
+        self,
+        session: AsyncSession,
+        *,
+        flag: VoteRiskFlag,
+        outcome: str,
+        now: datetime,
+    ) -> VoteRiskFlag:
+        """Set a pending flag's terminal state while preserving its history."""
+
+        saved = await session.scalar(
+            update(VoteRiskFlag)
+            .where(VoteRiskFlag.id == flag.id, VoteRiskFlag.state == "pending")
+            .values(state=outcome, resolved_at=now)
+            .returning(VoteRiskFlag)
+        )
+        if saved is None:
+            raise RuntimeError("locked vote review flag could not be resolved")
+        return saved
+
+    async def add_review_decision(
+        self,
+        session: AsyncSession,
+        *,
+        flag_id: UUID,
+        reviewer_account_id: UUID,
+        outcome: str,
+        reason: str,
+        now: datetime,
+    ) -> VoteReviewDecision:
+        """Append the reviewer attribution and rationale for one decision."""
+
+        decision = (
+            await session.scalars(
+                insert(VoteReviewDecision)
+                .values(
+                    id=uuid7(),
+                    flag_id=flag_id,
+                    reviewer_account_id=reviewer_account_id,
+                    outcome=outcome,
+                    reason=reason,
+                    created_at=now,
+                )
+                .returning(VoteReviewDecision)
+            )
+        ).one()
+        return decision
+
+    async def invalidate_vote(self, session: AsyncSession, *, vote: Vote, now: datetime) -> Vote:
+        """Explicitly invalidate a reviewed vote without deleting its history."""
+
+        saved = await session.scalar(
+            update(Vote)
+            .where(Vote.id == vote.id, Vote.state != "invalidated")
+            .values(state="invalidated", invalidated_at=now)
+            .returning(Vote)
+        )
+        if saved is None:
+            raise RuntimeError("reviewed vote could not be invalidated")
+        return saved
 
     async def ranking_values(
         self, session: AsyncSession, *, product_id: UUID, launch_date: date

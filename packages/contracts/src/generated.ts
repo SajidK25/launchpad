@@ -552,6 +552,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/votes/reviews/{flag_id}/decision": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Decide Vote Review */
+    post: operations["decide_vote_review_api_v1_votes_reviews__flag_id__decision_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/votes/{product_id}": {
     parameters: {
       query?: never;
@@ -1150,6 +1167,52 @@ export interface components {
        * Format: uuid
        */
       vote_id: string;
+    };
+    /**
+     * VoteReviewDecisionInput
+     * @description Bounded reviewer outcome and rationale for one pending risk flag.
+     */
+    VoteReviewDecisionInput: {
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: "cleared" | "invalidated";
+      /** Reason */
+      reason: string;
+    };
+    /**
+     * VoteReviewDecisionResponse
+     * @description Auditable result returned after the review transaction succeeds.
+     */
+    VoteReviewDecisionResponse: {
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Flag Id
+       * Format: uuid
+       */
+      flag_id: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: "cleared" | "invalidated";
+      /** Reason */
+      reason: string;
+      /**
+       * Reviewer Account Id
+       * Format: uuid
+       */
+      reviewer_account_id: string;
     };
   };
   responses: never;
@@ -2322,6 +2385,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["VoteResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  decide_vote_review_api_v1_votes_reviews__flag_id__decision_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        flag_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["VoteReviewDecisionInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VoteReviewDecisionResponse"];
         };
       };
       /** @description Validation Error */

@@ -20,6 +20,7 @@ from app.modules.votes.policies import (
     VoteNotFoundError,
     require_open_launch_day,
     require_public_other_product,
+    require_vote_reviewer,
     require_voting_member,
     validate_idempotency_key,
 )
@@ -138,6 +139,18 @@ class VoteCommandResult:
     active: bool
     cast_at: datetime
     replayed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class VoteReviewResult:
+    """Append-only staff decision returned after its transaction succeeds."""
+
+    id: UUID
+    flag_id: UUID
+    reviewer_account_id: UUID
+    outcome: str
+    reason: str
+    created_at: datetime
 
 
 class VoteService:
@@ -337,6 +350,98 @@ class VoteService:
                 available_at=now,
             ),
         )
+
+
+class VoteReviewService:
+    """Resolve risk flags only through attributed, transactional staff decisions."""
+
+    def __init__(
+        self,
+        *,
+        member_access: VoteMemberAccess,
+        product_access: VoteProductAccess,
+        repository: VoteRepository | None = None,
+        outbox: VoteOutbox | None = None,
+        codec: VotePayloadCodec,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.member_access = member_access
+        self.product_access = product_access
+        self.repository = repository or VoteRepository()
+        self.outbox = outbox or OutboxRepository()
+        self.codec = codec
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def decide(
+        self,
+        session: AsyncSession,
+        *,
+        reviewer_id: UUID,
+        flag_id: UUID,
+        outcome: str,
+        reason: str,
+    ) -> VoteReviewResult:
+        """Clear a flag or invalidate its vote, writing decision and outbox atomically."""
+
+        normalized_reason = reason.strip()
+        if outcome not in {"cleared", "invalidated"}:
+            raise VoteConflictError("invalid vote review outcome")
+        if not 1 <= len(normalized_reason) <= 2000:
+            raise VoteConflictError("vote review reason must be between 1 and 2000 characters")
+        now = _utc(self.clock())
+        async with session.begin_nested():
+            account = await self.member_access.current_account(session, reviewer_id, lock=True)
+            require_vote_reviewer(account)
+            flag = await self.repository.lock_risk_flag(session, flag_id=flag_id)
+            if flag is None:
+                raise VoteNotFoundError("vote review flag is unavailable")
+            if flag.state != "pending":
+                raise VoteConflictError("vote review flag has already been decided")
+            vote = await self.repository.vote_by_id(session, vote_id=flag.vote_id)
+            if vote is None:
+                raise VoteNotFoundError("vote review flag is unavailable")
+            product = await self.product_access.voting_context(
+                session, product_id=vote.product_id, lock=True
+            )
+            if product is None:
+                raise VoteNotFoundError("vote review flag is unavailable")
+
+            await self.repository.decide_risk_flag(session, flag=flag, outcome=outcome, now=now)
+            if outcome == "invalidated":
+                await self.repository.invalidate_vote(session, vote=vote, now=now)
+            decision = await self.repository.add_review_decision(
+                session,
+                flag_id=flag.id,
+                reviewer_account_id=reviewer_id,
+                outcome=outcome,
+                reason=normalized_reason,
+                now=now,
+            )
+            key_id, encrypted_payload = self.codec.encode(
+                {
+                    "product_id": str(vote.product_id),
+                    "launch_date": product.launch_date.isoformat(),
+                    "outcome": outcome,
+                }
+            )
+            await self.outbox.add(
+                session,
+                OutboxEvent(
+                    event_type="vote.review_decided.v1",
+                    aggregate_id=vote.product_id,
+                    key_id=key_id,
+                    encrypted_payload=encrypted_payload,
+                    available_at=now,
+                ),
+            )
+            return VoteReviewResult(
+                id=decision.id,
+                flag_id=flag.id,
+                reviewer_account_id=reviewer_id,
+                outcome=outcome,
+                reason=normalized_reason,
+                created_at=now,
+            )
 
 
 class VoteRankingProjectionService:

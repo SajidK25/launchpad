@@ -1058,6 +1058,68 @@
         "required": ["vote_id", "product_id", "active", "cast_at", "replayed"],
         "title": "VoteResponse",
         "type": "object"
+      },
+      "VoteReviewDecisionInput": {
+        "additionalProperties": false,
+        "description": "Bounded reviewer outcome and rationale for one pending risk flag.",
+        "properties": {
+          "outcome": {
+            "enum": ["cleared", "invalidated"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["outcome", "reason"],
+        "title": "VoteReviewDecisionInput",
+        "type": "object"
+      },
+      "VoteReviewDecisionResponse": {
+        "description": "Auditable result returned after the review transaction succeeds.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "flag_id": {
+            "format": "uuid",
+            "title": "Flag Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": ["cleared", "invalidated"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewer_account_id": {
+            "format": "uuid",
+            "title": "Reviewer Account Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "flag_id",
+          "reviewer_account_id",
+          "outcome",
+          "reason",
+          "created_at"
+        ],
+        "title": "VoteReviewDecisionResponse",
+        "type": "object"
       }
     }
   },
@@ -2941,6 +3003,72 @@
           }
         },
         "summary": "Cast Vote"
+      }
+    },
+    "/api/v1/votes/reviews/{flag_id}/decision": {
+      "post": {
+        "operationId": "decide_vote_review_api_v1_votes_reviews__flag_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flag_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Flag Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteReviewDecisionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteReviewDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Vote Review"
       }
     },
     "/api/v1/votes/{product_id}": {

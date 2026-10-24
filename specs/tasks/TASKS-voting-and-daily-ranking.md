@@ -422,7 +422,7 @@ Schedule one idempotent snapshot event per ranked UTC launch date and persist th
 
 ## Task T7: Add staff vote-review decisions and audit
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** high
@@ -477,6 +477,8 @@ Implement the authorized review queue and explicit clear/invalidate actions. Fla
 - `apps/api/app/modules/votes/service.py` (review, invalidation, and audit behavior)
 - `apps/api/app/modules/votes/policies.py` (named reviewer permission)
 - `apps/api/app/modules/votes/routes.py` (review decision command route)
+- `apps/api/app/modules/votes/tests/test_routes.py` (update expected route set for review decision endpoint)
+- `packages/contracts/openapi.json` and `packages/contracts/src/generated.ts` (regenerate REST contracts for the review decision endpoint)
 
 **Must NOT modify:**
 - `apps/api/app/modules/notifications/live.py` (private notifications remain unchanged)
