@@ -825,7 +825,7 @@ Let a verified member cast or remove a vote from ranked public cards/product pag
 
 ## Task T13: Build the staff vote-review queue UI
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** medium
@@ -876,8 +876,12 @@ Provide staff reviewers a paged view of pending suspicious-vote flags and explic
 
 **Modified files:**
 - `apps/web/src/App.tsx` (mount reviewer route)
+- `apps/web/src/App.test.tsx` (route mounting in reviewer workspace)
 - `apps/web/src/routing.ts` (review route matching)
+- `apps/web/src/routing.test.ts` (valid and malformed route coverage)
 - `apps/web/src/shell/AppShell.tsx` (authorized reviewer navigation)
+- `apps/web/src/shell/AppShell.test.tsx` (role-specific navigation assertions)
+- `apps/web/src/votes/votes.css` (responsive staff queue presentation)
 
 **Must NOT modify:**
 - `apps/api/app/modules/auth/staff.py` (reuse named staff access policy)

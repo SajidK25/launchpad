@@ -16,6 +16,7 @@ import { PublicShell, WorkspaceShell } from "./shell/AppShell";
 import { classifyRoute } from "./routing";
 import { createLaunchClient } from "./launches/client";
 import { DiscoverPage } from "./launches/DiscoverPage";
+import { VoteReviewQueue } from "./votes/ReviewQueue";
 
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
@@ -115,6 +116,13 @@ export function App() {
       surface = (
         <WorkspaceShell identityClient={identityClient}>
           <LaunchRoutes identityClient={identityClient} />
+        </WorkspaceShell>
+      );
+      break;
+    case "reviewer-vote-reviews":
+      surface = (
+        <WorkspaceShell identityClient={identityClient}>
+          <VoteReviewQueue identityClient={identityClient} />
         </WorkspaceShell>
       );
       break;

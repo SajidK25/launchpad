@@ -152,6 +152,7 @@ describe("WorkspaceShell", () => {
     expect(screen.getByRole("link", { name: "Your products" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Launch calendar" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Profile" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Vote flags" })).toBeNull();
     const notifications = screen.getAllByRole("button", {
       name: "Mock notifications",
     });
@@ -167,6 +168,9 @@ describe("WorkspaceShell", () => {
     expect(
       screen.getByRole("link", { name: "Review queue" }).getAttribute("href"),
     ).toBe("/products/review");
+    expect(
+      screen.getByRole("link", { name: "Vote flags" }).getAttribute("href"),
+    ).toBe("/votes/reviews");
     expect(
       screen
         .getByRole("link", { name: "Decision history" })
@@ -190,6 +194,7 @@ describe("WorkspaceShell", () => {
     );
 
     expect(screen.getByRole("link", { name: "Review queue" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Vote flags" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Your products" })).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Mock notifications" }),

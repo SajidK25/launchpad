@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
     search: (value: string) => void;
     topics: (value: string[]) => void;
   },
+  receivedVoteReviewIdentityClient: null as unknown,
 }));
 
 vi.mock("./identity/client", () => ({
@@ -118,6 +119,12 @@ vi.mock("./launches/DiscoverPage", () => ({
         ))}
       </section>
     );
+  },
+}));
+vi.mock("./votes/ReviewQueue", () => ({
+  VoteReviewQueue: ({ identityClient }: { identityClient: unknown }) => {
+    mocks.receivedVoteReviewIdentityClient = identityClient;
+    return <div>vote review queue</div>;
   },
 }));
 vi.mock("./launches/LaunchDiscovery", () => ({
@@ -312,6 +319,16 @@ describe("App", () => {
     expect(
       screen.queryByRole("button", { name: "Mock notifications" }),
     ).toBeNull();
+  });
+
+  it("mounts the vote-review queue in the reviewer workspace", () => {
+    mocks.session = memberSession("reviewer");
+    window.history.pushState({}, "", "/votes/reviews");
+    render(<App />);
+
+    expect(screen.getByText("vote review queue")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Vote flags" })).toBeTruthy();
+    expect(mocks.receivedVoteReviewIdentityClient).toBe(mocks.identityClient);
   });
 
   it("scrolls a same-route decision-history link to its content", () => {

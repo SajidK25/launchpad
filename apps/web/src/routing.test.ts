@@ -38,6 +38,9 @@ describe("classifyRoute", () => {
     });
     expect(classifyRoute("/launches")).toEqual({ type: "founder-launches" });
     expect(classifyRoute("/discover")).toEqual({ type: "discover" });
+    expect(classifyRoute("/votes/reviews")).toEqual({
+      type: "reviewer-vote-reviews",
+    });
     expect(classifyRoute("/products/review")).toEqual({
       type: "reviewer-products",
     });
@@ -96,6 +99,9 @@ describe("classifyRoute", () => {
       type: "unavailable",
     });
     expect(classifyRoute("/unknown")).toEqual({ type: "unavailable" });
+    expect(classifyRoute("/votes/reviews/extra")).toEqual({
+      type: "unavailable",
+    });
     expect(classifyRoute("/constructor")).toEqual({ type: "unavailable" });
     expect(classifyRoute("/toString")).toEqual({ type: "unavailable" });
   });

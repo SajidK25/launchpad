@@ -72,3 +72,131 @@
   font-weight: 800;
   padding: 0.45rem 0.7rem;
 }
+
+.vote-review-page {
+  display: grid;
+  gap: 1rem;
+  margin: 0 auto;
+  max-width: 76rem;
+  padding: clamp(1rem, 3vw, 2rem) 0 3rem;
+}
+
+.vote-review-header,
+.vote-review-empty,
+.vote-review-card {
+  border: 2px solid var(--ink, #171717);
+  background: var(--paper, #fff);
+  box-shadow: 5px 5px 0 var(--ink, #171717);
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+}
+
+.vote-review-header h1 {
+  margin: 0.2rem 0 0.5rem;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1;
+}
+
+.vote-review-header > p:not(.vote-review-eyebrow) {
+  max-width: 48rem;
+}
+
+.vote-review-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.vote-review-list {
+  display: grid;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vote-review-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.vote-review-card-heading {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.vote-review-card-heading h2 {
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+
+.vote-review-logo {
+  border: 2px solid var(--ink, #171717);
+  flex: 0 0 4rem;
+  height: 4rem;
+  object-fit: contain;
+  width: 4rem;
+}
+
+.vote-review-context {
+  display: grid;
+  gap: 0.8rem 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  margin: 0;
+}
+
+.vote-review-context div {
+  min-width: 0;
+}
+
+.vote-review-context dt {
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.vote-review-context dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.vote-review-card textarea {
+  border: 2px solid var(--ink, #171717);
+  border-radius: 0;
+  font: inherit;
+  max-width: 100%;
+  min-height: 5rem;
+  padding: 0.65rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.vote-review-card textarea:focus-visible {
+  outline: 3px solid var(--focus, #245bdb);
+  outline-offset: 3px;
+}
+
+.vote-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.vote-review-error,
+.vote-review-success {
+  border: 2px solid var(--ink, #171717);
+  box-shadow: 3px 3px 0 var(--ink, #171717);
+  font-weight: 750;
+  margin: 0;
+  padding: 0.8rem 1rem;
+}
+
+.vote-review-error {
+  background: #ffb3aa;
+}
+
+.vote-review-success {
+  background: #b5edc8;
+}

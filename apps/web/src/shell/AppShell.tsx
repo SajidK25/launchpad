@@ -165,6 +165,7 @@ export function WorkspaceShell({
   const navigation = reviewer
     ? [
         { href: "/products/review", label: "Review queue" },
+        { href: "/votes/reviews", label: "Vote flags" },
         {
           href: "/products/review#approved-reviews-title",
           label: "Decision history",
