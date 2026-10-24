@@ -153,7 +153,7 @@ Implement the transactional vote and withdrawal domain behavior in the votes mod
 
 ## Task T3: Expose vote commands with risk escalation
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
