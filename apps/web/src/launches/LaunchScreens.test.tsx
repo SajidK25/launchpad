@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../routing", () => ({ navigate: mocks.navigate }));
 
 vi.mock("../votes/useRankingLive", () => ({ useRankingLive: vi.fn() }));
+vi.mock("../votes/VoteControl", () => ({ VoteControl: () => null }));
 
 vi.mock("../identity/useIdentity", () => ({
   useCurrentSession: () => mocks.session,
@@ -115,6 +116,7 @@ function renderLaunchDiscovery(
     ...render(
       <LaunchDiscovery
         client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
         date={date}
         onDateChange={onDateChange}
       />,
@@ -725,6 +727,7 @@ describe("guest launch discovery", () => {
     view.rerender(
       <LaunchDiscovery
         client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
         date="2026-11-01"
         onDateChange={vi.fn()}
       />,
@@ -746,6 +749,7 @@ describe("guest launch discovery", () => {
     view.rerender(
       <LaunchDiscovery
         client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
         date="2026-11-01"
         onDateChange={vi.fn()}
       />,
@@ -833,6 +837,7 @@ describe("guest launch discovery", () => {
     view.rerender(
       <LaunchDiscovery
         client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
         date="2026-11-01"
         onDateChange={vi.fn()}
       />,

@@ -1,0 +1,74 @@
+.vote-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+.vote-control-button,
+.vote-control-signin {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ink, #171717);
+  border-radius: 0;
+  background: var(--signal, #ffdc36);
+  box-shadow: 3px 3px 0 var(--ink, #171717);
+  color: var(--ink, #171717);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0.55rem 0.8rem;
+  text-decoration: none;
+}
+
+.vote-control-button:hover:not(:disabled),
+.vote-control-signin:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--ink, #171717);
+}
+
+.vote-control-button:focus-visible,
+.vote-control-signin:focus-visible {
+  outline: 3px solid var(--focus, #245bdb);
+  outline-offset: 3px;
+}
+
+.vote-control-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.vote-control-state,
+.vote-control-feedback,
+.vote-control-count,
+.vote-control-challenge {
+  color: var(--ink, #171717);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.vote-control-feedback,
+.vote-control-challenge {
+  flex-basis: 100%;
+  margin: 0.25rem 0 0;
+}
+
+.vote-control-error {
+  color: #9b1c17;
+}
+
+.vote-control-challenge > div {
+  margin: 0.6rem 0;
+}
+
+.public-launch-ranking {
+  display: inline-block;
+  border: 2px solid var(--ink, #171717);
+  background: #fff;
+  box-shadow: 3px 3px 0 var(--ink, #171717);
+  font-weight: 800;
+  padding: 0.45rem 0.7rem;
+}

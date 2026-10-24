@@ -97,7 +97,7 @@ function SignInPage({ client }: { client: IdentityClient }) {
     event.preventDefault();
     try {
       await mutation.mutateAsync({ email, password });
-      navigate("/profile");
+      navigate(safeVoteReturnPath(window.location.search) ?? "/profile");
     } catch {
       // Keep server details out of the UI.
     }
@@ -165,6 +165,27 @@ function SignInPage({ client }: { client: IdentityClient }) {
       </nav>
     </Page>
   );
+}
+
+export function safeVoteReturnPath(search: string): string | null {
+  const candidate = new URLSearchParams(search).get("returnTo");
+  if (!candidate || !candidate.startsWith("/") || candidate.startsWith("//"))
+    return null;
+  try {
+    const target = new URL(candidate, window.location.origin);
+    const segments = target.pathname.split("/");
+    if (
+      target.origin !== window.location.origin ||
+      segments.length !== 3 ||
+      segments[1] !== "launches" ||
+      !segments[2] ||
+      /[\\/]/.test(decodeURIComponent(segments[2]))
+    )
+      return null;
+    return target.pathname;
+  } catch {
+    return null;
+  }
 }
 
 function RegisterPage({ client }: { client: IdentityClient }) {

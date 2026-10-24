@@ -332,9 +332,9 @@ test("guest launch discovery keeps keyboard focus and announces accessible archi
     },
   ]);
   await page.reload();
-  await expect(page.getByRole("status")).toContainText(
-    "Showing 1 launch for October 21, 2026",
-  );
+  await expect(
+    page.locator("#main-content p.sr-only[role='status']"),
+  ).toContainText("Showing 1 launch for October 21, 2026");
   await expect(
     page.getByRole("link", {
       name: "A long product name that should wrap safely on a narrow screen",

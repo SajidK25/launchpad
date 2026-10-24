@@ -1,6 +1,18 @@
 import type { DailyRankingItem } from "../launches/client";
+import type { IdentityClient } from "../identity/client";
+import { VoteControl } from "./VoteControl";
 
-export function RankedLaunchCard({ item }: { item: DailyRankingItem }) {
+export function RankedLaunchCard({
+  item,
+  identityClient,
+  launchDate,
+  votingOpen = false,
+}: {
+  item: DailyRankingItem;
+  identityClient?: IdentityClient;
+  launchDate?: string;
+  votingOpen?: boolean;
+}) {
   const { product } = item;
   return (
     <li className="launch-discovery-card ranked-launch-card">
@@ -41,6 +53,16 @@ export function RankedLaunchCard({ item }: { item: DailyRankingItem }) {
               <li key={topic}>{topic}</li>
             ))}
           </ul>
+        ) : null}
+        {identityClient && launchDate ? (
+          <VoteControl
+            activeVoteCount={item.activeVoteCount}
+            identityClient={identityClient}
+            launchDate={launchDate}
+            productId={product.id}
+            viewerVoted={item.viewerVoted}
+            votingOpen={votingOpen}
+          />
         ) : null}
       </div>
     </li>

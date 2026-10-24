@@ -11,7 +11,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createIdentityClient } from "./client";
-import { IdentityRoutes } from "./Screens";
+import { IdentityRoutes, safeVoteReturnPath } from "./Screens";
 
 function renderRoutes(path: string, fetcher = vi.fn()) {
   window.history.pushState({}, "", path);
@@ -38,6 +38,48 @@ describe("identity screens", () => {
     expect(
       screen.getByRole("link", { name: "Create an account" }),
     ).toBeTruthy();
+  });
+
+  it("accepts only same-origin single-product launch return paths", () => {
+    expect(safeVoteReturnPath("?returnTo=%2Flaunches%2Fproduct-1")).toBe(
+      "/launches/product-1",
+    );
+    expect(
+      safeVoteReturnPath("?returnTo=%2F%2Fevil.example%2Flaunches%2Fproduct-1"),
+    ).toBeNull();
+    expect(
+      safeVoteReturnPath(
+        "?returnTo=https%3A%2F%2Fevil.example%2Flaunches%2Fproduct-1",
+      ),
+    ).toBeNull();
+    expect(
+      safeVoteReturnPath("?returnTo=%2Flaunches%2F..%2Fprofile"),
+    ).toBeNull();
+    expect(safeVoteReturnPath("?returnTo=%2Fprofile")).toBeNull();
+  });
+
+  it("returns a successful sign-in to the requested launch", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      Response.json({
+        account_id: "member-1",
+        csrf_token: "csrf",
+        verified: true,
+        role: "member",
+        suspended: false,
+      }),
+    );
+    renderRoutes("/signin?returnTo=%2Flaunches%2Fproduct-1", fetcher);
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "member@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "long password" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe("/launches/product-1"),
+    );
   });
 
   it("uses the shared navigation helper for account links and browser history", async () => {

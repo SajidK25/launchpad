@@ -13,6 +13,7 @@ import { useCurrentSession } from "../identity/useIdentity";
 import { navigate } from "../routing";
 import { createNotificationClient } from "../notifications/client";
 import { useRankingLive } from "../votes/useRankingLive";
+import { VoteControl } from "../votes/VoteControl";
 import {
   createLaunchClient,
   type DailyRankingItem,
@@ -173,7 +174,18 @@ export function PublicLaunchPage({
 
   const rankingItem =
     ranking.data?.pages.flatMap((page) => page.items)[0] ?? null;
-  return <PublicLaunchDetails product={data} ranking={rankingItem} />;
+  return (
+    <PublicLaunchDetails
+      identityClient={identityClient}
+      launchDate={launchDate ?? ""}
+      product={data}
+      ranking={rankingItem}
+      votingOpen={
+        rankingPage !== undefined &&
+        rankingPage.selectedDate === rankingPage.todayDate
+      }
+    />
+  );
 }
 
 export function PublicLaunchArchive({
@@ -192,17 +204,24 @@ export function PublicLaunchArchive({
     <LaunchDiscovery
       client={client}
       date={date}
+      identityClient={identityClient}
       onDateChange={(nextDate) => navigate(`/launches/archive/${nextDate}`)}
     />
   );
 }
 
 function PublicLaunchDetails({
+  identityClient,
+  launchDate,
   product,
   ranking,
+  votingOpen,
 }: {
+  identityClient: IdentityClient;
+  launchDate: string;
   product: NonNullable<PublicProduct>;
   ranking: DailyRankingItem | null;
+  votingOpen: boolean;
 }) {
   const launchedDate = new Intl.DateTimeFormat("en", {
     dateStyle: "long",
@@ -231,6 +250,16 @@ function PublicLaunchDetails({
                   RANK #{ranking.rank} · {ranking.activeVoteCount}{" "}
                   {ranking.activeVoteCount === 1 ? "vote" : "votes"}
                 </p>
+              ) : null}
+              {ranking && launchDate ? (
+                <VoteControl
+                  activeVoteCount={ranking.activeVoteCount}
+                  identityClient={identityClient}
+                  launchDate={launchDate}
+                  productId={product.id}
+                  viewerVoted={ranking.viewerVoted}
+                  votingOpen={votingOpen}
+                />
               ) : null}
               <a
                 aria-label={`Visit ${product.name} website (opens in a new tab)`}

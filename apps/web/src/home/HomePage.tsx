@@ -93,6 +93,7 @@ export function HomePage({
 
       <LaunchDiscovery
         client={launchClient}
+        identityClient={identityClient}
         onDateChange={(date) =>
           navigate(`/launches/archive/${date}`, { focusMainContent: true })
         }

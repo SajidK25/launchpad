@@ -65,10 +65,11 @@ jobs:
         id: web
         env:
           IMAGE: ghcr.io/sajidk25/launchpad-web
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
         run: |
           set -euo pipefail
           metadata="$RUNNER_TEMP/web-image.json"
-          docker buildx build --platform linux/amd64 --file infra/docker/web.Dockerfile --target production --tag "$IMAGE:sha-${GITHUB_SHA}" --push --metadata-file "$metadata" .
+          docker buildx build --platform linux/amd64 --build-arg "VITE_TURNSTILE_SITE_KEY=${VITE_TURNSTILE_SITE_KEY:-}" --file infra/docker/web.Dockerfile --target production --tag "$IMAGE:sha-${GITHUB_SHA}" --push --metadata-file "$metadata" .
           digest="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$metadata")"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"

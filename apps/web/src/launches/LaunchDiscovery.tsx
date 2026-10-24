@@ -1,14 +1,17 @@
 import type { LaunchClient } from "./client";
+import type { IdentityClient } from "../identity/client";
 import { RankedLaunchCard } from "../votes/RankedLaunchCard";
 import { useRankingLive } from "../votes/useRankingLive";
 import { useDailyProductRanking } from "./useLaunches";
 
 export function LaunchDiscovery({
   client,
+  identityClient,
   date,
   onDateChange,
 }: {
   client: LaunchClient;
+  identityClient: IdentityClient;
   date?: string;
   onDateChange: (date: string) => void;
 }) {
@@ -114,7 +117,13 @@ export function LaunchDiscovery({
           </p>
           <ul aria-label="Launched products" className="launch-discovery-list">
             {items.map((item) => (
-              <RankedLaunchCard item={item} key={item.product.id} />
+              <RankedLaunchCard
+                identityClient={identityClient}
+                item={item}
+                key={item.product.id}
+                launchDate={selectedDate ?? todayDate ?? ""}
+                votingOpen={selectedDate === todayDate}
+              />
             ))}
           </ul>
           {launches.hasNextPage ? (

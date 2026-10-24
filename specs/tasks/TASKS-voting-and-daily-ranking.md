@@ -752,7 +752,7 @@ Connect the public launch view to the short-lived ranking ticket and invalidatio
 
 ## Task T12: Add member vote controls and safe sign-in return
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
@@ -787,6 +787,7 @@ Let a verified member cast or remove a vote from ranked public cards/product pag
 - **Module(s):** `apps/web/src/votes`, `apps/web/src/identity`.
 - **Pattern reference:** `apps/web/src/identity/client.ts`, `Screens.tsx`, `useIdentity.ts`, and existing launch query hooks.
 - **Key decisions:** No false optimistic confirmation; server remains eligibility authority; safe internal return path; backend-controlled Turnstile escalation.
+- **Configuration:** Production web builds read the public `VITE_TURNSTILE_SITE_KEY` GitHub repository variable. The Turnstile secret remains API-only; production challenge completion requires the matching site key and API secret to be configured.
 - **Libraries:** Existing React, TypeScript, TanStack Query, generated REST contracts, and existing Turnstile client integration/config.
 - **High-risk callouts:** Vote state must not diverge after failures; identity return path must not be an open redirect; tests cover rollback and safe paths.
 
@@ -800,14 +801,21 @@ Let a verified member cast or remove a vote from ranked public cards/product pag
 
 **New files:**
 - `apps/web/src/votes/client.ts` (vote REST client)
+- `apps/web/src/votes/client.test.ts` (request contract and safe error tests)
 - `apps/web/src/votes/useVotes.ts` (vote mutations and confirmed query state)
 - `apps/web/src/votes/VoteControl.tsx` (member/guest action states and challenge presentation)
 - `apps/web/src/votes/VoteControl.test.tsx` (interaction, state, and accessibility coverage)
+- `apps/web/src/votes/votes.css` (accessible neobrutalist control and challenge styles)
+- `apps/web/src/vite-env.d.ts` (public Turnstile site key type)
 
 **Modified files:**
 - `apps/web/src/launches/LaunchDiscovery.tsx` (place vote controls on ranked daily cards)
 - `apps/web/src/launches/LaunchScreens.tsx` (place vote control on public product page)
+- `apps/web/src/votes/RankedLaunchCard.tsx` (compose the command control with the ranked card)
 - `apps/web/src/identity/Screens.tsx` (safe internal return after sign-in)
+- `infra/docker/web.Dockerfile` (accept the non-secret public Turnstile site key at build time)
+- `.github/workflows/production-deploy.yml` (pass `VITE_TURNSTILE_SITE_KEY` from repository variables to the web image build)
+- `tests/browser/frontend-accessibility.spec.ts` (scope the archive-result assertion when vote controls add their own status announcement)
 
 **Must NOT modify:**
 - `apps/api/app/modules/auth` session/verification policies (already authoritative)
