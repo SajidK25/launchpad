@@ -293,6 +293,35 @@ safely. Do not downgrade migration 0012, remove booking rows, delete outbox even
 older worker. Fix forward, or leave the launch switch off while the compatible release remains
 deployed.
 
+### Voting and ranking
+
+Voting is a separate feature switch from launch scheduling. Local Compose defaults
+`LAUNCHPAD_VOTE_WRITES_ENABLED` to `false` and `LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS`
+to `21600` (six hours). To exercise vote commands locally, enable writes only for the
+disposable development stack and rebuild/recreate its API:
+
+```sh
+LAUNCHPAD_PRODUCTS_ENABLED=true LAUNCHPAD_LAUNCHES_ENABLED=true LAUNCHPAD_VOTE_WRITES_ENABLED=true docker compose -p launchpad-dev up -d --build api web worker scheduler
+docker compose -p launchpad-dev exec api python -c 'from app.shared.config.settings import load_settings; s=load_settings(); print(f"vote_writes_enabled={s.vote_writes_enabled} score_half_life_seconds={s.vote_score_half_life_seconds}")'
+```
+
+Use a verified local member and a product already launched through the ordinary
+review, booking, and publication flow. Cast and withdraw a vote before 00:00 UTC on
+its launch date; check the member control, live rank, and staff review queue using
+the existing local test accounts. The first accepted vote persists the current UTC
+date in `voting_feature_state` unless an operator initialized that row before
+testing. Reset only disposable local databases using the normal isolated test
+environment; do not manually edit vote history or snapshots. The quality gate also
+runs vote service, migration, worker, GraphQL, REST, and web tests.
+
+Voting writes remain off in production by default. Production enablement requires
+the compatible migrated release, a healthy worker and scheduler, a configured
+Turnstile site key for the web build, and the API-only verification secret and
+velocity limits. See the [production voting rollout](PRODUCTION_DEPLOYMENT_PROXMOX.md#voting-rollout-and-rollback).
+PostgreSQL stores votes, receipts, audit decisions, and immutable daily snapshots;
+Redis is only a rebuildable live projection/pub-sub layer. Do not treat cache state
+as vote or archive evidence.
+
 #### Health and metadata checks
 
 From the VM, check service health and the local readiness endpoint. The production web container

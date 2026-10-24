@@ -78,6 +78,85 @@ Production deployment is not authorized by this document alone. Provision infras
 
 See [`PRODUCTION_RECOVERY.md`](PRODUCTION_RECOVERY.md) for operator-led database, configuration, media, and release recovery. Backups and restores must be exercised on an isolated target before production data is accepted. A successful backup command is not restore evidence.
 
+## Voting rollout and rollback
+
+Voting is independently gated by `LAUNCHPAD_VOTE_WRITES_ENABLED` (Compose default
+`false`). Keep launch scheduling enabled as needed; do not enable vote writes until
+the release migration is applied and the matching API, worker, and scheduler are
+healthy. The API and worker must use the same
+`LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS` value; the initial value is `21600` seconds
+(six hours) for staging calibration.
+
+Before enabling, configure the Turnstile public site key as the GitHub repository
+variable `VITE_TURNSTILE_SITE_KEY` and build/deploy the web image with it. Put
+`LAUNCHPAD_TURNSTILE_SECRET_KEY`, `LAUNCHPAD_VOTE_ACCOUNT_VELOCITY_LIMIT`, and
+`LAUNCHPAD_VOTE_SOURCE_VELOCITY_LIMIT` in `/etc/launchpad/api.env`, then deploy the
+verified release. Keep the Turnstile secret API-only; do not copy it to worker or
+web environment files. The production API refuses to start with vote writes enabled
+if its required Turnstile verification settings are missing or invalid. Risk limits
+must be calibrated in staging; this guide does not prescribe numeric thresholds.
+
+After migration, choose the first UTC launch date on which voting is intended to
+exist. The simplest rollout is to use the current UTC date. To persist that date
+before opening writes, execute this idempotent statement through the production
+PostgreSQL service using an authorized operator session; it never overwrites an
+existing value:
+
+```sql
+INSERT INTO voting_feature_state (singleton_id, enabled_from, created_at)
+VALUES (1, (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date, CURRENT_TIMESTAMP)
+ON CONFLICT (singleton_id) DO NOTHING;
+SELECT enabled_from FROM voting_feature_state WHERE singleton_id = 1;
+```
+
+The first accepted vote also initializes this row to the API's current UTC date if
+the operator did not initialize it. Do not backdate it casually: pre-voting archive
+dates intentionally have no vote ranks. With configuration and the UTC date
+verified, enable writes by recreating only the API:
+
+```sh
+sudo -u deploy env LAUNCHPAD_VOTE_WRITES_ENABLED=true docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env \
+  up -d api
+sudo -u deploy docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env \
+  exec -T api python -c 'from app.shared.config.settings import load_settings; print(load_settings().vote_writes_enabled)'
+```
+
+Verify the output is `True`, API readiness is healthy, worker and scheduler are
+healthy, and outbox/projection lag is being monitored. Test a verified member vote
+against a launched product without using staff or founder accounts. Do not query or
+copy vote identity data into operational reports. Closed-date snapshots are
+immutable; staff invalidation updates current state but cannot rewrite an archive.
+
+For rollback, disable new vote commands while leaving the compatible API, worker,
+scheduler, schema, and outbox intact:
+
+```sh
+sudo -u deploy env LAUNCHPAD_VOTE_WRITES_ENABLED=false docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env \
+  up -d api
+sudo -u deploy docker compose \
+  --project-name launchpad-production \
+  --file /srv/launchpad/compose.production.yaml \
+  --env-file /srv/launchpad/state/current-release.env \
+  exec -T api python -c 'from app.shared.config.settings import load_settings; print(load_settings().vote_writes_enabled)'
+```
+
+Confirm `False`; keep worker and scheduler running until already committed events
+drain. Do not downgrade the vote migration, delete receipts/audit data, or edit
+completed snapshots to roll back. The existing weekly PostgreSQL/configuration
+backup and pre-migration backup policy applies. Preserve the voting start date for
+restart; validate backups with an isolated restore rather than assuming a successful
+backup command proves recoverability. Peak concurrency, Turnstile thresholds, and
+idempotency receipt retention remain staging/operations calibration items.
+
 ## Readiness gates
 
 Do not claim production readiness until an operator has evidence for all of these:

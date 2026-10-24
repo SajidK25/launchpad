@@ -952,7 +952,7 @@ Pass voting and ranking configuration to the intended API/worker services while 
 
 ## Task T15: Document voting operations and architecture decisions
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** medium
