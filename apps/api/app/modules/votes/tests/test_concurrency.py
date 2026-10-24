@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.votes.repository import VoteRepository
 
@@ -21,7 +23,9 @@ def test_member_product_commands_use_transaction_scoped_pair_lock() -> None:
     async def verify() -> None:
         session, repository = _Session(), VoteRepository()
         member_id, product_id = uuid4(), uuid4()
-        await repository.lock_member_product(session, member_id=member_id, product_id=product_id)
+        await repository.lock_member_product(
+            cast(AsyncSession, session), member_id=member_id, product_id=product_id
+        )
         statement, params = session.calls[0]
         assert "pg_advisory_xact_lock" in str(statement)
         assert params == {"member_id": str(member_id), "product_id": str(product_id)}
@@ -34,7 +38,7 @@ def test_member_idempotency_key_is_serialized_across_product_commands() -> None:
         session, repository = _Session(), VoteRepository()
         member_id = uuid4()
         await repository.lock_idempotency_key(
-            session, member_id=member_id, idempotency_key="same-key"
+            cast(AsyncSession, session), member_id=member_id, idempotency_key="same-key"
         )
         statement, params = session.calls[0]
         assert "pg_advisory_xact_lock" in str(statement)

@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.votes.repository import VoteRepository
 
@@ -38,7 +40,7 @@ def test_create_vote_adds_active_history_and_flushes_in_callers_transaction() ->
         member_id, product_id = uuid4(), uuid4()
         now = datetime.now(UTC)
         vote = await repository.create_vote(
-            session, member_id=member_id, product_id=product_id, cast_at=now
+            cast(AsyncSession, session), member_id=member_id, product_id=product_id, cast_at=now
         )
         assert vote.id is not None
         assert "INSERT INTO votes" in str(session.statements[0])
@@ -51,7 +53,9 @@ def test_first_voting_enabled_date_is_inserted_without_replacing_existing_state(
     async def verify() -> None:
         session, repository = _Session(), VoteRepository()
         now = datetime.now(UTC)
-        await repository.ensure_voting_enabled_from(session, enabled_from=now.date(), now=now)
+        await repository.ensure_voting_enabled_from(
+            cast(AsyncSession, session), enabled_from=now.date(), now=now
+        )
         statement, params = session.executed[0]
         assert "ON CONFLICT (singleton_id) DO NOTHING" in str(statement)
         assert params == {"enabled_from": now.date(), "created_at": now}
