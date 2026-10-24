@@ -392,6 +392,16 @@ class ProductPrivateMedia:
     media_type: str
 
 
+@dataclass(frozen=True, slots=True)
+class ProductVotingContext:
+    """Minimal launched-product facts available to the voting module."""
+
+    product_id: UUID
+    owner_account_id: UUID
+    launch_date: date
+    launched: bool
+
+
 class ProductService:
     """Create, load, and version private drafts under live account authorization."""
 
@@ -727,7 +737,7 @@ class ProductService:
                 )
             if current_time < launch_time:
                 raise ProductConflictError("launch time has not arrived")
-            return await self.repository.transition_launch_state(
+            launched = await self.repository.transition_launch_state(
                 session,
                 product=product,
                 expected_version=product.version,
@@ -736,6 +746,49 @@ class ProductService:
                 now=current_time,
                 launched_at=current_time,
             )
+            await self._record_launch_event(session, launched)
+            return launched
+
+    async def voting_context(
+        self, session: AsyncSession, *, product_id: UUID, lock: bool = False
+    ) -> ProductVotingContext | None:
+        """Expose owner and UTC launch date only for a currently public launch."""
+
+        product = await self.repository.get_product(session, product_id=product_id, lock=lock)
+        if product is None or product.status != "launched" or product.launched_at is None:
+            return None
+        return ProductVotingContext(
+            product_id=product.id,
+            owner_account_id=product.founder_id,
+            launch_date=product.launched_at.astimezone(UTC).date(),
+            launched=True,
+        )
+
+    async def _record_launch_event(self, session: AsyncSession, product: Product) -> None:
+        """Insert encrypted launch membership into the publication transaction."""
+
+        if product.launched_at is None:
+            raise ProductInfrastructureError("launch context is unavailable")
+        try:
+            key_id, encrypted_payload = self.payload_codec.encode(
+                {
+                    "product_id": product.id,
+                    "owner_account_id": product.founder_id,
+                    "launch_date": product.launched_at.astimezone(UTC).date().isoformat(),
+                }
+            )
+            await self.outbox_repository.add(
+                session,
+                OutboxEvent(
+                    event_type="product.launched.v1",
+                    aggregate_id=product.id,
+                    key_id=key_id,
+                    encrypted_payload=encrypted_payload,
+                    available_at=product.launched_at,
+                ),
+            )
+        except Exception as error:
+            raise ProductInfrastructureError("product launch could not be recorded") from error
 
     async def public_projection(
         self, session: AsyncSession, *, product_id: UUID

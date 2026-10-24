@@ -5,19 +5,22 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from typing import Any, cast
+from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.modules.auth.models import Account
 from app.modules.auth.staff import AuthAccessService
 from app.modules.products.models import Product
+from app.modules.products.policies import ProductInfrastructureError
 from app.modules.products.schemas import ProductLaunchEditInput
 from app.modules.products.service import ProductService
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
+from app.shared.events.models import OutboxMessage
 
 
 def _service(now: datetime) -> ProductService:
@@ -26,6 +29,11 @@ def _service(now: datetime) -> ProductService:
         payload_codec=EmailPayloadCodec({"launch-test": b"l" * 32}, "launch-test"),
         clock=lambda: now,
     )
+
+
+class _FailingOutbox:
+    async def add(self, _session: Any, _event: Any) -> UUID:
+        raise RuntimeError("outbox insert failed")
 
 
 @pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="requires check PostgreSQL")
@@ -98,17 +106,62 @@ def test_schedule_publish_replay_failure_recovery_projection_and_limited_edits()
                         command=ProductLaunchEditInput(version=4, description="too early"),
                     )
 
+            failing_service = ProductService(
+                member_access=AuthAccessService(),
+                outbox_repository=cast(Any, _FailingOutbox()),
+                payload_codec=EmailPayloadCodec({"launch-test": b"l" * 32}, "launch-test"),
+                clock=lambda: now,
+            )
+            with pytest.raises(ProductInfrastructureError):
+                async with sessions() as session, session.begin():
+                    await failing_service.publish_scheduled_product(
+                        session, product_id=product_id, launch_at=launch_at, now=launch_at
+                    )
+            async with sessions() as session:
+                still_scheduled = await session.scalar(
+                    select(Product).where(Product.id == product_id)
+                )
+                assert still_scheduled is not None and still_scheduled.status == "scheduled"
+
             async with sessions() as session, session.begin():
                 launched = await service.publish_scheduled_product(
                     session, product_id=product_id, launch_at=launch_at, now=launch_at
                 )
                 assert launched.status == "launched" and launched.version == 5
                 assert launched.launched_at == launch_at
+                launch_events = list(
+                    (
+                        await session.scalars(
+                            select(OutboxMessage).where(
+                                OutboxMessage.event_type == "product.launched.v1",
+                                OutboxMessage.aggregate_id == product_id,
+                            )
+                        )
+                    ).all()
+                )
+                assert len(launch_events) == 1
+                payload = EmailPayloadCodec({"launch-test": b"l" * 32}, "launch-test").decode(
+                    launch_events[0].key_id, launch_events[0].encrypted_payload or b""
+                )
+                assert payload == {
+                    "product_id": str(product_id),
+                    "owner_account_id": str(founder_id),
+                    "launch_date": launch_at.date().isoformat(),
+                }
             async with sessions() as session, session.begin():
                 replay = await service.publish_scheduled_product(
                     session, product_id=product_id, launch_at=launch_at, now=launch_at
                 )
                 assert replay.status == "launched" and replay.version == 5
+                replayed_event_count = await session.scalar(
+                    select(func.count())
+                    .select_from(OutboxMessage)
+                    .where(
+                        OutboxMessage.event_type == "product.launched.v1",
+                        OutboxMessage.aggregate_id == product_id,
+                    )
+                )
+                assert replayed_event_count == 1
                 public = await service.public_projection(session, product_id=product_id)
                 assert public is not None
                 assert public.name == "Lifecycle product"

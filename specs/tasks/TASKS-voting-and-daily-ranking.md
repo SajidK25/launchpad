@@ -224,7 +224,7 @@ Expose the vote service through authenticated REST cast/withdrawal commands and 
 
 ## Task T4: Emit a durable event when a product launches
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
