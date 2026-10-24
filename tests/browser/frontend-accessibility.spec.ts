@@ -229,24 +229,51 @@ test("Discover restores URL filters, supports keyboard topic selection and passe
   await expect(
     page.getByRole("button", { name: "Remove Developer tools" }),
   ).toBeVisible();
-  const historyLength = await page.evaluate(() => history.length);
-  await searchBox.fill("tooling");
-  await expect(page).toHaveURL(/q=tooling/);
-  expect(await page.evaluate(() => history.length)).toBe(historyLength);
+  const topicSearch = page.getByRole("searchbox", { name: "Browse topics" });
+  await searchBox.focus();
+  await page.keyboard.press("Tab");
+  await expect(topicSearch).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Remove Developer tools" }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Developer tools", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
   const productivity = page.getByRole("button", {
     name: "Productivity",
     exact: true,
   });
-  await productivity.focus();
+  await expect(productivity).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", {
+      name: "LP logo for A long catalog launch name that wraps at a narrow viewport",
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(productivity).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/q=tooling&topic=topic-1&topic=topic-2/);
+  await expect(page).toHaveURL(/q=tool&topic=topic-1&topic=topic-2/);
+  const historyLength = await page.evaluate(() => history.length);
+  await searchBox.fill("tooling");
+  await expect(page).toHaveURL(/q=tooling/);
+  expect(await page.evaluate(() => history.length)).toBe(historyLength);
   await expect(productivity).toHaveAttribute("aria-pressed", "true");
   await page.goBack();
-  await expect(page).toHaveURL(/q=tooling&topic=topic-1$/);
+  await expect(page).toHaveURL(/q=tool&topic=topic-1$/);
   await expect(
     page.getByRole("button", { name: "Remove Productivity" }),
   ).toHaveCount(0);
   await expectNoSeriousAccessibilityIssues(page);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

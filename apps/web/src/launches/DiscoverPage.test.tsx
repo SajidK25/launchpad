@@ -1,6 +1,12 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DiscoverPage } from "./DiscoverPage";
 import type { LaunchClient } from "./client";
@@ -97,9 +103,21 @@ describe("DiscoverPage", () => {
     expect(screen.getByText("A searchable pitch")).toBeTruthy();
     expect(screen.getAllByText("Developer tools")).toHaveLength(2);
     expect(screen.queryByText(/private description|private\.png/i)).toBeNull();
-    expect(screen.getAllByRole("link", { name: /Alpha launch/ })).toHaveLength(
-      2,
+    const results = screen.getByRole("list", { name: "Catalog launches" });
+    const card = results.querySelector<HTMLLIElement>(
+      "li.launch-discovery-card",
     );
+    expect(card).not.toBeNull();
+    if (!card) return;
+    const links = within(card).getAllByRole("link");
+    expect(links).toHaveLength(2);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/launches/product-1",
+      "/launches/product-1",
+    ]);
+    const logo = within(card).getByRole("img", { name: "Alpha launch" });
+    expect(logo.getAttribute("src")).toBe("/assets/alpha.png");
+    expect(logo.getAttribute("alt")).toBe("Alpha launch");
     expect(hooks.catalogCalls.at(-1)?.slice(1, 3)).toEqual(["", []]);
 
     fireEvent.change(
@@ -141,6 +159,48 @@ describe("DiscoverPage", () => {
     );
     expect(hooks.catalogCalls.at(-1)?.at(-1)).toBe(false);
     expect(hooks.catalogCalls.at(-1)?.[2]).toEqual([]);
+  });
+
+  it("queries from the latest URL filters immediately on history navigation", () => {
+    const onSearchChange = vi.fn();
+    const onTopicIdsChange = vi.fn();
+    const view = render(
+      <DiscoverPage
+        client={{} as LaunchClient}
+        initialSearch="first"
+        initialTopicIds={["topic-1"]}
+        onSearchChange={onSearchChange}
+        onTopicIdsChange={onTopicIdsChange}
+      />,
+    );
+
+    view.rerender(
+      <DiscoverPage
+        client={{} as LaunchClient}
+        initialSearch="restored"
+        initialTopicIds={["topic-2"]}
+        onSearchChange={onSearchChange}
+        onTopicIdsChange={onTopicIdsChange}
+      />,
+    );
+
+    expect(hooks.catalogCalls.at(-1)?.slice(1, 3)).toEqual([
+      "restored",
+      ["topic-2"],
+    ]);
+    expect(
+      (
+        screen.getByRole("searchbox", {
+          name: /Search launches/,
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("restored");
+    expect(
+      screen.getByRole("button", { name: "Remove Productivity" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Remove Developer tools" }),
+    ).toBeNull();
   });
 
   it("selects and removes multiple topics and enforces the twenty-topic maximum", () => {
@@ -219,13 +279,33 @@ describe("DiscoverPage", () => {
       isError: true,
       refetch: retry,
     });
-    renderDiscover();
+    render(
+      <DiscoverPage
+        client={{} as LaunchClient}
+        initialSearch="developer tools"
+        initialTopicIds={["topic-1"]}
+      />,
+    );
 
     expect(screen.getByRole("alert").textContent).toContain(
       "could not be loaded",
     );
+    expect(
+      (
+        screen.getByRole("searchbox", {
+          name: /Search launches/,
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("developer tools");
+    expect(
+      screen.getByRole("button", { name: "Remove Developer tools" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledOnce();
+    expect(hooks.catalogCalls.at(-1)?.slice(1, 3)).toEqual([
+      "developer tools",
+      ["topic-1"],
+    ]);
   });
 
   it("appends pages without duplicate cards and removes Load more at the end", () => {

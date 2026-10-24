@@ -256,7 +256,12 @@ query PublicProductCatalog(
   $first: Int! = 20
   $after: String
 ) {
-  publicProductCatalog(search: $search, topicIds: $topicIds, first: $first, after: $after) {
+  publicProductCatalog(
+    search: $search
+    topicIds: $topicIds
+    first: $first
+    after: $after
+  ) {
     items {
       id
       name

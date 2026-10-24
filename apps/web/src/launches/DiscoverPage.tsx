@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import type { LaunchClient, PublicCatalogPage } from "./client";
-import { PublicLaunchCard } from "./PublicLaunchCard";
+import { DiscoverFilters } from "./DiscoverFilters";
+import { DiscoverResults } from "./DiscoverResults";
 import { usePublicCatalog, usePublicCatalogTopics } from "./useLaunches";
 
 const MAX_SEARCH_LENGTH = 200;
@@ -22,13 +23,26 @@ export function DiscoverPage({
   onSearchChange,
   onTopicIdsChange,
 }: DiscoverPageProps) {
-  const [searchInput, setSearchInput] = useState(initialSearch);
-  const [search, setSearch] = useState(
+  const [localSearchInput, setLocalSearchInput] = useState(initialSearch);
+  const [localSearch, setLocalSearch] = useState(
     initialSearch.length <= MAX_SEARCH_LENGTH ? initialSearch : "",
   );
+  const [invalidSearchDraft, setInvalidSearchDraft] = useState<string | null>(
+    null,
+  );
   const [topicQuery, setTopicQuery] = useState("");
-  const [topicIds, setTopicIds] = useState<string[]>(initialTopicIds);
-  const [topicLimitReached, setTopicLimitReached] = useState(false);
+  const [localTopicIds, setLocalTopicIds] = useState(initialTopicIds);
+  const [topicLimitReached, setTopicLimitReached] = useState(
+    initialTopicIds.length > MAX_SELECTED_TOPICS,
+  );
+  const searchInput =
+    invalidSearchDraft ?? (onSearchChange ? initialSearch : localSearchInput);
+  const search = onSearchChange
+    ? initialSearch.length <= MAX_SEARCH_LENGTH
+      ? initialSearch
+      : ""
+    : localSearch;
+  const topicIds = onTopicIdsChange ? initialTopicIds : localTopicIds;
   const filtersValid =
     topicIds.length <= MAX_SELECTED_TOPICS &&
     (searchInput.length <= MAX_SEARCH_LENGTH || Boolean(search));
@@ -58,26 +72,25 @@ export function DiscoverPage({
         displayName: `Topic ${id.slice(0, 8)}`,
       },
   );
-  const choices = topicOptions.data?.choices ?? [];
   const hasFilters = Boolean(search) || topicIds.length > 0;
+  const initialTopicIdsKey = initialTopicIds.join("\u0000");
 
-  useEffect(() => {
-    setSearchInput(initialSearch);
-    setSearch(initialSearch.length <= MAX_SEARCH_LENGTH ? initialSearch : "");
-  }, [initialSearch]);
-
-  const initialTopicKey = initialTopicIds.join("\u0000");
-  useEffect(() => {
-    const nextTopicIds = initialTopicKey ? initialTopicKey.split("\u0000") : [];
-    setTopicIds(nextTopicIds);
-    setTopicLimitReached(nextTopicIds.length > MAX_SELECTED_TOPICS);
-  }, [initialTopicKey]);
+  useLayoutEffect(() => {
+    setInvalidSearchDraft(null);
+    setLocalSearchInput(initialSearch);
+    setLocalSearch(
+      initialSearch.length <= MAX_SEARCH_LENGTH ? initialSearch : "",
+    );
+  }, [initialSearch, initialTopicIdsKey]);
 
   function updateSearch(value: string) {
-    setSearchInput(value);
+    setLocalSearchInput(value);
     if (value.length <= MAX_SEARCH_LENGTH) {
-      setSearch(value);
+      setInvalidSearchDraft(null);
+      setLocalSearch(value);
       onSearchChange?.(value);
+    } else {
+      setInvalidSearchDraft(value);
     }
   }
 
@@ -85,7 +98,7 @@ export function DiscoverPage({
     setTopicLimitReached(false);
     if (topicIds.includes(id)) {
       const nextTopicIds = topicIds.filter((topicId) => topicId !== id);
-      setTopicIds(nextTopicIds);
+      setLocalTopicIds(nextTopicIds);
       onTopicIdsChange?.(nextTopicIds);
       return;
     }
@@ -94,14 +107,15 @@ export function DiscoverPage({
       return;
     }
     const nextTopicIds = [...topicIds, id].sort();
-    setTopicIds(nextTopicIds);
+    setLocalTopicIds(nextTopicIds);
     onTopicIdsChange?.(nextTopicIds);
   }
 
   function clearFilters() {
-    setSearchInput("");
-    setSearch("");
-    setTopicIds([]);
+    setLocalSearchInput("");
+    setLocalSearch("");
+    setInvalidSearchDraft(null);
+    setLocalTopicIds([]);
     setTopicLimitReached(false);
     onSearchChange?.("");
     onTopicIdsChange?.([]);
@@ -117,261 +131,26 @@ export function DiscoverPage({
             Search every public launch by name, pitch, description, or topic.
           </p>
         </header>
-
-        <section
-          aria-labelledby="discover-filters-title"
-          className="launch-panel"
-        >
-          <header className="launch-section-heading">
-            <div>
-              <p className="launch-kicker">FIND YOUR NEXT TOOL</p>
-              <h2 id="discover-filters-title">Search and browse</h2>
-            </div>
-            {hasFilters ? (
-              <button
-                className="launch-button launch-button-outline"
-                onClick={clearFilters}
-                type="button"
-              >
-                Clear filters
-              </button>
-            ) : null}
-          </header>
-
-          <div className="launch-discover-filters">
-            <label className="launch-discover-field">
-              <span>Search launches</span>
-              <input
-                aria-describedby={
-                  searchInput.length > MAX_SEARCH_LENGTH
-                    ? "discover-search-hint discover-search-error"
-                    : "discover-search-hint"
-                }
-                maxLength={MAX_SEARCH_LENGTH + 1}
-                onChange={(event) => updateSearch(event.currentTarget.value)}
-                placeholder="Name, pitch, or description"
-                type="search"
-                value={searchInput}
-              />
-              <span className="launch-discover-hint" id="discover-search-hint">
-                All search terms must match. Up to {MAX_SEARCH_LENGTH}{" "}
-                characters.
-              </span>
-              {searchInput.length > MAX_SEARCH_LENGTH ? (
-                <span
-                  className="launch-discover-validation"
-                  id="discover-search-error"
-                  role="alert"
-                >
-                  Search is too long. Shorten it to 200 characters; your current
-                  results are preserved.
-                </span>
-              ) : null}
-            </label>
-
-            <div className="launch-discover-field">
-              <label htmlFor="discover-topic-search">Browse topics</label>
-              <input
-                aria-controls="discover-topic-options"
-                id="discover-topic-search"
-                maxLength={MAX_SEARCH_LENGTH}
-                onChange={(event) => setTopicQuery(event.currentTarget.value)}
-                placeholder="Search public topics"
-                type="search"
-                value={topicQuery}
-              />
-              <span className="launch-discover-hint">
-                Select up to {MAX_SELECTED_TOPICS} topics. Matching any selected
-                topic includes a launch.
-              </span>
-            </div>
-          </div>
-
-          {selectedTopics.length > 0 ? (
-            <ul
-              aria-label="Selected topics"
-              className="launch-discover-selected"
-            >
-              {selectedTopics.map((topic) => (
-                <li key={topic.id}>
-                  <span>{topic.displayName}</span>
-                  <button
-                    aria-label={`Remove ${topic.displayName}`}
-                    className="launch-discover-chip-remove"
-                    onClick={() => toggleTopic(topic.id)}
-                    type="button"
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          {topicLimitReached ? (
-            <p className="launch-discover-validation" role="alert">
-              You can select up to 20 topics. Remove one before adding another.
-            </p>
-          ) : null}
-
-          {topicOptions.isError ? (
-            <div className="launch-discovery-state launch-discovery-error">
-              <p role="alert">
-                Topics could not be loaded. Your selected filters are unchanged.
-              </p>
-              <button
-                className="launch-button launch-button-yellow"
-                disabled={topicOptions.isFetching}
-                onClick={() => void topicOptions.refetch()}
-                type="button"
-              >
-                {topicOptions.isFetching ? "Retrying…" : "Retry topics"}
-              </button>
-            </div>
-          ) : choices.length > 0 ? (
-            <ul
-              aria-label="Topic suggestions"
-              className="launch-discover-options"
-              id="discover-topic-options"
-            >
-              {choices.map((topic) => {
-                const selected = topicIds.includes(topic.id);
-                return (
-                  <li key={topic.id}>
-                    <button
-                      aria-pressed={selected}
-                      className="launch-discover-option"
-                      onClick={() => toggleTopic(topic.id)}
-                      type="button"
-                    >
-                      <span aria-hidden="true">{selected ? "✓" : "+"}</span>
-                      {topic.displayName}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : topicQuery && !topicOptions.isPending ? (
-            <p className="launch-discover-hint" role="status">
-              No matching public topics.
-            </p>
-          ) : null}
-        </section>
-
-        <section
-          aria-labelledby="discover-results-title"
-          className="launch-panel"
-        >
-          <header className="launch-section-heading">
-            <div>
-              <p className="launch-kicker">PUBLIC AND LAUNCHED</p>
-              <h2 id="discover-results-title">Launches</h2>
-            </div>
-            {catalog.data ? (
-              <span className="launch-discover-count">
-                {items.length} {items.length === 1 ? "result" : "results"}
-              </span>
-            ) : null}
-          </header>
-
-          {!filtersValid ? (
-            <p className="launch-discovery-state" role="status">
-              Correct the highlighted filters to load matching launches.
-            </p>
-          ) : catalog.isPending ? (
-            <p className="launch-discovery-state" role="status">
-              Loading launches…
-            </p>
-          ) : catalog.isError && items.length === 0 ? (
-            <div className="launch-discovery-state launch-discovery-error">
-              <p role="alert">
-                Launches could not be loaded. Your filters are still here.
-              </p>
-              <button
-                className="launch-button launch-button-yellow"
-                disabled={catalog.isFetching}
-                onClick={() => void catalog.refetch()}
-                type="button"
-              >
-                {catalog.isFetching ? "Retrying…" : "Retry"}
-              </button>
-            </div>
-          ) : items.length === 0 ? (
-            <div className="launch-empty launch-discovery-empty">
-              <span aria-hidden="true" className="launch-empty-mark">
-                0
-              </span>
-              <div>
-                <h3>
-                  {hasFilters
-                    ? "No launches match these filters"
-                    : "No launches yet"}
-                </h3>
-                <p>
-                  {hasFilters
-                    ? "Try a different search or remove a topic filter."
-                    : "Come back soon to discover newly published products."}
-                </p>
-              </div>
-              {hasFilters ? (
-                <button
-                  className="launch-button launch-button-yellow"
-                  onClick={clearFilters}
-                  type="button"
-                >
-                  Clear filters
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            <>
-              <p className="sr-only" role="status">
-                Showing {items.length}{" "}
-                {items.length === 1 ? "launch" : "launches"}.
-              </p>
-              <ul
-                aria-label="Catalog launches"
-                className="launch-discovery-list"
-              >
-                {items.map((item) => (
-                  <PublicLaunchCard item={item} key={item.id} />
-                ))}
-              </ul>
-              {catalog.isError ? (
-                <div
-                  className="launch-discovery-state launch-discovery-error"
-                  role="alert"
-                >
-                  <p>
-                    More launches could not be loaded. Existing results are
-                    unchanged.
-                  </p>
-                  <button
-                    className="launch-button launch-button-yellow"
-                    disabled={catalog.isFetching}
-                    onClick={() => void catalog.fetchNextPage()}
-                    type="button"
-                  >
-                    Retry loading more
-                  </button>
-                </div>
-              ) : catalog.hasNextPage ? (
-                <div className="launch-discovery-more">
-                  <button
-                    className="launch-button launch-button-yellow"
-                    disabled={catalog.isFetchingNextPage}
-                    onClick={() => void catalog.fetchNextPage()}
-                    type="button"
-                  >
-                    {catalog.isFetchingNextPage
-                      ? "Loading more…"
-                      : "Load more launches"}
-                  </button>
-                </div>
-              ) : null}
-            </>
-          )}
-        </section>
+        <DiscoverFilters
+          hasFilters={hasFilters}
+          onClearFilters={clearFilters}
+          onSearchInputChange={updateSearch}
+          onToggleTopic={toggleTopic}
+          onTopicQueryChange={setTopicQuery}
+          searchInput={searchInput}
+          selectedTopics={selectedTopics}
+          topicIds={topicIds}
+          topicLimitReached={topicLimitReached}
+          topicOptions={topicOptions}
+          topicQuery={topicQuery}
+        />
+        <DiscoverResults
+          catalog={catalog}
+          filtersValid={filtersValid}
+          hasFilters={hasFilters}
+          items={items}
+          onClearFilters={clearFilters}
+        />
       </div>
     </main>
   );

@@ -169,6 +169,8 @@ def test_public_catalog_rejects_overlong_search_too_many_topics_and_invalid_page
         session = cast(AsyncSession, None)
         with pytest.raises(ProductValidationError, match="search text is too long"):
             await service.public_product_catalog(session, search="x" * 201)
+        await service.public_product_catalog(session, search="x" * 200)
+        assert repository.catalog_query["terms"] == ("x" * 200,)
         with pytest.raises(ProductValidationError, match="too many topics"):
             await service.public_product_catalog(
                 session, topic_ids=tuple(uuid4() for _ in range(21))
@@ -482,6 +484,14 @@ def test_public_catalog_matches_case_insensitive_partial_terms_across_fields() -
                     after=None,
                 )
                 assert [row.id for row in rows] == [product_ids[0]]
+                pitch_only_rows = await ProductRepository().list_public_catalog(
+                    session,
+                    terms=("MATION",),
+                    topic_ids=(),
+                    limit=20,
+                    after=None,
+                )
+                assert [row.id for row in pitch_only_rows] == [product_ids[0]]
                 literal_wildcard = await ProductRepository().list_public_catalog(
                     session,
                     terms=("%",),
@@ -519,11 +529,93 @@ def test_public_catalog_matches_case_insensitive_partial_terms_across_fields() -
 
 
 @pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="requires check PostgreSQL")
+def test_public_catalog_orders_by_launch_date_name_and_id_across_cursors() -> None:
+    async def verify() -> None:
+        database = Database.connect(os.environ["DATABASE_URL"])
+        founder_id = uuid4()
+        product_ids = tuple(UUID(int=value) for value in (10_100, 10_101, 10_102, 10_103))
+        now = datetime.now(UTC)
+        older = datetime(2026, 10, 1, tzinfo=UTC)
+        newer = datetime(2026, 10, 2, tzinfo=UTC)
+        products = (
+            (product_ids[0], "Same Name", older),
+            (product_ids[1], "Beta", newer),
+            (product_ids[2], "Same Name", older),
+            (product_ids[3], "Alpha", older),
+        )
+        try:
+            await database.prepare()
+            sessions = async_sessionmaker(database.engine, expire_on_commit=False)
+            async with sessions() as session, session.begin():
+                session.add(
+                    Account(
+                        id=founder_id,
+                        email_display=f"{founder_id}@example.test",
+                        email_key=f"{founder_id}@example.test",
+                        password_hash="integration-only-placeholder",
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                await session.flush()
+                await session.execute(
+                    insert(Product).values(
+                        [
+                            {
+                                "id": product_id,
+                                "founder_id": founder_id,
+                                "status": "launched",
+                                "version": 1,
+                                "name": name,
+                                "pitch": "Ordering fixture",
+                                "description": "Ordering fixture description",
+                                "website_url": f"https://{product_id}.example.test",
+                                "website_key": f"{product_id}.example.test",
+                                "launched_at": launched_at,
+                                "created_at": now,
+                                "updated_at": now,
+                            }
+                            for product_id, name, launched_at in products
+                        ]
+                    )
+                )
+            async with sessions() as session:
+                repository = ProductRepository()
+                first_page = await repository.list_public_catalog(
+                    session,
+                    terms=(),
+                    topic_ids=(),
+                    limit=2,
+                    after=None,
+                )
+                second_page = await repository.list_public_catalog(
+                    session,
+                    terms=(),
+                    topic_ids=(),
+                    limit=2,
+                    after=(
+                        first_page[-1].launched_at,
+                        first_page[-1].sort_key,
+                        first_page[-1].id,
+                    ),
+                )
+                assert [row.id for row in first_page] == [product_ids[1], product_ids[3]]
+                assert [row.id for row in second_page] == [product_ids[0], product_ids[2]]
+        finally:
+            async with database.engine.begin() as connection:
+                await connection.execute(delete(Product).where(Product.id.in_(product_ids)))
+                await connection.execute(delete(Account).where(Account.id == founder_id))
+            await database.close()
+
+    asyncio.run(verify())
+
+
+@pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="requires check PostgreSQL")
 def test_public_catalog_topic_filters_match_any_selected_topic_without_duplicates() -> None:
     async def verify() -> None:
         database = Database.connect(os.environ["DATABASE_URL"])
         founder_id = uuid4()
-        product_ids = (uuid4(), uuid4(), uuid4())
+        product_ids = (uuid4(), uuid4(), uuid4(), uuid4())
         topic_ids = (uuid4(), uuid4())
         now = datetime.now(UTC)
         launch_date = datetime(2026, 10, 1, tzinfo=UTC)
@@ -561,8 +653,8 @@ def test_public_catalog_topic_filters_match_any_selected_topic_without_duplicate
                             }
                             for product_id, status, name in zip(
                                 product_ids,
-                                ("launched", "launched", "approved"),
-                                ("Alpha", "Beta", "Private"),
+                                ("launched", "launched", "approved", "launched"),
+                                ("Alpha", "Beta", "Private", "No selected topic"),
                                 strict=True,
                             )
                         ]
@@ -641,8 +733,17 @@ def test_public_catalog_topic_options_require_a_current_launched_association() -
     async def verify() -> None:
         database = Database.connect(os.environ["DATABASE_URL"])
         founder_id = uuid4()
-        product_ids = (uuid4(), uuid4())
-        topic_ids = (uuid4(), uuid4(), uuid4())
+        product_ids = tuple(uuid4() for _ in range(7))
+        topic_ids = tuple(uuid4() for _ in range(7))
+        statuses = (
+            "launched",
+            "draft",
+            "submitted",
+            "changes_requested",
+            "rejected",
+            "approved",
+            "scheduled",
+        )
         now = datetime.now(UTC)
         launch_date = datetime(2026, 10, 1, tzinfo=UTC)
         try:
@@ -664,33 +765,22 @@ def test_public_catalog_topic_options_require_a_current_launched_association() -
                     insert(Product).values(
                         [
                             {
-                                "id": product_ids[0],
+                                "id": product_id,
                                 "founder_id": founder_id,
-                                "status": "launched",
+                                "status": status,
                                 "version": 1,
-                                "name": "Public",
-                                "pitch": "Public pitch",
-                                "description": "Public description",
-                                "website_url": "https://public.example.test",
-                                "website_key": "https://public.example.test",
-                                "launched_at": launch_date,
+                                "name": f"Catalog product {index}",
+                                "pitch": "Catalog pitch",
+                                "description": "Catalog description",
+                                "website_url": f"https://catalog-{index}.example.test",
+                                "website_key": f"catalog-{index}.example.test",
+                                "launched_at": (launch_date if status == "launched" else None),
                                 "created_at": now,
                                 "updated_at": now,
-                            },
-                            {
-                                "id": product_ids[1],
-                                "founder_id": founder_id,
-                                "status": "approved",
-                                "version": 1,
-                                "name": "Private",
-                                "pitch": "Private pitch",
-                                "description": "Private description",
-                                "website_url": "https://private.example.test",
-                                "website_key": "https://private.example.test",
-                                "launched_at": None,
-                                "created_at": now,
-                                "updated_at": now,
-                            },
+                            }
+                            for index, (product_id, status) in enumerate(
+                                zip(product_ids, statuses, strict=True)
+                            )
                         ]
                     )
                 )
@@ -698,23 +788,12 @@ def test_public_catalog_topic_options_require_a_current_launched_association() -
                     insert(Topic).values(
                         [
                             {
-                                "id": topic_ids[0],
-                                "display_name": "Cloud",
-                                "name_key": "cloud",
+                                "id": topic_id,
+                                "display_name": f"Topic {index}",
+                                "name_key": f"topic {index}",
                                 "first_launched_at": launch_date,
-                            },
-                            {
-                                "id": topic_ids[1],
-                                "display_name": "AI Tools",
-                                "name_key": "ai tools",
-                                "first_launched_at": launch_date,
-                            },
-                            {
-                                "id": topic_ids[2],
-                                "display_name": "Unused",
-                                "name_key": "unused",
-                                "first_launched_at": None,
-                            },
+                            }
+                            for index, topic_id in enumerate(topic_ids)
                         ]
                     )
                 )
@@ -722,40 +801,35 @@ def test_public_catalog_topic_options_require_a_current_launched_association() -
                     insert(ProductTopic).values(
                         [
                             {
-                                "product_id": product_ids[0],
-                                "topic_id": topic_ids[0],
+                                "product_id": product_id,
+                                "topic_id": topic_id,
                                 "position": 1,
-                                "selected_label": "Cloud",
-                            },
-                            {
-                                "product_id": product_ids[1],
-                                "topic_id": topic_ids[1],
-                                "position": 1,
-                                "selected_label": "AI Tools",
-                            },
-                            {
-                                "product_id": product_ids[1],
-                                "topic_id": topic_ids[2],
-                                "position": 2,
-                                "selected_label": "Unused",
-                            },
+                                "selected_label": f"Topic {index}",
+                            }
+                            for index, (product_id, topic_id) in enumerate(
+                                zip(product_ids, topic_ids, strict=True)
+                            )
                         ]
                     )
                 )
             async with sessions() as session:
                 repository = ProductRepository()
                 choices = await repository.list_public_catalog_topic_choices(
-                    session, query="cl", limit=50
+                    session, query=None, limit=50
                 )
                 selected = await repository.list_public_catalog_selected_topics(
                     session, topic_ids=topic_ids
                 )
+                catalog = await repository.list_public_catalog(
+                    session, terms=(), topic_ids=(), limit=20, after=None
+                )
                 assert [(choice.topic_id, choice.display_name) for choice in choices] == [
-                    (topic_ids[0], "Cloud")
+                    (topic_ids[0], "Topic 0")
                 ]
                 assert [(choice.topic_id, choice.display_name) for choice in selected] == [
-                    (topic_ids[0], "Cloud")
+                    (topic_ids[0], "Topic 0")
                 ]
+                assert [row.id for row in catalog] == [product_ids[0]]
         finally:
             async with database.engine.begin() as connection:
                 await connection.execute(delete(Product).where(Product.id.in_(product_ids)))
