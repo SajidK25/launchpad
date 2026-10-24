@@ -161,7 +161,7 @@ Expose T1's read services through the existing anonymous products GraphQL bounda
 
 ## Task T3: Add Catalog Client and Filter-Keyed Query Hooks
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** s
 > **Priority:** high
@@ -222,6 +222,12 @@ Add typed browser reads for the public catalog and its launched-only topic choic
 **Must NOT modify:**
 - `apps/web/src/home/HomePage.tsx` (homepage remains focused on today's launches)
 - Existing public card, route, shell, and style files assigned to T4/T5.
+
+### Verification Evidence
+
+- Focused launches client and query-hook suite: 22 passed, including unchanged daily/archive hook behavior.
+- Web typecheck and ESLint: passed.
+- Prettier check for all four changed frontend files: passed.
 
 ### TDD Sequence
 

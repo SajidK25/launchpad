@@ -13,12 +13,157 @@ import type { LaunchClient } from "./client";
 import {
   launchKeys,
   useBookLaunch,
+  usePublicCatalogTopics,
   useLaunchLiveInvalidation,
+  usePublicCatalog,
   usePublicLaunches,
 } from "./useLaunches";
 import { notificationKeys } from "../notifications/useNotifications";
 
 describe("launch query hooks", () => {
+  it("keys catalog pages by normalized search and topic filters", () => {
+    expect(
+      launchKeys.publicCatalog("  Developer   tools ", [
+        "topic-2",
+        "topic-1",
+        "topic-2",
+      ]),
+    ).toEqual(
+      launchKeys.publicCatalog("Developer tools", ["topic-1", "topic-2"]),
+    );
+    expect(
+      launchKeys.publicCatalog("Developer tools", ["topic-1"]),
+    ).not.toEqual(launchKeys.publicCatalog("Developer tools", ["topic-2"]));
+    expect(launchKeys.publicCatalog("Tools", [])).not.toEqual(
+      launchKeys.publicCatalog("tools", []),
+    );
+  });
+
+  it("hydrates selected topic IDs while loading topic suggestions", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children);
+    const client = {
+      fetchPublicCatalogTopics: vi.fn().mockResolvedValue({
+        choices: [{ id: "topic-3", displayName: "Design" }],
+        selected: [
+          { id: "topic-1", displayName: "Development" },
+          { id: "topic-2", displayName: "Productivity" },
+        ],
+      }),
+    } as unknown as LaunchClient;
+
+    const { result } = renderHook(
+      () => usePublicCatalogTopics(client, "  dev ", ["topic-2", "topic-1"]),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(client.fetchPublicCatalogTopics).toHaveBeenCalledWith(
+      { query: "dev", selectedIds: ["topic-1", "topic-2"], first: 20 },
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("cancels stale catalog requests and starts new filters at page one", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children);
+    const signals: AbortSignal[] = [];
+    const client = {
+      fetchPublicCatalog: vi.fn(
+        (variables: { search?: string; after?: string }, signal: AbortSignal) =>
+          new Promise((resolve, reject) => {
+            signals.push(signal);
+            signal.addEventListener("abort", () =>
+              reject(new DOMException("aborted", "AbortError")),
+            );
+            if (variables.search === "new filter")
+              resolve({
+                items: [{ id: "product-new", name: "New", pitch: "New" }],
+                nextCursor: null,
+              });
+          }),
+      ),
+    } as unknown as LaunchClient;
+    const { result, rerender } = renderHook(
+      ({ search }: { search: string }) => usePublicCatalog(client, search, []),
+      { initialProps: { search: "old filter" }, wrapper },
+    );
+
+    await waitFor(() =>
+      expect(client.fetchPublicCatalog).toHaveBeenCalledTimes(1),
+    );
+    rerender({ search: "new filter" });
+    await waitFor(() =>
+      expect(client.fetchPublicCatalog).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
+
+    expect(signals[0]?.aborted).toBe(true);
+    expect(client.fetchPublicCatalog).toHaveBeenNthCalledWith(
+      1,
+      { search: "old filter", topicIds: [], first: 20, after: undefined },
+      expect.any(AbortSignal),
+    );
+    expect(client.fetchPublicCatalog).toHaveBeenNthCalledWith(
+      2,
+      { search: "new filter", topicIds: [], first: 20, after: undefined },
+      expect.any(AbortSignal),
+    );
+    expect(result.current.data?.pages[0]?.items[0]?.id).toBe("product-new");
+  });
+
+  it("appends catalog pages by cursor and stops after the last page", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children);
+    const client = {
+      fetchPublicCatalog: vi
+        .fn()
+        .mockResolvedValueOnce({
+          items: [{ id: "product-1", name: "Alpha", pitch: "One" }],
+          nextCursor: "cursor-2",
+        })
+        .mockResolvedValueOnce({
+          items: [{ id: "product-2", name: "Beta", pitch: "Two" }],
+          nextCursor: null,
+        }),
+    } as unknown as LaunchClient;
+    const { result } = renderHook(
+      () => usePublicCatalog(client, "tools", ["topic-1"]),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(1));
+    await act(async () => result.current.fetchNextPage());
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
+    expect(result.current.hasNextPage).toBe(false);
+    expect(client.fetchPublicCatalog).toHaveBeenNthCalledWith(
+      1,
+      { search: "tools", topicIds: ["topic-1"], first: 20, after: undefined },
+      expect.any(AbortSignal),
+    );
+    expect(client.fetchPublicCatalog).toHaveBeenNthCalledWith(
+      2,
+      { search: "tools", topicIds: ["topic-1"], first: 20, after: "cursor-2" },
+      expect.any(AbortSignal),
+    );
+    await act(async () => result.current.fetchNextPage());
+    expect(client.fetchPublicCatalog).toHaveBeenCalledTimes(2);
+    expect(
+      result.current.data?.pages.flatMap((page) =>
+        page.items.map((item) => item.id),
+      ),
+    ).toEqual(["product-1", "product-2"]);
+  });
+
   it("loads the next page for the same selected date", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },

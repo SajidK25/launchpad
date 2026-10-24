@@ -82,6 +82,138 @@ describe("launch client", () => {
     });
   });
 
+  it("fetches the public catalog anonymously with search, topics, and cursor", async () => {
+    const catalogPage = {
+      items: [
+        {
+          id: "product-1",
+          name: "Launchpad",
+          pitch: "Build faster",
+          logoUrl: null,
+          topics: ["Tools"],
+        },
+      ],
+      nextCursor: "catalog-cursor-2",
+    };
+    const fetcher = vi.fn(async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        query: string;
+        variables: unknown;
+      };
+      expect(request.query).toContain("query PublicProductCatalog");
+      expect(request.variables).toEqual({
+        search: "Launch",
+        topicIds: ["topic-1", "topic-2"],
+        first: 20,
+        after: "catalog-cursor-1",
+      });
+      return Response.json({ data: { publicProductCatalog: catalogPage } });
+    });
+    const identity = {
+      ensureSession: vi.fn(),
+      getCsrfToken: vi.fn(() => null),
+    };
+    const client = createLaunchClient(fetcher, identity);
+    const controller = new AbortController();
+
+    await expect(
+      client.fetchPublicCatalog(
+        {
+          search: "Launch",
+          topicIds: ["topic-1", "topic-2"],
+          first: 20,
+          after: "catalog-cursor-1",
+        },
+        controller.signal,
+      ),
+    ).resolves.toEqual(catalogPage);
+
+    expect(identity.ensureSession).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/graphql",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("hydrates selected topic labels anonymously", async () => {
+    const options = {
+      choices: [{ id: "topic-2", displayName: "Productivity" }],
+      selected: [{ id: "topic-1", displayName: "Developer tools" }],
+    };
+    const fetcher = vi.fn(async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        query: string;
+        variables: unknown;
+      };
+      expect(request.query).toContain("query PublicCatalogTopics");
+      expect(request.variables).toEqual({
+        query: "dev",
+        selectedIds: ["topic-1", "topic-3"],
+        first: 20,
+      });
+      return Response.json({ data: { publicCatalogTopics: options } });
+    });
+    const identity = {
+      ensureSession: vi.fn(),
+      getCsrfToken: vi.fn(() => null),
+    };
+    const client = createLaunchClient(fetcher, identity);
+    const controller = new AbortController();
+
+    await expect(
+      client.fetchPublicCatalogTopics(
+        { query: "dev", selectedIds: ["topic-1", "topic-3"], first: 20 },
+        controller.signal,
+      ),
+    ).resolves.toEqual(options);
+    expect(identity.ensureSession).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/graphql",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("forwards catalog read failures instead of returning empty results", async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json({
+        errors: [{ message: "request could not be completed" }],
+      }),
+    );
+    const client = createLaunchClient(fetcher, {
+      ensureSession: vi.fn(),
+      getCsrfToken: vi.fn(() => null),
+    });
+
+    await expect(client.fetchPublicCatalog()).rejects.toMatchObject({
+      name: "LaunchRequestError",
+      status: 200,
+    });
+  });
+
+  it("aborts an in-flight catalog request when its query signal is cancelled", async () => {
+    let requestSignal: AbortSignal | undefined;
+    const fetcher = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          requestSignal = init?.signal ?? undefined;
+          requestSignal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
+    const client = createLaunchClient(fetcher, {
+      ensureSession: vi.fn(),
+      getCsrfToken: vi.fn(() => null),
+    });
+    const controller = new AbortController();
+
+    const request = client.fetchPublicCatalog({}, controller.signal);
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
   it("times out a stalled public launch request and aborts its fetch", async () => {
     vi.useFakeTimers();
     let requestSignal: AbortSignal | undefined;

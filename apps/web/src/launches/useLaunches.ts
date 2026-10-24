@@ -11,6 +11,8 @@ import { notificationKeys } from "../notifications/useNotifications";
 import type {
   LaunchBookingInput,
   LaunchClient,
+  PublicCatalogPage,
+  PublicCatalogTopicOptions,
   PublicLaunchPage,
 } from "./client";
 
@@ -34,7 +36,77 @@ export const launchKeys = {
     ["launches", "public-product", productId] as const,
   publicLaunches: (date?: string) =>
     ["launches", "public", date ?? "today"] as const,
+  publicCatalog: (search?: string, topicIds: readonly string[] = []) =>
+    [
+      "launches",
+      "public-catalog",
+      normalizeSearch(search),
+      normalizeTopicIds(topicIds),
+    ] as const,
+  publicCatalogTopics: (query?: string, selectedIds: readonly string[] = []) =>
+    [
+      "launches",
+      "public-catalog-topics",
+      normalizeSearch(query),
+      normalizeTopicIds(selectedIds),
+    ] as const,
 };
+
+export function usePublicCatalog(
+  client: LaunchClient,
+  search?: string,
+  topicIds: readonly string[] = [],
+  first = 20,
+) {
+  const normalizedSearch = normalizeSearch(search);
+  const normalizedTopicIds = normalizeTopicIds(topicIds);
+  return useInfiniteQuery<
+    PublicCatalogPage,
+    Error,
+    { pages: PublicCatalogPage[]; pageParams: Array<string | null> },
+    ReturnType<typeof launchKeys.publicCatalog>,
+    string | null
+  >({
+    queryKey: launchKeys.publicCatalog(normalizedSearch, normalizedTopicIds),
+    initialPageParam: null,
+    queryFn: ({ pageParam, signal }) =>
+      client.fetchPublicCatalog(
+        {
+          search: normalizedSearch || undefined,
+          topicIds: normalizedTopicIds,
+          first,
+          after: pageParam ?? undefined,
+        },
+        signal,
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  });
+}
+
+export function usePublicCatalogTopics(
+  client: LaunchClient,
+  query?: string,
+  selectedIds: readonly string[] = [],
+  first = 20,
+) {
+  const normalizedQuery = normalizeSearch(query);
+  const normalizedSelectedIds = normalizeTopicIds(selectedIds);
+  return useQuery<PublicCatalogTopicOptions, Error>({
+    queryKey: launchKeys.publicCatalogTopics(
+      normalizedQuery,
+      normalizedSelectedIds,
+    ),
+    queryFn: ({ signal }) =>
+      client.fetchPublicCatalogTopics(
+        {
+          query: normalizedQuery || undefined,
+          selectedIds: normalizedSelectedIds,
+          first,
+        },
+        signal,
+      ),
+  });
+}
 
 export function usePublicLaunches(
   client: LaunchClient,
@@ -232,4 +304,12 @@ function invalidateBookingState(
   void queryClient.invalidateQueries({
     queryKey: ["products", "viewer", productId],
   });
+}
+
+function normalizeSearch(search?: string): string {
+  return (search ?? "").trim().split(/\s+/).filter(Boolean).join(" ");
+}
+
+function normalizeTopicIds(topicIds: readonly string[]): string[] {
+  return [...new Set(topicIds)].sort();
 }

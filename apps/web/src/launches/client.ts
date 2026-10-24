@@ -2,12 +2,18 @@ import type { components } from "@launchpad/contracts";
 import {
   PUBLIC_PRODUCT_QUERY,
   PUBLIC_LAUNCHES_QUERY,
+  PUBLIC_PRODUCT_CATALOG_QUERY,
+  PUBLIC_CATALOG_TOPICS_QUERY,
   VIEWER_LAUNCH_BOOKINGS_QUERY,
   VIEWER_LAUNCH_NOTIFICATION_PREFERENCES_QUERY,
   type PublicProductQuery,
   type PublicProductQueryVariables,
   type PublicLaunchesQuery,
   type PublicLaunchesQueryVariables,
+  type PublicProductCatalogQuery,
+  type PublicProductCatalogQueryVariables,
+  type PublicCatalogTopicsQuery,
+  type PublicCatalogTopicsQueryVariables,
   type ViewerLaunchBookingsQuery,
   type ViewerLaunchBookingsQueryVariables,
   type ViewerLaunchNotificationPreferencesQuery,
@@ -28,6 +34,10 @@ export type LaunchBookingPage =
   ViewerLaunchBookingsQuery["viewerLaunchBookings"];
 export type PublicProduct = PublicProductQuery["publicProduct"];
 export type PublicLaunchPage = PublicLaunchesQuery["publicLaunches"];
+export type PublicCatalogPage =
+  PublicProductCatalogQuery["publicProductCatalog"];
+export type PublicCatalogTopicOptions =
+  PublicCatalogTopicsQuery["publicCatalogTopics"];
 
 export class LaunchRequestError extends Error {
   constructor(
@@ -195,6 +205,30 @@ export function createLaunchClient(
           signal,
         )
       ).publicLaunches,
+    fetchPublicCatalog: async (
+      variables: PublicProductCatalogQueryVariables = {},
+      signal?: AbortSignal,
+    ): Promise<PublicCatalogPage> =>
+      (
+        await graphql<PublicProductCatalogQuery>(
+          PUBLIC_PRODUCT_CATALOG_QUERY,
+          variables,
+          false,
+          signal,
+        )
+      ).publicProductCatalog,
+    fetchPublicCatalogTopics: async (
+      variables: PublicCatalogTopicsQueryVariables = {},
+      signal?: AbortSignal,
+    ): Promise<PublicCatalogTopicOptions> =>
+      (
+        await graphql<PublicCatalogTopicsQuery>(
+          PUBLIC_CATALOG_TOPICS_QUERY,
+          variables,
+          false,
+          signal,
+        )
+      ).publicCatalogTopics,
   };
 }
 
