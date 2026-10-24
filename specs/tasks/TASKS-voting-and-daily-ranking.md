@@ -693,7 +693,7 @@ Show daily rank and active vote count on today’s public launch list, the publi
 
 ## Task T11: Reconcile live ranking updates in the browser
 
-> **Status:** not started
+> **Status:** complete
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high

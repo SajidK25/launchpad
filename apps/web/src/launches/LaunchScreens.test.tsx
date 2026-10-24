@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../routing", () => ({ navigate: mocks.navigate }));
 
+vi.mock("../votes/useRankingLive", () => ({ useRankingLive: vi.fn() }));
+
 vi.mock("../identity/useIdentity", () => ({
   useCurrentSession: () => mocks.session,
 }));

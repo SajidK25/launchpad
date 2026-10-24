@@ -90,7 +90,7 @@ export function useDailyProductRanking(
         signal,
       ),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {

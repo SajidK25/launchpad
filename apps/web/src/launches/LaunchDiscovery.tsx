@@ -1,5 +1,6 @@
 import type { LaunchClient } from "./client";
 import { RankedLaunchCard } from "../votes/RankedLaunchCard";
+import { useRankingLive } from "../votes/useRankingLive";
 import { useDailyProductRanking } from "./useLaunches";
 
 export function LaunchDiscovery({
@@ -16,6 +17,12 @@ export function LaunchDiscovery({
   const todayDate = firstPage?.todayDate;
   const selectedDate = firstPage?.selectedDate ?? date;
   const items = launches.data?.pages.flatMap((page) => page.items) ?? [];
+  useRankingLive({
+    date,
+    enabled:
+      todayDate !== undefined &&
+      (date === undefined || selectedDate === todayDate),
+  });
 
   return (
     <section aria-labelledby="launch-discovery-title" className="launch-panel">

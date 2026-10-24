@@ -12,6 +12,7 @@ import type { IdentityClient } from "../identity/client";
 import { useCurrentSession } from "../identity/useIdentity";
 import { navigate } from "../routing";
 import { createNotificationClient } from "../notifications/client";
+import { useRankingLive } from "../votes/useRankingLive";
 import {
   createLaunchClient,
   type DailyRankingItem,
@@ -145,6 +146,14 @@ export function PublicLaunchPage({
     1,
     Boolean(publicProduct.data),
   );
+  const rankingPage = ranking.data?.pages[0];
+  useRankingLive({
+    date: launchDate,
+    enabled:
+      launchDate !== undefined &&
+      rankingPage !== undefined &&
+      rankingPage.selectedDate === rankingPage.todayDate,
+  });
 
   if (publicProduct.isPending)
     return (
