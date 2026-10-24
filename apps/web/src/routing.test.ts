@@ -37,6 +37,7 @@ describe("classifyRoute", () => {
       productId: "product-1",
     });
     expect(classifyRoute("/launches")).toEqual({ type: "founder-launches" });
+    expect(classifyRoute("/discover")).toEqual({ type: "discover" });
     expect(classifyRoute("/products/review")).toEqual({
       type: "reviewer-products",
     });
@@ -58,6 +59,7 @@ describe("classifyRoute", () => {
   });
 
   it("classifies real archive dates without changing existing launch routes", () => {
+    expect(classifyRoute("/discover")).toEqual({ type: "discover" });
     expect(classifyRoute("/launches/archive/2026-10-20")).toEqual({
       type: "public-launch-archive",
       date: "2026-10-20",

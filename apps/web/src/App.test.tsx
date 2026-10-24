@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -21,10 +22,17 @@ const mocks = vi.hoisted(() => ({
   productClient: {},
   createIdentityClient: vi.fn(),
   createProductClient: vi.fn(),
+  createLaunchClient: vi.fn(),
+  launchClient: {},
   receivedIdentityClient: null as unknown,
   receivedProductClient: null as unknown,
   productFailure: false,
   archiveDate: null as string | null,
+  discoverState: null as null | { search: string; topicIds: string[] },
+  discoverCallbacks: null as null | {
+    search: (value: string) => void;
+    topics: (value: string[]) => void;
+  },
 }));
 
 vi.mock("./identity/client", () => ({
@@ -32,6 +40,9 @@ vi.mock("./identity/client", () => ({
 }));
 vi.mock("./products/client", () => ({
   createProductClient: mocks.createProductClient,
+}));
+vi.mock("./launches/client", () => ({
+  createLaunchClient: mocks.createLaunchClient,
 }));
 vi.mock("./identity/useIdentity", () => ({
   useCurrentSession: () => mocks.session,
@@ -81,6 +92,33 @@ vi.mock("./launches/LaunchScreens", () => ({
   PublicLaunchPage: ({ productId }: { productId: string }) => (
     <div>public launch: {productId}</div>
   ),
+}));
+vi.mock("./launches/DiscoverPage", () => ({
+  DiscoverPage: ({
+    initialSearch,
+    initialTopicIds,
+    onSearchChange,
+    onTopicIdsChange,
+  }: {
+    initialSearch: string;
+    initialTopicIds: string[];
+    onSearchChange: (value: string) => void;
+    onTopicIdsChange: (value: string[]) => void;
+  }) => {
+    mocks.discoverState = { search: initialSearch, topicIds: initialTopicIds };
+    mocks.discoverCallbacks = {
+      search: onSearchChange,
+      topics: onTopicIdsChange,
+    };
+    return (
+      <section aria-label="Discover test page">
+        <output>{initialSearch}</output>
+        {initialTopicIds.map((id) => (
+          <output key={id}>{id}</output>
+        ))}
+      </section>
+    );
+  },
 }));
 vi.mock("./launches/LaunchDiscovery", () => ({
   LaunchDiscovery: ({
@@ -137,12 +175,15 @@ beforeEach(() => {
   mocks.receivedProductClient = null;
   mocks.productFailure = false;
   mocks.archiveDate = null;
+  mocks.discoverState = null;
+  mocks.discoverCallbacks = null;
   mockedCreateIdentityClient
     .mockReset()
     .mockReturnValue(mocks.identityClient as never);
   mockedCreateProductClient
     .mockReset()
     .mockReturnValue(mocks.productClient as never);
+  mocks.createLaunchClient.mockReset().mockReturnValue(mocks.launchClient);
   mockedUseConnectivity.mockClear();
   window.history.pushState({}, "", "/");
 });
@@ -211,6 +252,29 @@ describe("App", () => {
       expect(screen.getByText("public launch: product-1")).toBeTruthy(),
     );
     view.unmount();
+  });
+
+  it("restores Discover filters from URL and writes search and topic changes to history", () => {
+    window.history.pushState(
+      {},
+      "",
+      "/discover?q=maker&topic=topic-b&topic=topic-a",
+    );
+    render(<App />);
+
+    expect(mocks.discoverState).toEqual({
+      search: "maker",
+      topicIds: ["topic-b", "topic-a"],
+    });
+    const previousLength = window.history.length;
+    act(() => mocks.discoverCallbacks?.search("maker tools"));
+    expect(window.location.search).toContain("q=maker+tools");
+    expect(window.location.search).toContain("topic=topic-b&topic=topic-a");
+    expect(window.history.length).toBe(previousLength);
+
+    act(() => mocks.discoverCallbacks?.topics(["topic-c"]));
+    expect(window.location.search).toContain("topic=topic-c");
+    expect(mocks.discoverState?.topicIds).toEqual(["topic-c"]);
   });
 
   it("moves focus into the public page after choosing an archive date from home", async () => {

@@ -1,19 +1,49 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LaunchClient, PublicCatalogPage } from "./client";
 import { PublicLaunchCard } from "./PublicLaunchCard";
 import { usePublicCatalog, usePublicCatalogTopics } from "./useLaunches";
 
 const MAX_SEARCH_LENGTH = 200;
 const MAX_SELECTED_TOPICS = 20;
+const EMPTY_TOPIC_IDS: string[] = [];
 
-export function DiscoverPage({ client }: { client: LaunchClient }) {
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
+type DiscoverPageProps = {
+  client: LaunchClient;
+  initialSearch?: string;
+  initialTopicIds?: string[];
+  onSearchChange?: (search: string) => void;
+  onTopicIdsChange?: (topicIds: string[]) => void;
+};
+
+export function DiscoverPage({
+  client,
+  initialSearch = "",
+  initialTopicIds = EMPTY_TOPIC_IDS,
+  onSearchChange,
+  onTopicIdsChange,
+}: DiscoverPageProps) {
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [search, setSearch] = useState(
+    initialSearch.length <= MAX_SEARCH_LENGTH ? initialSearch : "",
+  );
   const [topicQuery, setTopicQuery] = useState("");
-  const [topicIds, setTopicIds] = useState<string[]>([]);
+  const [topicIds, setTopicIds] = useState<string[]>(initialTopicIds);
   const [topicLimitReached, setTopicLimitReached] = useState(false);
-  const catalog = usePublicCatalog(client, search, topicIds);
-  const topicOptions = usePublicCatalogTopics(client, topicQuery, topicIds);
+  const filtersValid =
+    topicIds.length <= MAX_SELECTED_TOPICS &&
+    (searchInput.length <= MAX_SEARCH_LENGTH || Boolean(search));
+  const catalog = usePublicCatalog(
+    client,
+    search,
+    topicIds.length <= MAX_SELECTED_TOPICS ? topicIds : [],
+    20,
+    filtersValid,
+  );
+  const topicOptions = usePublicCatalogTopics(
+    client,
+    topicQuery,
+    topicIds.length <= MAX_SELECTED_TOPICS ? topicIds : [],
+  );
   const items = useMemo(() => {
     const uniqueItems = new Map<string, PublicCatalogPage["items"][number]>();
     for (const page of catalog.data?.pages ?? [])
@@ -31,22 +61,41 @@ export function DiscoverPage({ client }: { client: LaunchClient }) {
   const choices = topicOptions.data?.choices ?? [];
   const hasFilters = Boolean(search) || topicIds.length > 0;
 
+  useEffect(() => {
+    setSearchInput(initialSearch);
+    setSearch(initialSearch.length <= MAX_SEARCH_LENGTH ? initialSearch : "");
+  }, [initialSearch]);
+
+  const initialTopicKey = initialTopicIds.join("\u0000");
+  useEffect(() => {
+    const nextTopicIds = initialTopicKey ? initialTopicKey.split("\u0000") : [];
+    setTopicIds(nextTopicIds);
+    setTopicLimitReached(nextTopicIds.length > MAX_SELECTED_TOPICS);
+  }, [initialTopicKey]);
+
   function updateSearch(value: string) {
     setSearchInput(value);
-    if (value.length <= MAX_SEARCH_LENGTH) setSearch(value);
+    if (value.length <= MAX_SEARCH_LENGTH) {
+      setSearch(value);
+      onSearchChange?.(value);
+    }
   }
 
   function toggleTopic(id: string) {
     setTopicLimitReached(false);
     if (topicIds.includes(id)) {
-      setTopicIds((current) => current.filter((topicId) => topicId !== id));
+      const nextTopicIds = topicIds.filter((topicId) => topicId !== id);
+      setTopicIds(nextTopicIds);
+      onTopicIdsChange?.(nextTopicIds);
       return;
     }
     if (topicIds.length >= MAX_SELECTED_TOPICS) {
       setTopicLimitReached(true);
       return;
     }
-    setTopicIds((current) => [...current, id].sort());
+    const nextTopicIds = [...topicIds, id].sort();
+    setTopicIds(nextTopicIds);
+    onTopicIdsChange?.(nextTopicIds);
   }
 
   function clearFilters() {
@@ -54,6 +103,8 @@ export function DiscoverPage({ client }: { client: LaunchClient }) {
     setSearch("");
     setTopicIds([]);
     setTopicLimitReached(false);
+    onSearchChange?.("");
+    onTopicIdsChange?.([]);
   }
 
   return (
@@ -223,7 +274,11 @@ export function DiscoverPage({ client }: { client: LaunchClient }) {
             ) : null}
           </header>
 
-          {catalog.isPending ? (
+          {!filtersValid ? (
+            <p className="launch-discovery-state" role="status">
+              Correct the highlighted filters to load matching launches.
+            </p>
+          ) : catalog.isPending ? (
             <p className="launch-discovery-state" role="status">
               Loading launches…
             </p>

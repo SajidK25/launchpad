@@ -10,6 +10,7 @@ This page summarizes current implementation status and the recommended product s
 - **Reviewer decisions and founder notifications:** Reviewers can approve, reject, or request changes; founders can read private outcomes, correct and resubmit products, and receive persistent in-site and email notices with live unread updates. Review tasks T1–T15 are marked done; T16, the final decision record and operating procedure, remains open.
 - **Launch scheduling and publication:** Approved founders can reserve UTC launch dates within the scheduling window. Daily publication changes eligible products to launched at 00:00 UTC, records the publication transition, and reports recoverable failures through the agreed notification channels. See the launch scheduling and publication architecture/task artifacts for implementation and verification detail.
 - **Guest launch discovery:** The public homepage lists today's launched products, and dated archives support direct date selection and adjacent-day navigation. Discovery cards link to existing public product details, keep unpublished products private, and distinguish empty dates from loading failures.
+- **Catalog search and topic browsing:** Visitors can search all launched products by name, pitch, or public description and filter with up to 20 launched-product topics. The Discover page keeps filters in the URL and supports paged results.
 - **Frontend visual refresh:** The available frontend uses the approved Launchpad Brutalism and Neobrutalism direction, including public and workspace views, with lightweight pathname navigation.
 
 ## Verification status
@@ -22,9 +23,8 @@ This page summarizes current implementation status and the recommended product s
 ## Recommended next work
 
 1. **Close review workflow operations and verification:** Record the approved decisions and finish broader, manual, accessibility, and release checks.
-2. **Extend guest discovery:** Add search and topic browsing; these remain separate from the launched-only daily list and archives.
-3. **Add community features:** Implement voting, comments and replies, follows and feeds, reports, moderation, and live updates.
-4. **Complete supporting platform capabilities:** Add founder analytics and asynchronous exports.
-5. **Prepare for release:** Complete security and load testing, operational monitoring and runbooks, backup/restore verification, and staging acceptance.
+2. **Add community features:** Implement voting, comments and replies, follows and feeds, reports, moderation, and live updates.
+3. **Complete supporting platform capabilities:** Add founder analytics and asynchronous exports.
+4. **Prepare for release:** Complete security and load testing, operational monitoring and runbooks, backup/restore verification, and staging acceptance.
 
 This sequence follows the [engineering guide's delivery plan](source/engineering-guide.md). The [client brief](source/launchpad-client-brief.md) also calls for Google sign-in; it is not included in the completed identity slice and should be planned as a separate feature.

@@ -29,6 +29,9 @@ export function PublicShell({ children }: ShellProps) {
           <a href="/" onClick={handleNavigation("/")}>
             Home
           </a>
+          <a href="/discover" onClick={handleNavigation("/discover")}>
+            Discover
+          </a>
           <a href="/signin" onClick={handleNavigation("/signin")}>
             Sign in
           </a>

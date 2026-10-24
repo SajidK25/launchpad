@@ -30,6 +30,7 @@ The public launch routes have distinct purposes:
 
 - `/` shows launches for the API's current UTC date and keeps the public introduction and account actions compact.
 - `/launches/archive/YYYY-MM-DD` shows the selected UTC launch day. The date picker allows dates through the API's current UTC date; future dates are unavailable.
+- `/discover` searches the full launched catalog by product name, pitch, and public description, with launched-product topic filters. The `q` and repeated `topic` query parameters preserve shareable filters.
 - `/launches` remains the signed-in founder launch calendar.
 - `/launches/{productId}` remains the public detail page for one launched product.
 
@@ -40,6 +41,11 @@ After starting the stack, use this smoke check:
 3. Select a past UTC date with no local launches. Confirm the archive URL is reloadable and the page reports an empty day rather than a loading failure. Use Previous day, Next day, and direct date selection; Next day must be disabled on the API-reported current date.
 4. In browser developer tools, temporarily block the `/api/v1/graphql` request and reload the discovery page. Confirm it displays the failure message and Retry action instead of the empty-day message. Remove the block, choose Retry, and confirm the list or empty state returns.
 5. At a 320-pixel viewport, tab through the date controls and product links. Confirm focus remains visible and the page has no horizontal overflow.
+6. Open `/discover` signed out. Search for a partial word from a launched product's name, pitch, or description; matching is case-insensitive and every search term must match. Confirm only public cards appear and use Load more when the result set spans another page.
+7. Search Browse topics, select two topics with the keyboard, and confirm search combines with either selected topic. Remove one topic, then Clear filters.
+8. Reload a filtered `/discover` URL and confirm its query and selected topic chips are restored. Change a topic, use browser Back/Forward, and confirm the previous filter state returns. Search edits replace the current history entry rather than adding one per keystroke.
+9. Try a query with no matches and block the GraphQL request in turn. Confirm zero matches and request failure display distinct states, then unblock and use Retry.
+10. At a 320-pixel viewport, tab through search, topic suggestions, selected-topic removal, Clear filters, Load more, and product links. Confirm visible focus and no horizontal overflow. Repeat the Discover page with a signed-in member session.
 
 Do not insert a `launched` row directly, expose a private media URL, or change the host clock to manufacture the populated state. Use the normal local product lifecycle so the public-visibility boundary remains representative.
 
@@ -567,7 +573,7 @@ production origin validation must remain unchanged.
    Replace `REVIEWER_B_EMAIL` with B's address and `<reviewer-b-uuid>` with the returned UUID; do
    not put passwords or verification tokens in commands. Sign out and back in as B so the session
    reflects the new role, then open `/products/review`. Confirm A's submission appears in the queue
-   and its current details and private media are visible to the reviewer.
+    and its current details and private media are visible to the reviewer.
 9. Restore B to the ordinary member role by repeating the audited operator command with
    `set-role --role member`. The CLI is mounted read-only into a one-off container for this command;
    it is intentionally not included in the API image. Sign B out and back in, then confirm

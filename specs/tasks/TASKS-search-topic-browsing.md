@@ -310,7 +310,7 @@ Create the visitor-facing Discover experience with search, a searchable multi-se
 
 ## Task T5: Wire Discover Navigation and Document the Smoke Check
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
@@ -351,6 +351,15 @@ Make Discover directly reachable at `/discover`, add it to guest/public navigati
 - Do NOT change homepage content, archive semantics, product detail routing, or workspace destinations.
 - Do NOT mark the roadmap item built before the feature tasks are complete.
 - Only wire the approved route/navigation and document/verify the shipped feature.
+
+### Verification Evidence
+
+- Complete web unit suite: 192 passed, including route, shell, Discover state, and existing daily/archive regressions.
+- Web typecheck and ESLint: passed.
+- Web production build: passed.
+- Focused browser accessibility suite: 3 passed (public/account/workspace pages, signed-out and signed-in Discover with keyboard topic selection and URL back restoration, and existing daily/archive behavior). Axe reported no violations in these scenarios; 320px layout had no horizontal overflow.
+- Prettier check and `git diff --check`: passed.
+- Development smoke-check documents search, multi-topic behavior, URL reload/back/forward, no-results/error states, Load more, and mobile checks. The roadmap records catalog search/topic browsing under Built.
 
 ### Files Expected
 

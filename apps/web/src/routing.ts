@@ -13,6 +13,7 @@ export type AppRoute =
   | { type: "founder-products"; productId?: string }
   | { type: "reviewer-products"; productId?: string }
   | { type: "founder-launches" }
+  | { type: "discover" }
   | { type: "public-launch-archive"; date: string }
   | { type: "public-launch"; productId: string }
   | { type: "unavailable" };
@@ -67,6 +68,7 @@ export function classifyRoute(pathname: string): AppRoute {
     if (segment === "profile") return { type: "founder-profile" };
     if (segment === "products") return { type: "founder-products" };
     if (segment === "launches") return { type: "founder-launches" };
+    if (segment === "discover") return { type: "discover" };
   }
 
   if (segments[0] === "public" && segments.length === 2) {

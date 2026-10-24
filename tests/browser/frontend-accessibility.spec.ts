@@ -5,6 +5,8 @@ async function installFixtures(page: Page) {
   let role: "member" | "reviewer" = "member";
   let signedIn = true;
   let launchItems: Array<Record<string, unknown>> = [];
+  let catalogItems: Array<Record<string, unknown>> = [];
+  let catalogTopics: Array<{ id: string; displayName: string }> = [];
   await page.route("**/api/v1/health/ready", (route) =>
     route.fulfill({ json: { status: "ready" } }),
   );
@@ -49,6 +51,32 @@ async function installFixtures(page: Page) {
       };
     else if (query.includes("viewerNotificationInbox"))
       data = { viewerNotificationInbox: { ...emptyPage, unreadCount: 0 } };
+    else if (query.includes("publicProductCatalog"))
+      data = {
+        publicProductCatalog: { items: catalogItems, nextCursor: null },
+      };
+    else if (query.includes("publicCatalogTopics"))
+      data = {
+        publicCatalogTopics: {
+          choices: catalogTopics.filter((topic) =>
+            String(
+              (request as { variables?: { query?: string } }).variables
+                ?.query ?? "",
+            )
+              .toLocaleLowerCase()
+              .split(/\s+/)
+              .every((term) =>
+                topic.displayName.toLocaleLowerCase().includes(term),
+              ),
+          ),
+          selected: catalogTopics.filter((topic) =>
+            (
+              (request as { variables?: { selectedIds?: string[] } }).variables
+                ?.selectedIds ?? []
+            ).includes(topic.id),
+          ),
+        },
+      };
     else if (query.includes("publicLaunches")) {
       const variables = request as { variables?: { date?: string } };
       data = {
@@ -59,8 +87,7 @@ async function installFixtures(page: Page) {
           nextCursor: null,
         },
       };
-    }
-    else if (query.includes("viewerProfile"))
+    } else if (query.includes("viewerProfile"))
       data = {
         viewerProfile: {
           accountId: "browser-fixture-account",
@@ -91,6 +118,12 @@ async function installFixtures(page: Page) {
     },
     setLaunchItems(items: Array<Record<string, unknown>>) {
       launchItems = items;
+    },
+    setCatalogItems(items: Array<Record<string, unknown>>) {
+      catalogItems = items;
+    },
+    setCatalogTopics(topics: Array<{ id: string; displayName: string }>) {
+      catalogTopics = topics;
     },
   };
 }
@@ -159,6 +192,71 @@ test("representative public, account, founder, reviewer, and launch pages pass a
   await page.goto("/launches/private-product");
   await expect(
     page.getByRole("heading", { name: "Launch not found" }),
+  ).toBeVisible();
+  await expectNoSeriousAccessibilityIssues(page);
+});
+
+test("Discover restores URL filters, supports keyboard topic selection and passes signed-out and signed-in axe checks", async ({
+  page,
+}) => {
+  const fixtures = await installFixtures(page);
+  fixtures.setSignedIn(false);
+  fixtures.setCatalogTopics([
+    { id: "topic-1", displayName: "Developer tools" },
+    { id: "topic-2", displayName: "Productivity" },
+  ]);
+  fixtures.setCatalogItems([
+    {
+      id: "catalog-product-1",
+      name: "A long catalog launch name that wraps at a narrow viewport",
+      pitch: "A long public pitch that should wrap without causing overflow.",
+      logoUrl: null,
+      topics: ["Developer tools"],
+    },
+  ]);
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/discover?q=tool&topic=topic-1");
+  await expect(
+    page
+      .getByRole("navigation", { name: "Public navigation" })
+      .getByRole("link", { name: "Discover" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Discover launches" }),
+  ).toBeVisible();
+  const searchBox = page.getByRole("searchbox", { name: "Search launches" });
+  await expect(searchBox).toHaveValue("tool");
+  await expect(
+    page.getByRole("button", { name: "Remove Developer tools" }),
+  ).toBeVisible();
+  const historyLength = await page.evaluate(() => history.length);
+  await searchBox.fill("tooling");
+  await expect(page).toHaveURL(/q=tooling/);
+  expect(await page.evaluate(() => history.length)).toBe(historyLength);
+  const productivity = page.getByRole("button", {
+    name: "Productivity",
+    exact: true,
+  });
+  await productivity.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/q=tooling&topic=topic-1&topic=topic-2/);
+  await expect(productivity).toHaveAttribute("aria-pressed", "true");
+  await page.goBack();
+  await expect(page).toHaveURL(/q=tooling&topic=topic-1$/);
+  await expect(
+    page.getByRole("button", { name: "Remove Productivity" }),
+  ).toHaveCount(0);
+  await expectNoSeriousAccessibilityIssues(page);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+
+  fixtures.setSignedIn(true);
+  await page.goto("/discover?q=tool");
+  await expect(
+    page.getByRole("heading", { name: "Discover launches" }),
   ).toBeVisible();
   await expectNoSeriousAccessibilityIssues(page);
 });

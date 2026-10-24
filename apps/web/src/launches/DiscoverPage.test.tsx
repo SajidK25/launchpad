@@ -100,7 +100,7 @@ describe("DiscoverPage", () => {
     expect(screen.getAllByRole("link", { name: /Alpha launch/ })).toHaveLength(
       2,
     );
-    expect(hooks.catalogCalls.at(-1)?.slice(1)).toEqual(["", []]);
+    expect(hooks.catalogCalls.at(-1)?.slice(1, 3)).toEqual(["", []]);
 
     fireEvent.change(
       screen.getByRole("searchbox", { name: /Search launches/ }),
@@ -108,10 +108,39 @@ describe("DiscoverPage", () => {
         target: { value: "  alpha   launch " },
       },
     );
-    expect(hooks.catalogCalls.at(-1)?.slice(1)).toEqual([
+    expect(hooks.catalogCalls.at(-1)?.slice(1, 3)).toEqual([
       "  alpha   launch ",
       [],
     ]);
+  });
+
+  it("hydrates URL filters and reports invalid restored bounds without querying them", () => {
+    render(
+      <DiscoverPage
+        client={{} as LaunchClient}
+        initialSearch={"x".repeat(201)}
+        initialTopicIds={Array.from(
+          { length: 21 },
+          (_, index) => `topic-${index}`,
+        )}
+      />,
+    );
+
+    expect(
+      (
+        screen.getByRole("searchbox", {
+          name: /Search launches/,
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("x".repeat(201));
+    expect(screen.getAllByRole("alert")[0].textContent).toContain(
+      "Shorten it to 200 characters",
+    );
+    expect(screen.getByRole("status").textContent).toContain(
+      "Correct the highlighted filters",
+    );
+    expect(hooks.catalogCalls.at(-1)?.at(-1)).toBe(false);
+    expect(hooks.catalogCalls.at(-1)?.[2]).toEqual([]);
   });
 
   it("selects and removes multiple topics and enforces the twenty-topic maximum", () => {

@@ -14,19 +14,26 @@ import { UnavailableState } from "./ui/Primitives";
 import { HomePage } from "./home/HomePage";
 import { PublicShell, WorkspaceShell } from "./shell/AppShell";
 import { classifyRoute } from "./routing";
+import { createLaunchClient } from "./launches/client";
+import { DiscoverPage } from "./launches/DiscoverPage";
 
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
   const [hash, setHash] = useState(window.location.hash);
+  const [locationSearch, setLocationSearch] = useState(window.location.search);
   const [identityClient] = useState(() => createIdentityClient());
   const [productClient] = useState(() =>
     createProductClient(undefined, identityClient),
+  );
+  const [launchClient] = useState(() =>
+    createLaunchClient(undefined, identityClient),
   );
 
   useEffect(() => {
     const update = () => {
       setPath(window.location.pathname);
       setHash(window.location.hash);
+      setLocationSearch(window.location.search);
     };
     window.addEventListener("popstate", update);
     window.addEventListener("hashchange", update);
@@ -111,6 +118,21 @@ export function App() {
         </WorkspaceShell>
       );
       break;
+    case "discover": {
+      const params = new URLSearchParams(locationSearch);
+      surface = (
+        <PublicShell>
+          <DiscoverPage
+            client={launchClient}
+            initialSearch={params.get("q") ?? ""}
+            initialTopicIds={params.getAll("topic")}
+            onSearchChange={updateDiscoverSearch}
+            onTopicIdsChange={updateDiscoverTopics}
+          />
+        </PublicShell>
+      );
+      break;
+    }
     case "public-launch-archive":
       surface = (
         <PublicShell>
@@ -149,4 +171,20 @@ export function App() {
   }
 
   return <AppErrorBoundary>{surface}</AppErrorBoundary>;
+}
+
+function updateDiscoverSearch(search: string) {
+  const url = new URL(window.location.href);
+  if (search) url.searchParams.set("q", search);
+  else url.searchParams.delete("q");
+  window.history.replaceState(window.history.state, "", url);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function updateDiscoverTopics(topicIds: string[]) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("topic");
+  for (const topicId of topicIds) url.searchParams.append("topic", topicId);
+  window.history.pushState({}, "", url);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }

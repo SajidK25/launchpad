@@ -57,6 +57,7 @@ export function usePublicCatalog(
   search?: string,
   topicIds: readonly string[] = [],
   first = 20,
+  enabled = true,
 ) {
   const normalizedSearch = normalizeSearch(search);
   const normalizedTopicIds = normalizeTopicIds(topicIds);
@@ -68,6 +69,7 @@ export function usePublicCatalog(
     string | null
   >({
     queryKey: launchKeys.publicCatalog(normalizedSearch, normalizedTopicIds),
+    enabled,
     initialPageParam: null,
     queryFn: ({ pageParam, signal }) =>
       client.fetchPublicCatalog(

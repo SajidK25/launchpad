@@ -77,7 +77,33 @@ describe("PublicShell", () => {
     ).toBeTruthy();
     expect(screen.getByRole("main")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Create account" })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Discover" }).getAttribute("href"),
+    ).toBe("/discover");
+    expect(
+      screen.getByRole("link", { name: "Discover" }).getAttribute("href"),
+    ).toBe("/discover");
     expect(screen.queryByRole("link", { name: "Your products" })).toBeNull();
+  });
+
+  it("uses lightweight navigation for Discover", () => {
+    render(
+      <PublicShell>
+        <h1>Discover</h1>
+      </PublicShell>,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Discover" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/discover");
+  });
+
+  it("uses lightweight navigation for Discover", () => {
+    render(
+      <PublicShell>
+        <h1>Discover</h1>
+      </PublicShell>,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Discover" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/discover");
   });
 });
 
