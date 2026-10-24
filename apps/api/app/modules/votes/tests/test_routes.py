@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI
@@ -17,7 +17,7 @@ from redis import Redis
 from app.modules.auth.sessions import MemberContext, SessionService
 from app.modules.votes.policies import VoteChallengeError, VoteConflictError, VoteForbiddenError
 from app.modules.votes.routes import map_vote_error, router
-from app.modules.votes.service import VoteCommandResult
+from app.modules.votes.service import VoteCommandResult, VoteService
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
 from app.shared.security.tokens import digest_token
@@ -162,7 +162,7 @@ def test_only_high_risk_vote_actions_require_verified_turnstile(
             settings=settings,
             database=Database.connect(str(settings.database_url)),
             redis=_Redis(),  # type: ignore[arg-type]
-            service_factory=lambda: _Service(),  # type: ignore[arg-type]
+            service_factory=lambda: cast(VoteService, _Service()),
             challenge_verifier=verifier,
         )
     )

@@ -298,7 +298,10 @@ def _validate_identity_settings(
             vote_risk_missing.append("LAUNCHPAD_TURNSTILE_SITE_VERIFY_URL")
         if vote_risk_missing:
             raise ConfigurationError(f"Invalid configuration: {', '.join(vote_risk_missing)}")
-        if not settings.turnstile_secret_key.get_secret_value().strip():
+        if (
+            settings.turnstile_secret_key is None
+            or not settings.turnstile_secret_key.get_secret_value().strip()
+        ):
             raise ConfigurationError("Invalid configuration: LAUNCHPAD_TURNSTILE_SECRET_KEY")
 
     if settings.storage_provider == "r2":

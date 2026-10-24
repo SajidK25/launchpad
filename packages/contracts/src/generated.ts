@@ -535,6 +535,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/votes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Cast Vote */
+    post: operations["cast_vote_api_v1_votes_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/votes/{product_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Withdraw Vote */
+    delete: operations["withdraw_vote_api_v1_votes__product_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1080,6 +1114,42 @@ export interface components {
       msg: string;
       /** Error Type */
       type: string;
+    };
+    /**
+     * VoteInput
+     * @description Target product for a member cast command.
+     */
+    VoteInput: {
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
+    };
+    /**
+     * VoteResponse
+     * @description Confirmed vote state returned only after the transaction commits.
+     */
+    VoteResponse: {
+      /** Active */
+      active: boolean;
+      /**
+       * Cast At
+       * Format: date-time
+       */
+      cast_at: string;
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
+      /** Replayed */
+      replayed: boolean;
+      /**
+       * Vote Id
+       * Format: uuid
+       */
+      vote_id: string;
     };
   };
   responses: never;
@@ -2215,6 +2285,78 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ReviewDecisionResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cast_vote_api_v1_votes_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+        "x-turnstile-token"?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["VoteInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VoteResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  withdraw_vote_api_v1_votes__product_id__delete: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        "x-csrf-token"?: string | null;
+        "x-turnstile-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VoteResponse"];
         };
       };
       /** @description Validation Error */
