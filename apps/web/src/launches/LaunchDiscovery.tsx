@@ -1,4 +1,5 @@
-import type { LaunchClient, PublicLaunchPage } from "./client";
+import type { LaunchClient } from "./client";
+import { PublicLaunchCard } from "./PublicLaunchCard";
 import { usePublicLaunches } from "./useLaunches";
 
 export function LaunchDiscovery({
@@ -106,7 +107,7 @@ export function LaunchDiscovery({
           </p>
           <ul aria-label="Launched products" className="launch-discovery-list">
             {items.map((item) => (
-              <LaunchCard item={item} key={item.id} />
+              <PublicLaunchCard item={item} key={item.id} />
             ))}
           </ul>
           {launches.hasNextPage ? (
@@ -126,47 +127,6 @@ export function LaunchDiscovery({
         </>
       )}
     </section>
-  );
-}
-
-function LaunchCard({ item }: { item: PublicLaunchPage["items"][number] }) {
-  return (
-    <li className="launch-discovery-card">
-      <a
-        aria-label={item.logoUrl ? undefined : `LP logo for ${item.name}`}
-        className="launch-discovery-card-link"
-        href={`/launches/${encodeURIComponent(item.id)}`}
-      >
-        {item.logoUrl ? (
-          <img
-            alt={item.name}
-            decoding="async"
-            loading="lazy"
-            src={item.logoUrl}
-          />
-        ) : (
-          <span aria-hidden="true" className="launch-discovery-logo-fallback">
-            LP
-          </span>
-        )}
-      </a>
-      <div className="launch-discovery-card-content">
-        <h3>
-          <a href={`/launches/${encodeURIComponent(item.id)}`}>{item.name}</a>
-        </h3>
-        <p className="launch-discovery-pitch">{item.pitch}</p>
-        {item.topics.length > 0 ? (
-          <ul
-            aria-label={`${item.name} topics`}
-            className="launch-discovery-topics"
-          >
-            {item.topics.map((topic) => (
-              <li key={topic}>{topic}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    </li>
   );
 }
 

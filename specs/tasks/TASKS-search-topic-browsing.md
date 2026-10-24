@@ -239,7 +239,7 @@ Add typed browser reads for the public catalog and its launched-only topic choic
 
 ## Task T4: Build Discover Filters and Reusable Public Launch Cards
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** m
 > **Priority:** high
@@ -281,6 +281,13 @@ Create the visitor-facing Discover experience with search, a searchable multi-se
 - Do NOT move full-catalog search onto the homepage or alter archive date selection/order.
 - Do NOT add ranking, typo correction, recommendations, private fields, or a new routing dependency.
 - Only build the Discover content and reusable card presentation; route and public navigation wiring belongs to T5.
+
+### Verification Evidence
+
+- Discover and daily/archive regression tests: 23 passed.
+- Web typecheck and ESLint: passed.
+- Prettier formatted the Discover page, shared card, daily/archive composition, styles, and UI tests.
+- Results remain limited to the public card projection; the integration contract supplies no description or private media fields.
 
 ### Files Expected
 
