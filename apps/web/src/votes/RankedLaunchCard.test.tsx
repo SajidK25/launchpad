@@ -25,7 +25,9 @@ describe("RankedLaunchCard", () => {
   it("shows rank, zero-vote count, and launched public product details", () => {
     render(<RankedLaunchCard item={item} />);
 
-    expect(screen.getByText("RANK #1")).toBeTruthy();
+    const rank = screen.getByText("RANK #1");
+    expect(rank.getAttribute("aria-live")).toBe("polite");
+    expect(rank.getAttribute("aria-atomic")).toBe("true");
     expect(screen.getByText("0 votes")).toBeTruthy();
     expect(screen.getByText("A public launch pitch")).toBeTruthy();
     expect(screen.getByText("Developer tools")).toBeTruthy();

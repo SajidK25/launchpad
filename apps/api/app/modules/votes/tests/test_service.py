@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import AbstractAsyncContextManager
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -278,6 +278,66 @@ def test_withdrawal_preserves_vote_history_and_risk_flag_does_not_remove_vote() 
         assert result.active is False
         assert repository.votes[0].state == "withdrawn"
         assert len(repository.receipts) == 2 and len(outbox.events) == 3
+
+    asyncio.run(verify())
+
+
+def test_vote_commands_close_exactly_at_utc_midnight() -> None:
+    async def verify() -> None:
+        cutoff = datetime(2026, 10, 25, 0, 0, tzinfo=UTC)
+        service, accounts, products, repository, _outbox = _build(
+            now=cutoff - timedelta(microseconds=1)
+        )
+        session = cast(Any, _Session())
+        await service.cast(
+            session,
+            member_id=accounts.account_id,
+            product_id=products.product_id,
+            idempotency_key="just-before-cutoff",
+        )
+
+        service.clock = lambda: cutoff
+        with pytest.raises(VoteConflictError):
+            await service.withdraw(
+                session,
+                member_id=accounts.account_id,
+                product_id=products.product_id,
+                idempotency_key="at-cutoff",
+            )
+        assert repository.votes[0].state == "active"
+
+        closed_service, closed_accounts, closed_products, closed_repository, _ = _build(now=cutoff)
+        with pytest.raises(VoteConflictError):
+            await closed_service.cast(
+                cast(Any, _Session()),
+                member_id=closed_accounts.account_id,
+                product_id=closed_products.product_id,
+                idempotency_key="at-cutoff-cast",
+            )
+        assert closed_repository.votes == []
+
+    asyncio.run(verify())
+
+
+def test_suspension_preserves_existing_vote_until_explicit_review() -> None:
+    async def verify() -> None:
+        service, accounts, products, repository, _outbox = _build()
+        session = cast(Any, _Session())
+        await service.cast(
+            session,
+            member_id=accounts.account_id,
+            product_id=products.product_id,
+            idempotency_key="cast-before-suspension",
+        )
+        accounts.suspended_at = datetime(2026, 10, 24, 13, tzinfo=UTC)
+        with pytest.raises(VoteForbiddenError):
+            await service.withdraw(
+                session,
+                member_id=accounts.account_id,
+                product_id=products.product_id,
+                idempotency_key="suspended-withdrawal",
+            )
+        assert repository.votes[0].state == "active"
 
     asyncio.run(verify())
 

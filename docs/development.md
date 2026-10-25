@@ -74,7 +74,7 @@ Checks use a second Compose file and check-only credentials/volumes. They do not
 COMPOSE_PROJECT_NAME=launchpad-check sh scripts/quality/run.sh
 ```
 
-The gate reports these passing categories: `format`, `lint`, `types`, `tests`, `web-format`, `web-lint`, `web-types`, `web-tests`, `migrations`, `contracts`, `builds`, `security`, and `browser`. The contracts category generates and checks the shipped REST/OpenAPI and GraphQL schema/operation types. WebSocket is **not applicable** because this foundation has no WebSocket feature. Any failed, missing, or unavailable category exits nonzero; a category is never reported as passing by omission. Security checks cover production dependencies, source secrets, and the built web image without exposing an application container to the Docker socket.
+The gate reports these passing categories: `format`, `lint`, `types`, `tests`, `web-format`, `web-lint`, `web-types`, `web-tests`, `migrations`, `contracts`, `builds`, `security`, and `browser`. The tests category includes the authenticated notification and public vote live-socket contracts. The contracts category generates and checks the shipped REST/OpenAPI and GraphQL schema/operation types. Any failed, missing, or unavailable category exits nonzero; a category is never reported as passing by omission. Security checks cover production dependencies, source secrets, and the built web image without exposing an application container to the Docker socket.
 
 To prove that failure propagation is working without running the whole gate:
 

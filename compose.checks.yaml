@@ -112,6 +112,8 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
+      prepare:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:

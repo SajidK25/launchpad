@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from base64 import b64encode
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
@@ -40,7 +42,7 @@ class _PubSub:
 
     async def get_message(
         self, *, ignore_subscribe_messages: bool = False, timeout: float = 0.0
-    ) -> dict[str, object]:
+    ) -> dict[str, object] | None:
         await asyncio.sleep(0)
         return {"type": "message", "data": b'{"voter":"private","ip":"private"}'}
 
@@ -55,11 +57,8 @@ class _Redis:
     def pubsub(self) -> _PubSub:
         return _PubSub(self.channels)
 
-    def incr(self, _key: str) -> int:
+    def eval(self, _script: str, _numkeys: int, _key: str, _seconds: int) -> int:
         return 1
-
-    def expire(self, _key: str, _seconds: int) -> bool:
-        return True
 
 
 def _service(now: datetime | None = None) -> VoteLiveTicketService:
@@ -110,6 +109,39 @@ def test_websocket_subscribes_to_date_channel_and_sends_only_invalidation() -> N
             }
 
     assert redis.channels == [vote_ranking_channel(date(2026, 10, 25))]
+
+
+def test_idle_websocket_disconnect_closes_redis_pubsub() -> None:
+    closed = threading.Event()
+
+    class IdlePubSub(_PubSub):
+        async def get_message(
+            self, *, ignore_subscribe_messages: bool = False, timeout: float = 0.0
+        ) -> dict[str, object] | None:
+            await asyncio.sleep(30)
+            return None
+
+        async def aclose(self) -> None:
+            closed.set()
+
+    class IdleRedis(_Redis):
+        def pubsub(self) -> IdlePubSub:
+            return IdlePubSub(self.channels)
+
+    service = _service()
+    app = FastAPI()
+    app.include_router(vote_live_router(settings=_settings(), redis=IdleRedis(), tickets=service))
+    with TestClient(app) as client:
+        with client.websocket_connect(
+            f"/api/v1/votes/live?ticket={service.issue().token}",
+            headers={"origin": _ORIGIN},
+        ):
+            pass
+
+    deadline = time.monotonic() + 1
+    while not closed.is_set() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert closed.is_set(), "idle WebSocket disconnect left its Redis pub/sub open"
 
 
 @pytest.mark.parametrize("origin", ["https://evil.example", None])

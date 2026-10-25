@@ -31,7 +31,12 @@ from app.modules.users.service import ProfileService
 from app.modules.votes.graphql import VoteQuery
 from app.modules.votes.policies import VoteForbiddenError, VoteReadValidationError
 from app.modules.votes.repository import VoteRepository
-from app.modules.votes.service import VoteRankingProductAccess, VoteReadService
+from app.modules.votes.service import (
+    RankingRedis,
+    VoteRankingProductAccess,
+    VoteRankingProjectionService,
+    VoteReadService,
+)
 from app.shared.config.settings import Settings
 from app.shared.email.codec import EmailPayloadCodec
 
@@ -161,6 +166,7 @@ def context_getter(
     session_service: SessionService,
     profile_service_factory: Callable[[MemberContext | None], ProfileService],
     payload_codec: EmailPayloadCodec,
+    ranking_redis: RankingRedis | None = None,
 ) -> Callable[..., Any]:
     """Validate the request before resolving a fresh session-bound read context."""
 
@@ -208,11 +214,23 @@ def context_getter(
             )
 
         def vote_read_service_factory() -> VoteReadService:
+            products = cast(VoteRankingProductAccess, product_service_factory())
+            repository = VoteRepository(
+                score_half_life_seconds=settings.vote_score_half_life_seconds
+            )
+            projection = (
+                VoteRankingProjectionService(
+                    products=products,
+                    repository=repository,
+                    redis=ranking_redis,
+                )
+                if ranking_redis is not None
+                else None
+            )
             return VoteReadService(
-                products=cast(VoteRankingProductAccess, product_service_factory()),
-                repository=VoteRepository(
-                    score_half_life_seconds=settings.vote_score_half_life_seconds
-                ),
+                products=products,
+                repository=repository,
+                projection=projection,
             )
 
         return {

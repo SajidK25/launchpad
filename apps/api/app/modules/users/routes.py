@@ -30,6 +30,7 @@ from app.modules.users.schemas import (
     ProfileResponse,
 )
 from app.modules.users.service import MemberIdentity, ProfileResult, ProfileService
+from app.modules.votes.service import RankingRedis
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
 from app.shared.email.codec import EmailPayloadCodec
@@ -65,7 +66,12 @@ class _BoundMemberAccess:
 
 
 def router(
-    *, settings: Settings, database: Database, redis: Redis, storage: PrivateObjectStore
+    *,
+    settings: Settings,
+    database: Database,
+    redis: Redis,
+    storage: PrivateObjectStore,
+    ranking_redis: RankingRedis | None = None,
 ) -> tuple[APIRouter, APIRouter]:
     if settings.outbox_key is None or settings.outbox_key_id is None:
         raise RuntimeError("Outbox encryption configuration is required.")
@@ -476,6 +482,7 @@ def router(
             session_service=session_service,
             profile_service_factory=service_for,
             payload_codec=codec,
+            ranking_redis=ranking_redis,
         ),
         include_products=settings.products_enabled,
         include_launches=settings.launches_enabled,

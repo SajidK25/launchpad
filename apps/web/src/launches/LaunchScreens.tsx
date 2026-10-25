@@ -244,7 +244,9 @@ function PublicLaunchDetails({
               ranking.rank !== null &&
               ranking.activeVoteCount !== null ? (
                 <p
+                  aria-atomic="true"
                   aria-label="Daily product ranking"
+                  aria-live="polite"
                   className="public-launch-ranking"
                 >
                   RANK #{ranking.rank} · {ranking.activeVoteCount}{" "}

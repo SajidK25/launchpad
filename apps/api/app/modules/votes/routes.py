@@ -420,9 +420,17 @@ def router(
     return routes
 
 
+_INCREMENT_VELOCITY_SCRIPT = """
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  if redis.call('EXPIRE', KEYS[1], ARGV[1]) ~= 1 then
+    return redis.error_reply('velocity expiry unavailable')
+  end
+end
+return count
+"""
+
+
 def _increment_velocity(redis: Redis, identity: str, window_seconds: int) -> int:
     key = f"launchpad:vote:velocity:{identity}"
-    count = int(redis.incr(key))
-    if count == 1 and not redis.expire(key, window_seconds):
-        raise RedisError("velocity expiry unavailable")
-    return count
+    return int(redis.eval(_INCREMENT_VELOCITY_SCRIPT, 1, key, window_seconds))

@@ -14,7 +14,7 @@ Launchpad needs reversible member votes, abuse review, live daily ranking, and a
 
 - PostgreSQL is authoritative for append-only vote history, idempotency receipts, risk flags, staff decisions, the first voting-enabled UTC date, and daily ranking snapshots and entries. Constraints and transactions enforce uniqueness and state transitions.
 - A vote or staff decision and its outbox event commit in the same PostgreSQL transaction. Workers consume stable event identities idempotently; an unavailable worker delays projections but does not undo committed votes.
-- Redis stores only a rebuildable current-day ranking projection and carries ranking invalidation messages. It is neither the vote record nor the source for a closed archive. The projection can be reconstructed from PostgreSQL.
+- Redis stores only a rebuildable current-day ranking projection and carries ranking invalidation messages. Its lexicographic ordered index encodes the complete score/count/name/ID tie comparator so reads can page current ranks without walking the catalog. It is neither the vote record nor the source for a closed archive; it can be reconstructed from PostgreSQL.
 
 ### Ranking and archives
 
@@ -27,6 +27,8 @@ Launchpad needs reversible member votes, abuse review, live daily ranking, and a
 
 - Voting requires a verified member, excludes a founder's own product, permits one active vote per member/product, and closes vote/withdraw commands at the product launch day's 00:00 UTC cutoff.
 - Turnstile escalates high-risk vote actions. The public site key is a web build variable; the verification secret is API-only. Rate/velocity limits are operationally calibrated and are not fixed by this ADR.
+- Production source velocity uses Cloudflare's `CF-Connecting-IP` only on the loopback-bound Tunnel ingress; the web proxy replaces the forwarded address passed to the API. The endpoint must remain unreachable except through that trusted ingress. Velocity counter increment and first-hit expiry execute atomically in Redis.
+- The public ranking WebSocket observes client receive/disconnect events concurrently with Redis pub/sub reads and always closes its subscription on disconnect or cancellation.
 - `LAUNCHPAD_VOTE_WRITES_ENABLED` defaults to false. Deploy the additive schema and compatible API/worker/scheduler first, verify consumers and configuration, then explicitly enable writes. Rollback disables writes while compatible consumers continue draining committed outbox work. Retain vote/audit records, snapshots, and schema; do not downgrade destructively.
 - PostgreSQL/configuration backups follow the existing weekly and pre-migration policy. Restore evidence must come from an isolated restore exercise.
 

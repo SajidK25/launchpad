@@ -31,7 +31,11 @@ export function RankedLaunchCard({
       </a>
       <div className="launch-discovery-card-content">
         <div className="ranked-launch-card-meta">
-          <span className="ranked-launch-rank">
+          <span
+            aria-atomic="true"
+            aria-live="polite"
+            className="ranked-launch-rank"
+          >
             {item.rank === null ? "UNRANKED" : `RANK #${item.rank}`}
           </span>
           {item.activeVoteCount === null ? null : (

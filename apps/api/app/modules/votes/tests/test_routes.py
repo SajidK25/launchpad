@@ -16,7 +16,7 @@ from redis import Redis
 
 from app.modules.auth.sessions import MemberContext, SessionService
 from app.modules.votes.policies import VoteChallengeError, VoteConflictError, VoteForbiddenError
-from app.modules.votes.routes import map_vote_error, router
+from app.modules.votes.routes import _increment_velocity, map_vote_error, router
 from app.modules.votes.service import VoteCommandResult, VoteService
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
@@ -131,12 +131,9 @@ def test_only_high_risk_vote_actions_require_verified_turnstile(
     counts = {"count": 0}
 
     class _Redis:
-        def incr(self, key: str) -> int:
+        def eval(self, _script: str, _numkeys: int, key: str, _seconds: int) -> int:
             counts["count"] += 1
             return counts["count"]
-
-        def expire(self, key: str, seconds: int) -> bool:
-            return True
 
     product_id = uuid4()
     command_calls: list[dict[str, Any]] = []
@@ -205,3 +202,21 @@ def test_only_high_risk_vote_actions_require_verified_turnstile(
     assert command_calls[0]["risk_signal"] is None
     assert command_calls[1]["risk_signal"] == "account_velocity"
     assert len(command_calls) == 2
+
+
+def test_velocity_counter_sets_expiry_atomically() -> None:
+    calls: list[tuple[str, int, str, int]] = []
+
+    class AtomicRedis:
+        def eval(self, script: str, numkeys: int, key: str, seconds: int) -> int:
+            calls.append((script, numkeys, key, seconds))
+            return 4
+
+    assert _increment_velocity(cast(Any, AtomicRedis()), "account:abc", 60) == 4
+    assert len(calls) == 1
+    script, numkeys, key, seconds = calls[0]
+    assert numkeys == 1
+    assert key == "launchpad:vote:velocity:account:abc"
+    assert seconds == 60
+    assert "redis.call('INCR'" in script
+    assert "redis.call('EXPIRE'" in script

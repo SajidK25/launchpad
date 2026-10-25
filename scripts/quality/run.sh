@@ -47,4 +47,4 @@ run_category builds compose build python-checks web-checks web quality browser
 run_category security sh scripts/quality/security.sh
 run_category browser compose run --rm browser npm run test:browser
 printf '[quality] graphql: generated schema and operation types covered by contracts\n'
-printf '[quality] websocket: not applicable (no WebSocket feature in this foundation)\n'
+printf '[quality] websocket: covered by the backend live-socket tests in the tests category\n'

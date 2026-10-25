@@ -95,6 +95,10 @@ verified release. Keep the Turnstile secret API-only; do not copy it to worker o
 web environment files. The production API refuses to start with vote writes enabled
 if its required Turnstile verification settings are missing or invalid. Risk limits
 must be calibrated in staging; this guide does not prescribe numeric thresholds.
+Production source velocity uses the visitor IP from Cloudflare's `CF-Connecting-IP`
+header, forwarded by Nginx to the API. Keep the web origin bound to `127.0.0.1` and
+reachable through the dedicated Cloudflare Tunnel path only; do not publish the
+origin port on a LAN or public interface.
 
 After migration, choose the first UTC launch date on which voting is intended to
 exist. The simplest rollout is to use the current UTC date. To persist that date

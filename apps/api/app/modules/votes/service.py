@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.staff import AccountState
@@ -129,11 +130,25 @@ class VoteRankingProductAccess(Protocol):
 
 class RankingRedis(Protocol):
     async def zadd(self, name: str, mapping: Mapping[str, float]) -> int: ...
+    async def zrem(self, name: str, *values: str) -> int: ...
+    async def zrangebylex(
+        self, name: str, min: str, max: str, start: int = 0, num: int | None = None
+    ) -> list[str | bytes]: ...
+    async def zrank(self, name: str, value: str) -> int | None: ...
+    async def zlexcount(self, name: str, min: str, max: str) -> int: ...
     async def hset(self, name: str, mapping: Mapping[str, str]) -> int: ...
+    async def hget(self, name: str, key: str) -> str | bytes | None: ...
+    async def hmget(self, name: str, keys: list[str]) -> list[str | bytes | None]: ...
     async def delete(self, *names: str) -> int: ...
     async def publish(self, channel: str, message: str) -> int: ...
     async def hgetall(self, name: str) -> dict[str, str]: ...
     async def expire(self, name: str, time: int) -> bool: ...
+    async def exists(self, name: str) -> int: ...
+    async def set(self, name: str, value: str, ex: int | None = None) -> object: ...
+
+
+class RankingProjectionUnavailable(RuntimeError):
+    """Redis ranking projection is missing or inconsistent after a rebuild attempt."""
 
 
 class VoteSnapshotScheduler(Protocol):
@@ -517,10 +532,12 @@ class VoteReadService:
         *,
         products: VoteRankingProductAccess,
         repository: VoteRepository | None = None,
+        projection: VoteRankingProjectionService | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.products = products
         self.repository = repository or VoteRepository()
+        self.projection = projection
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def daily_product_ranking(
@@ -720,6 +737,55 @@ class VoteReadService:
         after: str | None,
         viewer_id: UUID | None,
     ) -> VoteDailyRankingPage:
+        if self.projection is not None:
+            try:
+                projected = await self.projection.read_page(
+                    session,
+                    launch_date=today_date,
+                    first=first,
+                    after=after,
+                    product_id=product_id,
+                )
+            except (RedisError, RankingProjectionUnavailable):
+                pass
+            else:
+                projected_ranked, projected_cursor = projected
+                projected_cards = await self.products.public_launch_cards_by_ids(
+                    session,
+                    product_ids=tuple(entry.product_id for entry, _rank in projected_ranked),
+                    launch_date=today_date,
+                )
+                projected_cards_by_id = {product.id: product for product in projected_cards}
+                visible_ids = tuple(
+                    entry.product_id
+                    for entry, _rank in projected_ranked
+                    if entry.product_id in projected_cards_by_id
+                )
+                viewer_votes = (
+                    await self.repository.active_vote_product_ids(
+                        session,
+                        member_id=viewer_id,
+                        product_ids=visible_ids,
+                        launch_date=today_date,
+                    )
+                    if viewer_id is not None
+                    else set()
+                )
+                items = tuple(
+                    VoteDailyRankingItem(
+                        product=projected_cards_by_id[entry.product_id],
+                        rank=rank,
+                        active_vote_count=entry.active_vote_count,
+                        score=entry.score,
+                        viewer_voted=(entry.product_id in viewer_votes)
+                        if viewer_id is not None
+                        else None,
+                    )
+                    for entry, rank in projected_ranked
+                    if entry.product_id in projected_cards_by_id
+                )
+                return VoteDailyRankingPage(today_date, today_date, True, items, projected_cursor)
+
         cards: list[PublicLaunchProduct] = []
         if product_id is not None:
             cards.extend(
@@ -809,6 +875,95 @@ class VoteRankingProjectionService:
         self.snapshots = snapshots
         self.clock = clock or (lambda: datetime.now(UTC))
 
+    async def read_page(
+        self,
+        session: AsyncSession,
+        *,
+        launch_date: date,
+        first: int,
+        after: str | None,
+        product_id: UUID | None,
+    ) -> tuple[list[tuple[LiveRankEntry, int]], str | None]:
+        """Read a bounded, deterministically ordered page from the live Redis index."""
+
+        _score_key, metadata_key = _ranking_keys(launch_date)
+        order_key, ready_key = _ranking_order_keys(launch_date)
+        if not await self.redis.exists(ready_key):
+            await self.rebuild(session, launch_date=launch_date)
+
+        if product_id is not None:
+            products = await self.products.public_launch_cards_by_ids(
+                session, product_ids=(product_id,), launch_date=launch_date
+            )
+            if not products:
+                return [], None
+            entry = await self._entry_from_metadata(metadata_key, product_id)
+            if entry is None:
+                await self.rebuild(session, launch_date=launch_date)
+                entry = await self._entry_from_metadata(metadata_key, product_id)
+            if entry is None:
+                return [], None
+            rank = await self.redis.zrank(order_key, _rank_index_member(entry))
+            if rank is None:
+                await self.rebuild(session, launch_date=launch_date)
+                entry = await self._entry_from_metadata(metadata_key, product_id)
+                rank = (
+                    None
+                    if entry is None
+                    else await self.redis.zrank(order_key, _rank_index_member(entry))
+                )
+            if entry is None or rank is None:
+                raise RankingProjectionUnavailable("product is missing from live rank projection")
+            return [(entry, rank + 1)], None
+
+        cursor_member = None
+        offset = 0
+        if after is not None:
+            cursor_key = _decode_live_cursor(after, launch_date)
+            cursor_member = _rank_index_member_from_sort_key(cursor_key)
+            offset = await self.redis.zlexcount(order_key, "-", "[" + cursor_member)
+        minimum = "(" + cursor_member if cursor_member is not None else "-"
+        raw_members = await self.redis.zrangebylex(order_key, minimum, "+", start=0, num=first + 1)
+        members = [_redis_text(value) for value in raw_members]
+        product_ids = [UUID(member.rsplit("|", maxsplit=1)[1]) for member in members]
+        raw_metadata = await self.redis.hmget(metadata_key, [str(value) for value in product_ids])
+        entries: list[LiveRankEntry] = []
+        for product_id_value, raw_value in zip(product_ids, raw_metadata, strict=True):
+            if raw_value is None:
+                await self.rebuild(session, launch_date=launch_date)
+                raise RankingProjectionUnavailable("rank metadata is missing after rebuild")
+            value = json.loads(_redis_text(raw_value))
+            entries.append(
+                LiveRankEntry(
+                    product_id_value,
+                    str(value["name"]),
+                    int(value["active_vote_count"]),
+                    Decimal(str(value["score"])),
+                )
+            )
+        visible = entries[:first]
+        ranked = [(entry, offset + index + 1) for index, entry in enumerate(visible)]
+        next_cursor = (
+            _encode_live_cursor(launch_date, _rank_sort_key(visible[-1]))
+            if len(entries) > first and visible
+            else None
+        )
+        return ranked, next_cursor
+
+    async def _entry_from_metadata(
+        self, metadata_key: str, product_id: UUID
+    ) -> LiveRankEntry | None:
+        raw_value = await self.redis.hget(metadata_key, str(product_id))
+        if raw_value is None:
+            return None
+        value = json.loads(_redis_text(raw_value))
+        return LiveRankEntry(
+            product_id,
+            str(value["name"]),
+            int(value["active_vote_count"]),
+            Decimal(str(value["score"])),
+        )
+
     async def handle_outbox_event(
         self,
         session: AsyncSession,
@@ -868,7 +1023,8 @@ class VoteRankingProjectionService:
             raise ValueError("only the active UTC day can be rebuilt")
         await self.repository.lock_projection_rebuild(session, launch_date=launch_date)
         score_key, metadata_key = _ranking_keys(launch_date)
-        await self.redis.delete(score_key, metadata_key)
+        order_key, ready_key = _ranking_order_keys(launch_date)
+        await self.redis.delete(score_key, metadata_key, order_key, ready_key)
         cursor: str | None = None
         entries: list[LiveRankEntry] = []
         while True:
@@ -892,6 +1048,10 @@ class VoteRankingProjectionService:
             if cursor is None:
                 break
         entries.sort(key=_rank_sort_key)
+        now = self.clock().astimezone(UTC)
+        next_cutoff = datetime.combine(launch_date + timedelta(days=1), datetime.min.time(), UTC)
+        ttl_seconds = max(1, int((next_cutoff - now).total_seconds()))
+        await self.redis.set(ready_key, "1", ex=ttl_seconds)
         await self._publish_invalidation(launch_date)
         return entries
 
@@ -924,8 +1084,20 @@ class VoteRankingProjectionService:
 
     async def _write_entry(self, launch_date: date, entry: LiveRankEntry) -> None:
         score_key, metadata_key = _ranking_keys(launch_date)
+        order_key, ready_key = _ranking_order_keys(launch_date)
         member = str(entry.product_id)
+        previous = await self.redis.hget(metadata_key, member)
+        if previous is not None:
+            old_value = json.loads(_redis_text(previous))
+            old_entry = LiveRankEntry(
+                entry.product_id,
+                str(old_value["name"]),
+                int(old_value["active_vote_count"]),
+                Decimal(str(old_value["score"])),
+            )
+            await self.redis.zrem(order_key, _rank_index_member(old_entry))
         await self.redis.zadd(score_key, {member: float(entry.score)})
+        await self.redis.zadd(order_key, {_rank_index_member(entry): 0.0})
         await self.redis.hset(
             metadata_key,
             mapping={
@@ -944,6 +1116,9 @@ class VoteRankingProjectionService:
         ttl_seconds = max(1, int((next_cutoff - now).total_seconds()))
         await self.redis.expire(score_key, ttl_seconds)
         await self.redis.expire(metadata_key, ttl_seconds)
+        await self.redis.expire(order_key, ttl_seconds)
+        if await self.redis.exists(ready_key):
+            await self.redis.set(ready_key, "1", ex=ttl_seconds)
 
     async def _publish_invalidation(self, launch_date: date) -> None:
         await self.redis.publish(
@@ -1062,6 +1237,45 @@ class VoteSnapshotService:
 def _ranking_keys(launch_date: date) -> tuple[str, str]:
     suffix = launch_date.isoformat()
     return f"launchpad:votes:ranking:{suffix}:scores", f"launchpad:votes:ranking:{suffix}:entries"
+
+
+def _ranking_order_keys(launch_date: date) -> tuple[str, str]:
+    suffix = launch_date.isoformat()
+    return (
+        f"launchpad:votes:ranking:{suffix}:ordered-v2",
+        f"launchpad:votes:ranking:{suffix}:ready-v2",
+    )
+
+
+def _redis_text(value: str | bytes) -> str:
+    return value.decode("utf-8") if isinstance(value, bytes) else value
+
+
+def _rank_index_member(entry: LiveRankEntry) -> str:
+    """Encode the exact daily comparator into an ordered Redis lexicographic member."""
+
+    return _rank_index_member_from_sort_key(_rank_sort_key(entry))
+
+
+def _rank_index_member_from_sort_key(
+    rank_key: tuple[bool, Decimal, int, str, str],
+) -> str:
+    zero_votes, negative_score, negative_count, normalized_name, product_id = rank_key
+    score = -negative_score
+    if score <= 0:
+        sortable_score = "1"
+    else:
+        normalized = score.normalize()
+        digits = "".join(str(digit) for digit in normalized.as_tuple().digits)
+        adjusted = normalized.adjusted()
+        exponent = 999_999 - adjusted
+        sortable_score = (
+            f"0{exponent:07d}{''.join(str(9 - int(digit)) for digit in digits.ljust(32, '0'))}"
+        )
+    count = -negative_count
+    sortable_count = f"{(10**20 - 1 - count):020d}"
+    sortable_name = normalized_name.encode("utf-8").hex()
+    return f"{int(zero_votes)}|{sortable_score}|{sortable_count}|{sortable_name}|{product_id}"
 
 
 def _daily_snapshot_event_id(launch_date: date) -> UUID:

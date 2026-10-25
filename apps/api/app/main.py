@@ -17,6 +17,7 @@ from app.modules.products.routes import router as products_router
 from app.modules.users.routes import router as users_router
 from app.modules.votes.live import VoteLiveRedis, ticket_service_for_settings, vote_live_router
 from app.modules.votes.routes import router as votes_router
+from app.modules.votes.service import RankingRedis
 from app.shared.config.settings import load_settings
 from app.shared.db.database import Database
 from app.shared.storage.client import StorageClient
@@ -82,15 +83,16 @@ def create_app(service: HealthService | None = None) -> FastAPI:
             secret_access_key=settings.storage_secret_access_key.get_secret_value(),
             client_factory=storage._client,
         )
+        live_redis = cast(NotificationRedis, AsyncRedis.from_url(str(settings.redis_url)))
         profile_routes, profile_graphql = users_router(
             settings=settings,
             database=database,
             redis=Redis.from_url(str(settings.redis_url)),
             storage=private_store,
+            ranking_redis=cast(RankingRedis, live_redis),
         )
         app.include_router(profile_routes)
         app.include_router(profile_graphql, prefix="/api/v1")
-        live_redis = cast(NotificationRedis, AsyncRedis.from_url(str(settings.redis_url)))
         app.include_router(
             notifications_router(
                 settings=settings,

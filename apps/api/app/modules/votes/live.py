@@ -151,7 +151,27 @@ def vote_live_router(
             await pubsub.subscribe(channel)
             await websocket.accept()
             while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=30.0)
+                message_task = asyncio.create_task(
+                    pubsub.get_message(ignore_subscribe_messages=True, timeout=30.0)
+                )
+                receive_task = asyncio.create_task(websocket.receive())
+                tasks = (message_task, receive_task)
+                try:
+                    done, _pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+
+                if receive_task in done:
+                    incoming = receive_task.result()
+                    if incoming.get("type") == "websocket.disconnect":
+                        return
+                if message_task in done:
+                    message = message_task.result()
+                else:
+                    continue
                 if message is not None and message.get("type") == "message":
                     await websocket.send_json(
                         {"type": "ranking.invalidated", "date": launch_date.isoformat()}
