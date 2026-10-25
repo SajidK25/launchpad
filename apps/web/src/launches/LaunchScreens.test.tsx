@@ -648,6 +648,12 @@ describe("guest launch discovery", () => {
     );
 
     expect(screen.getByText("October 20, 2026")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: "Launches on this day",
+      }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Previous day/ }));
     expect(mocks.navigate).toHaveBeenCalledWith("/launches/archive/2026-10-19");
   });
