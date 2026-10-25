@@ -13,7 +13,8 @@ test("shows healthy, failed, and recovered API connectivity", async ({
     ).toBeHidden();
     await expect(
       page.getByRole("heading", {
-        name: "Fresh products. Every day.",
+        level: 1,
+        name: "Today’s launches",
       }),
     ).toBeVisible();
   }).toPass({ timeout: 15_000 });
@@ -25,7 +26,8 @@ test("shows healthy, failed, and recovered API connectivity", async ({
   await page.reload();
   await expect(
     page.getByRole("heading", {
-      name: "Fresh products. Every day.",
+      level: 1,
+      name: "Today’s launches",
     }),
   ).toBeVisible();
   await expect(

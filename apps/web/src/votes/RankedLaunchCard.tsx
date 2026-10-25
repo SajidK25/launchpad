@@ -6,14 +6,17 @@ export function RankedLaunchCard({
   item,
   identityClient,
   launchDate,
+  headingLevel = "h3",
   votingOpen = false,
 }: {
   item: DailyRankingItem;
   identityClient?: IdentityClient;
   launchDate?: string;
+  headingLevel?: "h2" | "h3";
   votingOpen?: boolean;
 }) {
   const { product } = item;
+  const Heading = headingLevel;
   return (
     <li className="launch-discovery-card ranked-launch-card">
       <a
@@ -45,11 +48,11 @@ export function RankedLaunchCard({
             </span>
           )}
         </div>
-        <h3>
+        <Heading>
           <a href={`/launches/${encodeURIComponent(product.id)}`}>
             {product.name}
           </a>
-        </h3>
+        </Heading>
         <p className="launch-discovery-pitch">{product.pitch}</p>
         {product.topics.length > 0 ? (
           <ul aria-label="Product topics" className="launch-discovery-topics">

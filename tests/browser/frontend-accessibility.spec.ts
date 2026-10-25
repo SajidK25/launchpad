@@ -157,7 +157,7 @@ test("representative public, account, founder, reviewer, and launch pages pass a
   fixtures.setSignedIn(false);
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Fresh products. Every day." }),
+    page.getByRole("heading", { level: 1, name: "Today’s launches" }),
   ).toBeVisible();
   await expectNoSeriousAccessibilityIssues(page);
 
@@ -305,6 +305,36 @@ test("guest launch discovery keeps keyboard focus and announces accessible archi
   await expect(page.getByRole("status")).toContainText(
     "No launches for October 22, 2026",
   );
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Today’s launches" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "No launches on this day" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: "Take your product from ready to released.",
+    }),
+  ).toBeVisible();
+
+  const createAccount = page
+    .locator(".home-actions")
+    .getByRole("link", { name: "Create your account" });
+  const signIn = page
+    .locator(".home-actions")
+    .getByRole("link", { name: "Sign in" });
+  await createAccount.focus();
+  await page.keyboard.press("Tab");
+  await expect(signIn).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(createAccount).toBeFocused();
+  expect(
+    await createAccount.evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      return style.outlineStyle !== "none" && style.outlineWidth !== "0px";
+    }),
+  ).toBe(true);
 
   const dateInput = page.getByLabel("Choose a UTC date");
   await dateInput.focus();

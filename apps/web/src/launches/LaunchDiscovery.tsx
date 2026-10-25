@@ -9,17 +9,24 @@ export function LaunchDiscovery({
   identityClient,
   date,
   onDateChange,
+  headingLevel = "h2",
 }: {
   client: LaunchClient;
   identityClient: IdentityClient;
   date?: string;
   onDateChange: (date: string) => void;
+  headingLevel?: "h1" | "h2";
 }) {
   const launches = useDailyProductRanking(client, date);
   const firstPage = launches.data?.pages[0];
   const todayDate = firstPage?.todayDate;
   const selectedDate = firstPage?.selectedDate ?? date;
+  const isToday =
+    selectedDate === todayDate ||
+    (date === undefined && selectedDate === undefined);
   const items = launches.data?.pages.flatMap((page) => page.items) ?? [];
+  const Heading = headingLevel;
+  const childHeadingLevel = headingLevel === "h1" ? "h2" : "h3";
   useRankingLive({
     date,
     enabled:
@@ -32,11 +39,9 @@ export function LaunchDiscovery({
       <header className="launch-section-heading launch-discovery-heading">
         <div>
           <p className="launch-kicker">PUBLIC RELEASES</p>
-          <h2 id="launch-discovery-title">
-            {selectedDate === todayDate
-              ? "Today’s launches"
-              : "Launches on this day"}
-          </h2>
+          <Heading id="launch-discovery-title">
+            {isToday ? "Today’s launches" : "Launches on this day"}
+          </Heading>
           {selectedDate ? (
             <p className="launch-discovery-date-label">
               {formatUtcDate(selectedDate)}
@@ -104,7 +109,11 @@ export function LaunchDiscovery({
               0
             </span>
             <div>
-              <h3>No launches on this day</h3>
+              {headingLevel === "h1" ? (
+                <h2>No launches on this day</h2>
+              ) : (
+                <h3>No launches on this day</h3>
+              )}
               <p>Choose another date to explore launches.</p>
             </div>
           </div>
@@ -122,6 +131,7 @@ export function LaunchDiscovery({
                 item={item}
                 key={item.product.id}
                 launchDate={selectedDate ?? todayDate ?? ""}
+                headingLevel={childHeadingLevel}
                 votingOpen={selectedDate === todayDate}
               />
             ))}
