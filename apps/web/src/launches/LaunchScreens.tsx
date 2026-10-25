@@ -10,9 +10,13 @@ import { createProductClient } from "../products/client";
 import { useViewerProducts } from "../products/useProducts";
 import type { IdentityClient } from "../identity/client";
 import { useCurrentSession } from "../identity/useIdentity";
+import { navigate } from "../routing";
 import { createNotificationClient } from "../notifications/client";
+import { useRankingLive } from "../votes/useRankingLive";
+import { VoteControl } from "../votes/VoteControl";
 import {
   createLaunchClient,
+  type DailyRankingItem,
   LaunchRequestError,
   type LaunchBookingPage,
   type LaunchClient,
@@ -25,9 +29,11 @@ import {
   useLaunchLiveInvalidation,
   useLaunchPreferences,
   usePublicProduct,
+  useDailyProductRanking,
   useRescheduleLaunch,
   useUpdateLaunchPreferences,
 } from "./useLaunches";
+import { LaunchDiscovery } from "./LaunchDiscovery";
 
 const preferenceFields = [
   ["reminderEmail", "Email reminders"],
@@ -131,6 +137,24 @@ export function PublicLaunchPage({
     [identityClient],
   );
   const publicProduct = usePublicProduct(client, productId);
+  const launchDate = publicProduct.data?.launchedAt
+    ? new Date(publicProduct.data.launchedAt).toISOString().slice(0, 10)
+    : undefined;
+  const ranking = useDailyProductRanking(
+    client,
+    launchDate,
+    productId,
+    1,
+    Boolean(publicProduct.data),
+  );
+  const rankingPage = ranking.data?.pages[0];
+  useRankingLive({
+    date: launchDate,
+    enabled:
+      launchDate !== undefined &&
+      rankingPage !== undefined &&
+      rankingPage.selectedDate === rankingPage.todayDate,
+  });
 
   if (publicProduct.isPending)
     return (
@@ -148,13 +172,56 @@ export function PublicLaunchPage({
       />
     );
 
-  return <PublicLaunchDetails product={data} />;
+  const rankingItem =
+    ranking.data?.pages.flatMap((page) => page.items)[0] ?? null;
+  return (
+    <PublicLaunchDetails
+      identityClient={identityClient}
+      launchDate={launchDate ?? ""}
+      product={data}
+      ranking={rankingItem}
+      votingOpen={
+        rankingPage !== undefined &&
+        rankingPage.selectedDate === rankingPage.todayDate
+      }
+    />
+  );
+}
+
+export function PublicLaunchArchive({
+  date,
+  identityClient,
+}: {
+  date: string;
+  identityClient: IdentityClient;
+}) {
+  const client = useMemo(
+    () => createLaunchClient(undefined, identityClient),
+    [identityClient],
+  );
+
+  return (
+    <LaunchDiscovery
+      client={client}
+      date={date}
+      identityClient={identityClient}
+      onDateChange={(nextDate) => navigate(`/launches/archive/${nextDate}`)}
+    />
+  );
 }
 
 function PublicLaunchDetails({
+  identityClient,
+  launchDate,
   product,
+  ranking,
+  votingOpen,
 }: {
+  identityClient: IdentityClient;
+  launchDate: string;
   product: NonNullable<PublicProduct>;
+  ranking: DailyRankingItem | null;
+  votingOpen: boolean;
 }) {
   const launchedDate = new Intl.DateTimeFormat("en", {
     dateStyle: "long",
@@ -173,6 +240,29 @@ function PublicLaunchDetails({
               </p>
               <h1 id="public-launch-title">{product.name}</h1>
               <p className="public-launch-pitch">{product.pitch}</p>
+              {ranking &&
+              ranking.rank !== null &&
+              ranking.activeVoteCount !== null ? (
+                <p
+                  aria-atomic="true"
+                  aria-label="Daily product ranking"
+                  aria-live="polite"
+                  className="public-launch-ranking"
+                >
+                  RANK #{ranking.rank} · {ranking.activeVoteCount}{" "}
+                  {ranking.activeVoteCount === 1 ? "vote" : "votes"}
+                </p>
+              ) : null}
+              {ranking && launchDate ? (
+                <VoteControl
+                  activeVoteCount={ranking.activeVoteCount}
+                  identityClient={identityClient}
+                  launchDate={launchDate}
+                  productId={product.id}
+                  viewerVoted={ranking.viewerVoted}
+                  votingOpen={votingOpen}
+                />
+              ) : null}
               <a
                 aria-label={`Visit ${product.name} website (opens in a new tab)`}
                 className="launch-button launch-button-yellow public-launch-website"

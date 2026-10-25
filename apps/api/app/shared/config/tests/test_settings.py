@@ -20,6 +20,33 @@ def test_documented_local_defaults_need_no_external_credentials() -> None:
     assert settings.storage_provider == "minio"
     assert settings.storage_region == "us-east-1"
     assert settings.review_writes_enabled is True
+    assert settings.vote_writes_enabled is False
+    assert settings.vote_score_half_life_seconds == 21600
+
+
+def test_vote_score_half_life_accepts_a_positive_staging_override() -> None:
+    settings = load_settings(
+        {
+            "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "http://localhost:8080",
+            "LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS": "3600",
+        }
+    )
+
+    assert settings.vote_score_half_life_seconds == 3600
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_vote_score_half_life_rejects_nonpositive_values(value: str) -> None:
+    with pytest.raises(ConfigurationError) as error:
+        load_settings(
+            {
+                "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "http://localhost:8080",
+                "LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS": value,
+            }
+        )
+
+    assert "LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS" in str(error.value)
+    assert value not in str(error.value)
 
 
 def test_local_review_writes_can_be_disabled_independently() -> None:

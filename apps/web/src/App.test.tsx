@@ -1,6 +1,13 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { useConnectivity } from "./connectivity/useConnectivity";
@@ -15,9 +22,18 @@ const mocks = vi.hoisted(() => ({
   productClient: {},
   createIdentityClient: vi.fn(),
   createProductClient: vi.fn(),
+  createLaunchClient: vi.fn(),
+  launchClient: {},
   receivedIdentityClient: null as unknown,
   receivedProductClient: null as unknown,
   productFailure: false,
+  archiveDate: null as string | null,
+  discoverState: null as null | { search: string; topicIds: string[] },
+  discoverCallbacks: null as null | {
+    search: (value: string) => void;
+    topics: (value: string[]) => void;
+  },
+  receivedVoteReviewIdentityClient: null as unknown,
 }));
 
 vi.mock("./identity/client", () => ({
@@ -25,6 +41,9 @@ vi.mock("./identity/client", () => ({
 }));
 vi.mock("./products/client", () => ({
   createProductClient: mocks.createProductClient,
+}));
+vi.mock("./launches/client", () => ({
+  createLaunchClient: mocks.createLaunchClient,
 }));
 vi.mock("./identity/useIdentity", () => ({
   useCurrentSession: () => mocks.session,
@@ -67,8 +86,59 @@ vi.mock("./notifications/NotificationBell", () => ({
 }));
 vi.mock("./launches/LaunchScreens", () => ({
   LaunchRoutes: () => <div>launch routes</div>,
+  PublicLaunchArchive: ({ date }: { date: string }) => {
+    mocks.archiveDate = date;
+    return <div>public archive: {date}</div>;
+  },
   PublicLaunchPage: ({ productId }: { productId: string }) => (
     <div>public launch: {productId}</div>
+  ),
+}));
+vi.mock("./launches/DiscoverPage", () => ({
+  DiscoverPage: ({
+    initialSearch,
+    initialTopicIds,
+    onSearchChange,
+    onTopicIdsChange,
+  }: {
+    initialSearch: string;
+    initialTopicIds: string[];
+    onSearchChange: (value: string) => void;
+    onTopicIdsChange: (value: string[]) => void;
+  }) => {
+    mocks.discoverState = { search: initialSearch, topicIds: initialTopicIds };
+    mocks.discoverCallbacks = {
+      search: onSearchChange,
+      topics: onTopicIdsChange,
+    };
+    return (
+      <section aria-label="Discover test page">
+        <output>{initialSearch}</output>
+        {initialTopicIds.map((id) => (
+          <output key={id}>{id}</output>
+        ))}
+      </section>
+    );
+  },
+}));
+vi.mock("./votes/ReviewQueue", () => ({
+  VoteReviewQueue: ({ identityClient }: { identityClient: unknown }) => {
+    mocks.receivedVoteReviewIdentityClient = identityClient;
+    return <div>vote review queue</div>;
+  },
+}));
+vi.mock("./launches/LaunchDiscovery", () => ({
+  LaunchDiscovery: ({
+    onDateChange,
+  }: {
+    onDateChange: (date: string) => void;
+  }) => (
+    <section aria-label="Today's launches">
+      launch discovery
+      <button onClick={() => onDateChange("2026-10-20")} type="button">
+        Choose archive date
+      </button>
+    </section>
   ),
 }));
 
@@ -111,12 +181,16 @@ beforeEach(() => {
   mocks.receivedIdentityClient = null;
   mocks.receivedProductClient = null;
   mocks.productFailure = false;
+  mocks.archiveDate = null;
+  mocks.discoverState = null;
+  mocks.discoverCallbacks = null;
   mockedCreateIdentityClient
     .mockReset()
     .mockReturnValue(mocks.identityClient as never);
   mockedCreateProductClient
     .mockReset()
     .mockReturnValue(mocks.productClient as never);
+  mocks.createLaunchClient.mockReset().mockReturnValue(mocks.launchClient);
   mockedUseConnectivity.mockClear();
   window.history.pushState({}, "", "/");
 });
@@ -138,7 +212,7 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /ready to released/i }),
+      screen.getByRole("heading", { name: "Fresh products. Every day." }),
     ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain(
       "temporarily unavailable",
@@ -167,6 +241,64 @@ describe("App", () => {
     ).toBeTruthy();
   });
 
+  it("renders direct archive loads in the public shell and preserves launch routes", async () => {
+    window.history.pushState({}, "", "/launches/archive/2026-10-20");
+    const view = render(<App />);
+
+    expect(screen.getByText("public archive: 2026-10-20")).toBeTruthy();
+    expect(mocks.archiveDate).toBe("2026-10-20");
+    expect(
+      screen.getByRole("navigation", { name: "Public navigation" }),
+    ).toBeTruthy();
+
+    setPath("/launches");
+    await waitFor(() => expect(screen.getByText("launch routes")).toBeTruthy());
+
+    setPath("/launches/product-1");
+    await waitFor(() =>
+      expect(screen.getByText("public launch: product-1")).toBeTruthy(),
+    );
+    view.unmount();
+  });
+
+  it("restores Discover filters from URL and writes search and topic changes to history", () => {
+    window.history.pushState(
+      {},
+      "",
+      "/discover?q=maker&topic=topic-b&topic=topic-a",
+    );
+    render(<App />);
+
+    expect(mocks.discoverState).toEqual({
+      search: "maker",
+      topicIds: ["topic-b", "topic-a"],
+    });
+    const previousLength = window.history.length;
+    act(() => mocks.discoverCallbacks?.search("maker tools"));
+    expect(window.location.search).toContain("q=maker+tools");
+    expect(window.location.search).toContain("topic=topic-b&topic=topic-a");
+    expect(window.history.length).toBe(previousLength);
+
+    act(() => mocks.discoverCallbacks?.topics(["topic-c"]));
+    expect(window.location.search).toContain("topic=topic-c");
+    expect(mocks.discoverState?.topicIds).toEqual(["topic-c"]);
+  });
+
+  it("moves focus into the public page after choosing an archive date from home", async () => {
+    window.history.pushState({}, "", "/");
+    render(<App />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Choose archive date" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("main").id).toBe("main-content"),
+    );
+    expect(document.activeElement).toBe(screen.getByRole("main"));
+    expect(window.location.pathname).toBe("/launches/archive/2026-10-20");
+  });
+
   it("routes founder and reviewer work through role-specific workspace shells", () => {
     window.history.pushState({}, "", "/products/product-1");
     const view = render(<App />);
@@ -187,6 +319,16 @@ describe("App", () => {
     expect(
       screen.queryByRole("button", { name: "Mock notifications" }),
     ).toBeNull();
+  });
+
+  it("mounts the vote-review queue in the reviewer workspace", () => {
+    mocks.session = memberSession("reviewer");
+    window.history.pushState({}, "", "/votes/reviews");
+    render(<App />);
+
+    expect(screen.getByText("vote review queue")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Vote flags" })).toBeTruthy();
+    expect(mocks.receivedVoteReviewIdentityClient).toBe(mocks.identityClient);
   });
 
   it("scrolls a same-route decision-history link to its content", () => {
@@ -233,14 +375,14 @@ describe("App", () => {
     expect(window.history.state).toEqual({});
   });
 
-  it("does not run the homepage readiness query on non-home routes", () => {
+  it("does not run the homepage readiness query on non-home routes", async () => {
     window.history.pushState({}, "", "/profile");
     const view = render(<App />);
     expect(mockedUseConnectivity).not.toHaveBeenCalled();
 
     setPath("/");
-    view.rerender(<App />);
-    expect(mockedUseConnectivity).toHaveBeenCalledOnce();
+    await waitFor(() => expect(mockedUseConnectivity).toHaveBeenCalledOnce());
+    view.unmount();
   });
 
   it("shows a safe route fallback for malformed or unsupported paths", () => {

@@ -27,6 +27,13 @@ def test_maintenance_marker_leaves_readiness_available_and_marks_503_responses()
     assert config.count("return 418;") == 2
 
 
+def test_production_proxy_forwards_cloudflare_client_ip_for_tunnel_rate_limits() -> None:
+    config = (ROOT / "infra/docker/web.production.conf").read_text()
+    assert config.count("proxy_set_header X-Forwarded-For $http_cf_connecting_ip;") == 2
+    assert "proxy_set_header X-Forwarded-For $remote_addr;" not in config
+    assert "loopback-bound Cloudflare Tunnel" in config
+
+
 def test_rollout_has_backup_gate_fresh_health_checks_and_schema_guarded_recovery() -> None:
     script = (ROOT / "scripts/deploy_production.sh").read_text()
 

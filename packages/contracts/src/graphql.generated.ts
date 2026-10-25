@@ -4,6 +4,9 @@ export type Scalars = {
   UUID: string;
   String: string;
   Boolean: boolean;
+  Date: string;
+  DateTime: string;
+  Decimal: number;
   Int: number;
 };
 
@@ -72,6 +75,109 @@ export const VIEWER_PROFILE_QUERY = `query ViewerProfile {
     photoUrl
     visibility
     version
+  }
+}` as const;
+
+export type DailyProductRankingQueryVariables = {
+  date?: string | null;
+  productId?: string | null;
+  first?: number | null;
+  after?: string | null;
+};
+
+export type DailyProductRankingQuery = {
+  dailyProductRanking: {
+    todayDate: string;
+    selectedDate: string;
+    hasSnapshot: boolean;
+    items: Array<{
+      product: {
+        id: string;
+        name: string;
+        pitch: string;
+        logoUrl: string | null;
+        topics: Array<string>;
+      };
+      rank: number | null;
+      activeVoteCount: number | null;
+      score: number | null;
+      viewerVoted: boolean | null;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const DAILY_PRODUCT_RANKING_QUERY =
+  `query DailyProductRanking($date: Date, $productId: UUID, $first: Int = 20, $after: String) {
+  dailyProductRanking(
+    date: $date
+    productId: $productId
+    first: $first
+    after: $after
+  ) {
+    todayDate
+    selectedDate
+    hasSnapshot
+    items {
+      product {
+        id
+        name
+        pitch
+        logoUrl
+        topics
+      }
+      rank
+      activeVoteCount
+      score
+      viewerVoted
+    }
+    nextCursor
+  }
+}` as const;
+
+export type PendingVoteReviewsQueryVariables = {
+  first?: number | null;
+  after?: string | null;
+};
+
+export type PendingVoteReviewsQuery = {
+  pendingVoteReviews: {
+    items: Array<{
+      id: string;
+      voteId: string;
+      memberId: string;
+      product: {
+        id: string;
+        name: string;
+        pitch: string;
+        logoUrl: string | null;
+        topics: Array<string>;
+      };
+      signalCode: string;
+      createdAt: string;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const PENDING_VOTE_REVIEWS_QUERY =
+  `query PendingVoteReviews($first: Int = 20, $after: String) {
+  pendingVoteReviews(first: $first, after: $after) {
+    items {
+      id
+      voteId
+      memberId
+      product {
+        id
+        name
+        pitch
+        logoUrl
+        topics
+      }
+      signalCode
+      createdAt
+    }
+    nextCursor
   }
 }` as const;
 
@@ -536,6 +642,43 @@ export const PUBLIC_PRODUCT_QUERY = `query PublicProduct($id: UUID!) {
   }
 }` as const;
 
+export type PublicLaunchesQueryVariables = {
+  date?: string | null;
+  first?: number;
+  after?: string | null;
+};
+
+export type PublicLaunchesQuery = {
+  publicLaunches: {
+    todayDate: string;
+    selectedDate: string;
+    items: Array<{
+      id: string;
+      name: string;
+      pitch: string;
+      logoUrl: string | null;
+      topics: Array<string>;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const PUBLIC_LAUNCHES_QUERY =
+  `query PublicLaunches($date: Date, $first: Int! = 20, $after: String) {
+  publicLaunches(date: $date, first: $first, after: $after) {
+    todayDate
+    selectedDate
+    items {
+      id
+      name
+      pitch
+      logoUrl
+      topics
+    }
+    nextCursor
+  }
+}` as const;
+
 export type TopicChoicesQueryVariables = {
   first?: number;
   query?: string | null;
@@ -553,5 +696,77 @@ export const TOPIC_CHOICES_QUERY =
   topicChoices(first: $first, query: $query) {
     id
     displayName
+  }
+}` as const;
+
+export type PublicProductCatalogQueryVariables = {
+  search?: string | null;
+  topicIds?: Array<string> | null;
+  first?: number;
+  after?: string | null;
+};
+
+export type PublicProductCatalogQuery = {
+  publicProductCatalog: {
+    items: Array<{
+      id: string;
+      name: string;
+      pitch: string;
+      logoUrl: string | null;
+      topics: Array<string>;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const PUBLIC_PRODUCT_CATALOG_QUERY =
+  `query PublicProductCatalog($search: String, $topicIds: [UUID!] = [], $first: Int! = 20, $after: String) {
+  publicProductCatalog(
+    search: $search
+    topicIds: $topicIds
+    first: $first
+    after: $after
+  ) {
+    items {
+      id
+      name
+      pitch
+      logoUrl
+      topics
+    }
+    nextCursor
+  }
+}` as const;
+
+export type PublicCatalogTopicsQueryVariables = {
+  query?: string | null;
+  selectedIds?: Array<string> | null;
+  first?: number;
+};
+
+export type PublicCatalogTopicsQuery = {
+  publicCatalogTopics: {
+    choices: Array<{
+      id: string;
+      displayName: string;
+    }>;
+    selected: Array<{
+      id: string;
+      displayName: string;
+    }>;
+  };
+};
+
+export const PUBLIC_CATALOG_TOPICS_QUERY =
+  `query PublicCatalogTopics($query: String, $selectedIds: [UUID!] = [], $first: Int! = 20) {
+  publicCatalogTopics(query: $query, selectedIds: $selectedIds, first: $first) {
+    choices {
+      id
+      displayName
+    }
+    selected {
+      id
+      displayName
+    }
   }
 }` as const;

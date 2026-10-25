@@ -1,10 +1,22 @@
 import type { components } from "@launchpad/contracts";
 import {
   PUBLIC_PRODUCT_QUERY,
+  DAILY_PRODUCT_RANKING_QUERY,
+  PUBLIC_LAUNCHES_QUERY,
+  PUBLIC_PRODUCT_CATALOG_QUERY,
+  PUBLIC_CATALOG_TOPICS_QUERY,
   VIEWER_LAUNCH_BOOKINGS_QUERY,
   VIEWER_LAUNCH_NOTIFICATION_PREFERENCES_QUERY,
   type PublicProductQuery,
   type PublicProductQueryVariables,
+  type DailyProductRankingQuery,
+  type DailyProductRankingQueryVariables,
+  type PublicLaunchesQuery,
+  type PublicLaunchesQueryVariables,
+  type PublicProductCatalogQuery,
+  type PublicProductCatalogQueryVariables,
+  type PublicCatalogTopicsQuery,
+  type PublicCatalogTopicsQueryVariables,
   type ViewerLaunchBookingsQuery,
   type ViewerLaunchBookingsQueryVariables,
   type ViewerLaunchNotificationPreferencesQuery,
@@ -16,6 +28,7 @@ type Fetcher = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
+const PUBLIC_LAUNCH_REQUEST_TIMEOUT_MS = 15_000;
 
 export type LaunchBookingInput = Schemas["LaunchBookingInput"];
 export type LaunchBookingResult = Schemas["LaunchBookingResponse"];
@@ -23,6 +36,13 @@ export type LaunchPreferences = Schemas["LaunchNotificationPreferences"];
 export type LaunchBookingPage =
   ViewerLaunchBookingsQuery["viewerLaunchBookings"];
 export type PublicProduct = PublicProductQuery["publicProduct"];
+export type DailyRankingPage = DailyProductRankingQuery["dailyProductRanking"];
+export type DailyRankingItem = DailyRankingPage["items"][number];
+export type PublicLaunchPage = PublicLaunchesQuery["publicLaunches"];
+export type PublicCatalogPage =
+  PublicProductCatalogQuery["publicProductCatalog"];
+export type PublicCatalogTopicOptions =
+  PublicCatalogTopicsQuery["publicCatalogTopics"];
 
 export class LaunchRequestError extends Error {
   constructor(
@@ -31,6 +51,13 @@ export class LaunchRequestError extends Error {
   ) {
     super(`Launch request failed with status ${status}.`);
     this.name = "LaunchRequestError";
+  }
+}
+
+export class LaunchRequestTimeoutError extends Error {
+  constructor() {
+    super("Launch request timed out.");
+    this.name = "LaunchRequestTimeoutError";
   }
 }
 
@@ -65,15 +92,39 @@ export function createLaunchClient(
     query: string,
     variables?: object,
     authenticated = true,
+    signal?: AbortSignal,
   ): Promise<T> {
     if (authenticated) await identity.ensureSession();
-    const response = await fetcher("/api/v1/graphql", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, variables }),
-    });
-    const value: unknown = await response.json().catch(() => null);
+    const requestController = new AbortController();
+    let timedOut = false;
+    const abortFromQuery = () => requestController.abort(signal?.reason);
+    if (signal?.aborted) abortFromQuery();
+    else signal?.addEventListener("abort", abortFromQuery, { once: true });
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      requestController.abort();
+    }, PUBLIC_LAUNCH_REQUEST_TIMEOUT_MS);
+    let response: Response;
+    let value: unknown;
+    try {
+      response = await fetcher("/api/v1/graphql", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, variables }),
+        signal: requestController.signal,
+      });
+      value = await response.json().catch((error: unknown) => {
+        if (timedOut || signal?.aborted) throw error;
+        return null;
+      });
+    } catch (error) {
+      if (timedOut) throw new LaunchRequestTimeoutError();
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortFromQuery);
+    }
     if (!response.ok || !isRecord(value))
       throw new LaunchRequestError(response.status, value);
     const body = value as { data?: T; errors?: unknown[] };
@@ -147,6 +198,54 @@ export function createLaunchClient(
           false,
         )
       ).publicProduct,
+    fetchDailyProductRanking: async (
+      variables: DailyProductRankingQueryVariables = {},
+      signal?: AbortSignal,
+    ): Promise<DailyRankingPage> =>
+      (
+        await graphql<DailyProductRankingQuery>(
+          DAILY_PRODUCT_RANKING_QUERY,
+          variables,
+          false,
+          signal,
+        )
+      ).dailyProductRanking,
+    fetchPublicLaunches: async (
+      variables: PublicLaunchesQueryVariables = {},
+      signal?: AbortSignal,
+    ): Promise<PublicLaunchPage> =>
+      (
+        await graphql<PublicLaunchesQuery>(
+          PUBLIC_LAUNCHES_QUERY,
+          variables,
+          false,
+          signal,
+        )
+      ).publicLaunches,
+    fetchPublicCatalog: async (
+      variables: PublicProductCatalogQueryVariables = {},
+      signal?: AbortSignal,
+    ): Promise<PublicCatalogPage> =>
+      (
+        await graphql<PublicProductCatalogQuery>(
+          PUBLIC_PRODUCT_CATALOG_QUERY,
+          variables,
+          false,
+          signal,
+        )
+      ).publicProductCatalog,
+    fetchPublicCatalogTopics: async (
+      variables: PublicCatalogTopicsQueryVariables = {},
+      signal?: AbortSignal,
+    ): Promise<PublicCatalogTopicOptions> =>
+      (
+        await graphql<PublicCatalogTopicsQuery>(
+          PUBLIC_CATALOG_TOPICS_QUERY,
+          variables,
+          false,
+          signal,
+        )
+      ).publicCatalogTopics,
   };
 }
 

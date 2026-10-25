@@ -9,6 +9,22 @@ type ApprovedReviewPage {
   nextCursor: String
 }
 
+type DailyRankingEntry {
+  product: PublicLaunchCard!
+  rank: Int
+  activeVoteCount: Int
+  score: Decimal
+  viewerVoted: Boolean
+}
+
+type DailyRankingPage {
+  todayDate: Date!
+  selectedDate: Date!
+  hasSnapshot: Boolean!
+  items: [DailyRankingEntry!]!
+  nextCursor: String
+}
+
 """
 Date (isoformat)
 """
@@ -18,6 +34,11 @@ scalar Date
 Date with time (isoformat)
 """
 scalar DateTime
+
+"""
+Decimal (fixed-point)
+"""
+scalar Decimal
 
 type LaunchBookingEntry {
   id: UUID!
@@ -65,6 +86,20 @@ enum NotificationKindEnum {
   REVIEW_CHANGES_REQUESTED
 }
 
+type PendingVoteReviewEntry {
+  id: UUID!
+  voteId: UUID!
+  memberId: UUID!
+  product: PublicLaunchCard!
+  signalCode: String!
+  createdAt: DateTime!
+}
+
+type PendingVoteReviewPage {
+  items: [PendingVoteReviewEntry!]!
+  nextCursor: String
+}
+
 type ProductAsset {
   id: UUID!
   kind: String!
@@ -102,6 +137,36 @@ type ProductTopic {
   id: UUID!
   displayName: String!
   position: Int!
+}
+
+type PublicCatalogPage {
+  items: [PublicLaunchCard!]!
+  nextCursor: String
+}
+
+type PublicCatalogTopicChoice {
+  id: UUID!
+  displayName: String!
+}
+
+type PublicCatalogTopicOptions {
+  choices: [PublicCatalogTopicChoice!]!
+  selected: [PublicCatalogTopicChoice!]!
+}
+
+type PublicLaunchCard {
+  id: UUID!
+  name: String!
+  pitch: String!
+  logoUrl: String
+  topics: [String!]!
+}
+
+type PublicLaunchPage {
+  todayDate: Date!
+  selectedDate: Date!
+  items: [PublicLaunchCard!]!
+  nextCursor: String
 }
 
 type PublicProduct {
@@ -142,6 +207,22 @@ type Query {
   approvedReviews(first: Int! = 20, after: String = null): ApprovedReviewPage!
   topicChoices(first: Int! = 20, query: String = null): [TopicChoice!]!
   publicProduct(id: UUID!): PublicProduct
+  publicLaunches(
+    date: Date = null
+    first: Int! = 20
+    after: String = null
+  ): PublicLaunchPage!
+  publicProductCatalog(
+    search: String = null
+    topicIds: [UUID!] = null
+    first: Int! = 20
+    after: String = null
+  ): PublicCatalogPage!
+  publicCatalogTopics(
+    query: String = null
+    selectedIds: [UUID!] = null
+    first: Int! = 20
+  ): PublicCatalogTopicOptions!
   viewerNotificationInbox(
     first: Int! = 20
     after: String = null
@@ -151,6 +232,16 @@ type Query {
     after: String = null
   ): LaunchBookingPage!
   viewerLaunchNotificationPreferences: LaunchNotificationPreferences!
+  dailyProductRanking(
+    date: Date = null
+    productId: UUID = null
+    first: Int! = 20
+    after: String = null
+  ): DailyRankingPage!
+  pendingVoteReviews(
+    first: Int! = 20
+    after: String = null
+  ): PendingVoteReviewPage!
 }
 
 type ReviewDetail {

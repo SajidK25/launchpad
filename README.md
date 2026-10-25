@@ -12,7 +12,7 @@ From the repository root, choose a project name that is unique on your machine a
 docker compose -p launchpad-dev up -d --build
 ```
 
-Compose waits for PostgreSQL and MinIO, then runs the preparation process before starting the API, worker, and scheduler. Open http://localhost:8080 and confirm that the page reports **Connected**.
+Compose waits for PostgreSQL and MinIO, then runs the preparation process before starting the API, worker, and scheduler. Open http://localhost:8080 and confirm the public launch discovery page renders; its launch list may be populated, empty, or show a retryable loading failure depending on local data and service health. For an explicit API readiness check, open http://localhost:8000/api/v1/health/ready. Follow the [guest discovery smoke-check](docs/development.md#check-guest-launch-discovery-locally) to inspect dates, cards, and archive behavior.
 
 The development web page is available at http://localhost:8080, the API at http://localhost:8000, the MinIO API and console at http://localhost:9000 and http://localhost:9001, and Mailpit at http://localhost:8025. All published ports bind to loopback.
 

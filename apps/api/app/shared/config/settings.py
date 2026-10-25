@@ -29,6 +29,9 @@ class ConfigurationError(ValueError):
     """Safe configuration error that names fields but never includes their values."""
 
 
+DEFAULT_VOTE_SCORE_HALF_LIFE_SECONDS = 6 * 60 * 60
+
+
 class Settings(BaseModel):
     """Application settings loaded from `LAUNCHPAD_`-prefixed environment variables."""
 
@@ -38,6 +41,15 @@ class Settings(BaseModel):
     products_enabled: bool = False
     launches_enabled: bool = False
     review_writes_enabled: bool = False
+    vote_writes_enabled: bool = False
+    vote_score_half_life_seconds: int = Field(default=DEFAULT_VOTE_SCORE_HALF_LIFE_SECONDS, ge=1)
+    turnstile_secret_key: SecretStr | None = None
+    turnstile_site_verify_url: AnyHttpUrl = AnyHttpUrl(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+    )
+    vote_account_velocity_limit: int | None = Field(default=None, ge=1)
+    vote_source_velocity_limit: int | None = Field(default=None, ge=1)
+    vote_velocity_window_seconds: int = Field(default=60, ge=1, le=3600)
     storage_provider: Literal["minio", "r2"] = "minio"
     storage_region: Literal["us-east-1", "auto"] = "us-east-1"
     database_url: PostgresDsn = PostgresDsn(
@@ -275,6 +287,26 @@ def _validate_identity_settings(
 
     if settings.environment == "production" and settings.storage_provider != "r2":
         raise ConfigurationError("Invalid configuration: LAUNCHPAD_STORAGE_PROVIDER")
+
+    if settings.environment == "production" and settings.vote_writes_enabled:
+        vote_risk_missing = [
+            name
+            for name, value in (
+                ("LAUNCHPAD_TURNSTILE_SECRET_KEY", settings.turnstile_secret_key),
+                ("LAUNCHPAD_VOTE_ACCOUNT_VELOCITY_LIMIT", settings.vote_account_velocity_limit),
+                ("LAUNCHPAD_VOTE_SOURCE_VELOCITY_LIMIT", settings.vote_source_velocity_limit),
+            )
+            if value is None
+        ]
+        if settings.turnstile_site_verify_url.scheme != "https":
+            vote_risk_missing.append("LAUNCHPAD_TURNSTILE_SITE_VERIFY_URL")
+        if vote_risk_missing:
+            raise ConfigurationError(f"Invalid configuration: {', '.join(vote_risk_missing)}")
+        if (
+            settings.turnstile_secret_key is None
+            or not settings.turnstile_secret_key.get_secret_value().strip()
+        ):
+            raise ConfigurationError("Invalid configuration: LAUNCHPAD_TURNSTILE_SECRET_KEY")
 
     if settings.storage_provider == "r2":
         if settings.storage_region != "auto":

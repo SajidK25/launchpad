@@ -22,6 +22,33 @@ docker compose -p launchpad-dev ps
 
 Correct the named configuration or dependency problem and rerun the ordinary startup command. Preparation is safe to retry: it never resets volumes, downgrades migrations, deletes bucket objects, or exposes private objects. The `.env.example` values are development-only values, never production or Cloudflare credentials.
 
+### Check guest launch discovery locally
+
+Use the ordinary `launchpad-dev` stack and disposable local data for these checks. No production database, storage, email, or Cloudflare credential is required.
+
+The public launch routes have distinct purposes:
+
+- `/` shows launches for the API's current UTC date and keeps the public introduction and account actions compact.
+- `/launches/archive/YYYY-MM-DD` shows the selected UTC launch day. The date picker allows dates through the API's current UTC date; future dates are unavailable.
+- `/discover` searches the full launched catalog by product name, pitch, and public description, with launched-product topic filters. The `q` and repeated `topic` query parameters preserve shareable filters.
+- `/launches` remains the signed-in founder launch calendar.
+- `/launches/{productId}` remains the public detail page for one launched product.
+
+After starting the stack, use this smoke check:
+
+1. Open http://localhost:8080 in a signed-out browser session. Confirm the daily launch section loads without requiring sign-in and that registration and sign-in remain available.
+2. With a product already published through the normal local review, booking, and scheduler flow, open its launch date on the homepage or archive. Confirm its card shows only the logo, name, pitch, and topics; follow the card to `/launches/{productId}` and confirm the existing public detail page opens.
+3. Select a past UTC date with no local launches. Confirm the archive URL is reloadable and the page reports an empty day rather than a loading failure. Use Previous day, Next day, and direct date selection; Next day must be disabled on the API-reported current date.
+4. In browser developer tools, temporarily block the `/api/v1/graphql` request and reload the discovery page. Confirm it displays the failure message and Retry action instead of the empty-day message. Remove the block, choose Retry, and confirm the list or empty state returns.
+5. At a 320-pixel viewport, tab through the date controls and product links. Confirm focus remains visible and the page has no horizontal overflow.
+6. Open `/discover` signed out. Search for a partial word from a launched product's name, pitch, or description; matching is case-insensitive and every search term must match. Confirm only public cards appear and use Load more when the result set spans another page.
+7. Search Browse topics, select two topics with the keyboard, and confirm search combines with either selected topic. Remove one topic, then Clear filters.
+8. Reload a filtered `/discover` URL and confirm its query and selected topic chips are restored. Change a topic, use browser Back/Forward, and confirm the previous filter state returns. Search edits replace the current history entry rather than adding one per keystroke.
+9. Try a query with no matches and block the GraphQL request in turn. Confirm zero matches and request failure display distinct states, then unblock and use Retry.
+10. At a 320-pixel viewport, tab through search, topic suggestions, selected-topic removal, Clear filters, Load more, and product links. Confirm visible focus and no horizontal overflow. Repeat the Discover page with a signed-in member session.
+
+Do not insert a `launched` row directly, expose a private media URL, or change the host clock to manufacture the populated state. Use the normal local product lifecycle so the public-visibility boundary remains representative.
+
 ## Stop, restart, and preserve state
 
 ```sh
@@ -47,7 +74,7 @@ Checks use a second Compose file and check-only credentials/volumes. They do not
 COMPOSE_PROJECT_NAME=launchpad-check sh scripts/quality/run.sh
 ```
 
-The gate reports these passing categories: `format`, `lint`, `types`, `tests`, `web-format`, `web-lint`, `web-types`, `web-tests`, `migrations`, `contracts`, `builds`, `security`, and `browser`. The contracts category generates and checks the shipped REST/OpenAPI and GraphQL schema/operation types. WebSocket is **not applicable** because this foundation has no WebSocket feature. Any failed, missing, or unavailable category exits nonzero; a category is never reported as passing by omission. Security checks cover production dependencies, source secrets, and the built web image without exposing an application container to the Docker socket.
+The gate reports these passing categories: `format`, `lint`, `types`, `tests`, `web-format`, `web-lint`, `web-types`, `web-tests`, `migrations`, `contracts`, `builds`, `security`, and `browser`. The tests category includes the authenticated notification and public vote live-socket contracts. The contracts category generates and checks the shipped REST/OpenAPI and GraphQL schema/operation types. Any failed, missing, or unavailable category exits nonzero; a category is never reported as passing by omission. Security checks cover production dependencies, source secrets, and the built web image without exposing an application container to the Docker socket.
 
 To prove that failure propagation is working without running the whole gate:
 
@@ -265,6 +292,35 @@ Keep the compatible worker and scheduler running so committed launch and notice 
 safely. Do not downgrade migration 0012, remove booking rows, delete outbox events, or restore an
 older worker. Fix forward, or leave the launch switch off while the compatible release remains
 deployed.
+
+### Voting and ranking
+
+Voting is a separate feature switch from launch scheduling. Local Compose defaults
+`LAUNCHPAD_VOTE_WRITES_ENABLED` to `false` and `LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS`
+to `21600` (six hours). To exercise vote commands locally, enable writes only for the
+disposable development stack and rebuild/recreate its API:
+
+```sh
+LAUNCHPAD_PRODUCTS_ENABLED=true LAUNCHPAD_LAUNCHES_ENABLED=true LAUNCHPAD_VOTE_WRITES_ENABLED=true docker compose -p launchpad-dev up -d --build api web worker scheduler
+docker compose -p launchpad-dev exec api python -c 'from app.shared.config.settings import load_settings; s=load_settings(); print(f"vote_writes_enabled={s.vote_writes_enabled} score_half_life_seconds={s.vote_score_half_life_seconds}")'
+```
+
+Use a verified local member and a product already launched through the ordinary
+review, booking, and publication flow. Cast and withdraw a vote before 00:00 UTC on
+its launch date; check the member control, live rank, and staff review queue using
+the existing local test accounts. The first accepted vote persists the current UTC
+date in `voting_feature_state` unless an operator initialized that row before
+testing. Reset only disposable local databases using the normal isolated test
+environment; do not manually edit vote history or snapshots. The quality gate also
+runs vote service, migration, worker, GraphQL, REST, and web tests.
+
+Voting writes remain off in production by default. Production enablement requires
+the compatible migrated release, a healthy worker and scheduler, a configured
+Turnstile site key for the web build, and the API-only verification secret and
+velocity limits. See the [production voting rollout](PRODUCTION_DEPLOYMENT_PROXMOX.md#voting-rollout-and-rollback).
+PostgreSQL stores votes, receipts, audit decisions, and immutable daily snapshots;
+Redis is only a rebuildable live projection/pub-sub layer. Do not treat cache state
+as vote or archive evidence.
 
 #### Health and metadata checks
 
@@ -546,7 +602,7 @@ production origin validation must remain unchanged.
    Replace `REVIEWER_B_EMAIL` with B's address and `<reviewer-b-uuid>` with the returned UUID; do
    not put passwords or verification tokens in commands. Sign out and back in as B so the session
    reflects the new role, then open `/products/review`. Confirm A's submission appears in the queue
-   and its current details and private media are visible to the reviewer.
+    and its current details and private media are visible to the reviewer.
 9. Restore B to the ordinary member role by repeating the audited operator command with
    `set-role --role member`. The CLI is mounted read-only into a one-off container for this command;
    it is intentionally not included in the API image. Sign B out and back in, then confirm

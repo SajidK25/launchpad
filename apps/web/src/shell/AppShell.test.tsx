@@ -77,7 +77,33 @@ describe("PublicShell", () => {
     ).toBeTruthy();
     expect(screen.getByRole("main")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Create account" })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Discover" }).getAttribute("href"),
+    ).toBe("/discover");
+    expect(
+      screen.getByRole("link", { name: "Discover" }).getAttribute("href"),
+    ).toBe("/discover");
     expect(screen.queryByRole("link", { name: "Your products" })).toBeNull();
+  });
+
+  it("uses lightweight navigation for Discover", () => {
+    render(
+      <PublicShell>
+        <h1>Discover</h1>
+      </PublicShell>,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Discover" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/discover");
+  });
+
+  it("uses lightweight navigation for Discover", () => {
+    render(
+      <PublicShell>
+        <h1>Discover</h1>
+      </PublicShell>,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Discover" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/discover");
   });
 });
 
@@ -126,6 +152,7 @@ describe("WorkspaceShell", () => {
     expect(screen.getByRole("link", { name: "Your products" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Launch calendar" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Profile" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Vote flags" })).toBeNull();
     const notifications = screen.getAllByRole("button", {
       name: "Mock notifications",
     });
@@ -141,6 +168,9 @@ describe("WorkspaceShell", () => {
     expect(
       screen.getByRole("link", { name: "Review queue" }).getAttribute("href"),
     ).toBe("/products/review");
+    expect(
+      screen.getByRole("link", { name: "Vote flags" }).getAttribute("href"),
+    ).toBe("/votes/reviews");
     expect(
       screen
         .getByRole("link", { name: "Decision history" })
@@ -164,6 +194,7 @@ describe("WorkspaceShell", () => {
     );
 
     expect(screen.getByRole("link", { name: "Review queue" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Vote flags" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Your products" })).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Mock notifications" }),

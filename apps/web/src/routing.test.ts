@@ -37,6 +37,10 @@ describe("classifyRoute", () => {
       productId: "product-1",
     });
     expect(classifyRoute("/launches")).toEqual({ type: "founder-launches" });
+    expect(classifyRoute("/discover")).toEqual({ type: "discover" });
+    expect(classifyRoute("/votes/reviews")).toEqual({
+      type: "reviewer-vote-reviews",
+    });
     expect(classifyRoute("/products/review")).toEqual({
       type: "reviewer-products",
     });
@@ -57,6 +61,34 @@ describe("classifyRoute", () => {
     });
   });
 
+  it("classifies real archive dates without changing existing launch routes", () => {
+    expect(classifyRoute("/discover")).toEqual({ type: "discover" });
+    expect(classifyRoute("/launches/archive/2026-10-20")).toEqual({
+      type: "public-launch-archive",
+      date: "2026-10-20",
+    });
+    expect(classifyRoute("/launches")).toEqual({ type: "founder-launches" });
+    expect(classifyRoute("/launches/product-1")).toEqual({
+      type: "public-launch",
+      productId: "product-1",
+    });
+  });
+
+  it("rejects malformed, impossible, and nested archive dates", () => {
+    for (const path of [
+      "/launches/archive/2026-02-30",
+      "/launches/archive/2025-02-29",
+      "/launches/archive/20-10-20",
+      "/launches/archive/2026-10-20/extra",
+    ]) {
+      expect(classifyRoute(path)).toEqual({ type: "unavailable" });
+    }
+    expect(classifyRoute("/launches/archive/2024-02-29")).toEqual({
+      type: "public-launch-archive",
+      date: "2024-02-29",
+    });
+  });
+
   it("returns unavailable for malformed, incomplete, nested, and unknown paths", () => {
     expect(classifyRoute("/public/%")).toEqual({ type: "unavailable" });
     expect(classifyRoute("/public/")).toEqual({ type: "unavailable" });
@@ -67,6 +99,9 @@ describe("classifyRoute", () => {
       type: "unavailable",
     });
     expect(classifyRoute("/unknown")).toEqual({ type: "unavailable" });
+    expect(classifyRoute("/votes/reviews/extra")).toEqual({
+      type: "unavailable",
+    });
     expect(classifyRoute("/constructor")).toEqual({ type: "unavailable" });
     expect(classifyRoute("/toString")).toEqual({ type: "unavailable" });
   });

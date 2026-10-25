@@ -1,9 +1,21 @@
 import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { IdentityClient } from "../identity/client";
 import type { createNotificationClient } from "../notifications/client";
 import { notificationKeys } from "../notifications/useNotifications";
-import type { LaunchBookingInput, LaunchClient } from "./client";
+import type {
+  LaunchBookingInput,
+  LaunchClient,
+  PublicCatalogPage,
+  PublicCatalogTopicOptions,
+  DailyRankingPage,
+  PublicLaunchPage,
+} from "./client";
 
 export type LaunchSession = Pick<
   Awaited<ReturnType<IdentityClient["currentSession"]>>,
@@ -23,7 +35,194 @@ export const launchKeys = {
     ["launches", accountId, "preferences"] as const,
   publicProduct: (productId: string) =>
     ["launches", "public-product", productId] as const,
+  publicLaunches: (date?: string) =>
+    ["launches", "public", date ?? "today"] as const,
+  dailyRanking: (date?: string, productId?: string, first = 20) =>
+    [
+      "launches",
+      "daily-ranking",
+      date ?? "today",
+      productId ?? "all",
+      first,
+    ] as const,
+  publicCatalog: (search?: string, topicIds: readonly string[] = []) =>
+    [
+      "launches",
+      "public-catalog",
+      normalizeSearch(search),
+      normalizeTopicIds(topicIds),
+    ] as const,
+  publicCatalogTopics: (query?: string, selectedIds: readonly string[] = []) =>
+    [
+      "launches",
+      "public-catalog-topics",
+      normalizeSearch(query),
+      normalizeTopicIds(selectedIds),
+    ] as const,
 };
+
+export function useDailyProductRanking(
+  client: LaunchClient,
+  selectedDate?: string,
+  productId?: string,
+  first = 20,
+  enabled = true,
+) {
+  const queryClient = useQueryClient();
+  const query = useInfiniteQuery<
+    DailyRankingPage,
+    Error,
+    { pages: DailyRankingPage[]; pageParams: Array<string | null> },
+    ReturnType<typeof launchKeys.dailyRanking>,
+    string | null
+  >({
+    queryKey: launchKeys.dailyRanking(selectedDate, productId, first),
+    enabled,
+    initialPageParam: null,
+    queryFn: ({ pageParam, signal }) =>
+      client.fetchDailyProductRanking(
+        {
+          ...(selectedDate === undefined ? {} : { date: selectedDate }),
+          ...(productId === undefined ? {} : { productId }),
+          first,
+          after: pageParam ?? undefined,
+        },
+        signal,
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (!enabled || selectedDate !== undefined || productId !== undefined)
+      return;
+    const now = new Date();
+    const nextUtcMidnight = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1,
+    );
+    const timer = window.setTimeout(
+      () => {
+        void queryClient.resetQueries({
+          queryKey: launchKeys.dailyRanking(),
+        });
+      },
+      Math.max(0, nextUtcMidnight - now.getTime()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [enabled, productId, queryClient, selectedDate]);
+
+  return query;
+}
+
+export function usePublicCatalog(
+  client: LaunchClient,
+  search?: string,
+  topicIds: readonly string[] = [],
+  first = 20,
+  enabled = true,
+) {
+  const normalizedSearch = normalizeSearch(search);
+  const normalizedTopicIds = normalizeTopicIds(topicIds);
+  return useInfiniteQuery<
+    PublicCatalogPage,
+    Error,
+    { pages: PublicCatalogPage[]; pageParams: Array<string | null> },
+    ReturnType<typeof launchKeys.publicCatalog>,
+    string | null
+  >({
+    queryKey: launchKeys.publicCatalog(normalizedSearch, normalizedTopicIds),
+    enabled,
+    initialPageParam: null,
+    queryFn: ({ pageParam, signal }) =>
+      client.fetchPublicCatalog(
+        {
+          search: normalizedSearch || undefined,
+          topicIds: normalizedTopicIds,
+          first,
+          after: pageParam ?? undefined,
+        },
+        signal,
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  });
+}
+
+export function usePublicCatalogTopics(
+  client: LaunchClient,
+  query?: string,
+  selectedIds: readonly string[] = [],
+  first = 20,
+) {
+  const normalizedQuery = normalizeSearch(query);
+  const normalizedSelectedIds = normalizeTopicIds(selectedIds);
+  return useQuery<PublicCatalogTopicOptions, Error>({
+    queryKey: launchKeys.publicCatalogTopics(
+      normalizedQuery,
+      normalizedSelectedIds,
+    ),
+    queryFn: ({ signal }) =>
+      client.fetchPublicCatalogTopics(
+        {
+          query: normalizedQuery || undefined,
+          selectedIds: normalizedSelectedIds,
+          first,
+        },
+        signal,
+      ),
+  });
+}
+
+export function usePublicLaunches(
+  client: LaunchClient,
+  selectedDate?: string,
+  first = 20,
+) {
+  const queryClient = useQueryClient();
+  const query = useInfiniteQuery<
+    PublicLaunchPage,
+    Error,
+    { pages: PublicLaunchPage[]; pageParams: Array<string | null> },
+    ReturnType<typeof launchKeys.publicLaunches>,
+    string | null
+  >({
+    queryKey: launchKeys.publicLaunches(selectedDate),
+    initialPageParam: null,
+    queryFn: ({ pageParam, signal }) =>
+      client.fetchPublicLaunches(
+        {
+          ...(selectedDate === undefined ? {} : { date: selectedDate }),
+          first,
+          after: pageParam ?? undefined,
+        },
+        signal,
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    refetchOnWindowFocus: true,
+  });
+
+  useEffect(() => {
+    if (selectedDate !== undefined) return;
+    const now = new Date();
+    const nextUtcMidnight = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1,
+    );
+    const timer = window.setTimeout(
+      () => {
+        void queryClient.resetQueries({
+          queryKey: launchKeys.publicLaunches(),
+        });
+      },
+      Math.max(0, nextUtcMidnight - now.getTime()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [queryClient, selectedDate]);
+
+  return query;
+}
 
 export function useLaunchBookings(
   client: LaunchClient,
@@ -171,4 +370,12 @@ function invalidateBookingState(
   void queryClient.invalidateQueries({
     queryKey: ["products", "viewer", productId],
   });
+}
+
+function normalizeSearch(search?: string): string {
+  return (search ?? "").trim().split(/\s+/).filter(Boolean).join(" ");
+}
+
+function normalizeTopicIds(topicIds: readonly string[]): string[] {
+  return [...new Set(topicIds)].sort();
 }

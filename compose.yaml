@@ -97,6 +97,8 @@ services:
       LAUNCHPAD_PRODUCTS_ENABLED: "true"
       LAUNCHPAD_REVIEW_WRITES_ENABLED: "true"
       LAUNCHPAD_LAUNCHES_ENABLED: "true"
+      LAUNCHPAD_VOTE_WRITES_ENABLED: ${LAUNCHPAD_VOTE_WRITES_ENABLED:-false}
+      LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS: ${LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS:-21600}
     ports:
       - "127.0.0.1:8000:8000"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -136,6 +138,7 @@ services:
       LAUNCHPAD_OUTBOX_KEY_ID: development-v1
       LAUNCHPAD_OUTBOX_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
       LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL: http://localhost:9000
+      LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS: ${LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS:-21600}
     command: ["python", "apps/worker/worker.py"]
     healthcheck:
       test: ["CMD", "python", "apps/worker/worker.py", "--health"]

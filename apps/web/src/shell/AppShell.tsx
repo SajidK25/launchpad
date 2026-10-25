@@ -29,6 +29,9 @@ export function PublicShell({ children }: ShellProps) {
           <a href="/" onClick={handleNavigation("/")}>
             Home
           </a>
+          <a href="/discover" onClick={handleNavigation("/discover")}>
+            Discover
+          </a>
           <a href="/signin" onClick={handleNavigation("/signin")}>
             Sign in
           </a>
@@ -162,6 +165,7 @@ export function WorkspaceShell({
   const navigation = reviewer
     ? [
         { href: "/products/review", label: "Review queue" },
+        { href: "/votes/reviews", label: "Vote flags" },
         {
           href: "/products/review#approved-reviews-title",
           label: "Decision history",

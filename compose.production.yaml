@@ -87,6 +87,8 @@ services:
     environment:
       LAUNCHPAD_ENVIRONMENT: production
       LAUNCHPAD_LAUNCHES_ENABLED: ${LAUNCHPAD_LAUNCHES_ENABLED:-false}
+      LAUNCHPAD_VOTE_WRITES_ENABLED: ${LAUNCHPAD_VOTE_WRITES_ENABLED:-false}
+      LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS: ${LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS:-21600}
     command:
       - python
       - -c
@@ -116,6 +118,8 @@ services:
       LAUNCHPAD_ENVIRONMENT: production
       PYTHONPATH: /workspace/apps/api
       LAUNCHPAD_WORKER_CONCURRENCY: ${LAUNCHPAD_WORKER_CONCURRENCY:-16}
+      LAUNCHPAD_TURNSTILE_SECRET_KEY: ""
+      LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS: ${LAUNCHPAD_VOTE_SCORE_HALF_LIFE_SECONDS:-21600}
     command: ["python", "apps/worker/worker.py"]
     networks:
       - backend

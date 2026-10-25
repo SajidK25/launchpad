@@ -9,19 +9,32 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IdentityClient } from "../identity/client";
-import { LaunchRoutes, PublicLaunchPage } from "./LaunchScreens";
+import {
+  LaunchRoutes,
+  PublicLaunchArchive,
+  PublicLaunchPage,
+} from "./LaunchScreens";
+import { LaunchDiscovery } from "./LaunchDiscovery";
+import type { LaunchClient } from "./client";
 
 const mocks = vi.hoisted(() => ({
   session: null as unknown,
   products: null as unknown,
   publicProduct: null as unknown,
+  launches: null as unknown,
   bookings: null as unknown,
   preferences: null as unknown,
   bookMutation: { isPending: false, mutateAsync: vi.fn() },
   rescheduleMutation: { isPending: false, mutateAsync: vi.fn() },
   cancelMutation: { isPending: false, mutateAsync: vi.fn() },
   preferenceMutation: { isPending: false, mutateAsync: vi.fn() },
+  navigate: vi.fn(),
 }));
+
+vi.mock("../routing", () => ({ navigate: mocks.navigate }));
+
+vi.mock("../votes/useRankingLive", () => ({ useRankingLive: vi.fn() }));
+vi.mock("../votes/VoteControl", () => ({ VoteControl: () => null }));
 
 vi.mock("../identity/useIdentity", () => ({
   useCurrentSession: () => mocks.session,
@@ -42,6 +55,8 @@ vi.mock("./useLaunches", () => ({
   useLaunchLiveInvalidation: vi.fn(),
   useLaunchPreferences: () => mocks.preferences,
   usePublicProduct: () => mocks.publicProduct,
+  useDailyProductRanking: () => mocks.launches,
+  usePublicLaunches: () => mocks.launches,
   useRescheduleLaunch: () => mocks.rescheduleMutation,
   useUpdateLaunchPreferences: () => mocks.preferenceMutation,
 }));
@@ -92,6 +107,47 @@ function renderPublicLaunch(productId = "product-1") {
   );
 }
 
+function renderLaunchDiscovery(
+  onDateChange = vi.fn(),
+  date: string | undefined = "2026-11-01",
+) {
+  return {
+    onDateChange,
+    ...render(
+      <LaunchDiscovery
+        client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
+        date={date}
+        onDateChange={onDateChange}
+      />,
+    ),
+  };
+}
+
+function discoveryQuery(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      pages: [
+        {
+          todayDate: "2026-11-02",
+          selectedDate: "2026-11-01",
+          items: [],
+          nextCursor: null,
+          hasSnapshot: false,
+        },
+      ],
+    },
+    isPending: false,
+    isError: false,
+    isFetching: false,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    refetch: vi.fn(),
+    fetchNextPage: vi.fn(),
+    ...overrides,
+  };
+}
+
 function publicProduct(overrides: Record<string, unknown> = {}) {
   return {
     id: "product-1",
@@ -123,12 +179,14 @@ function publicProduct(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   mocks.session = { data: memberSession(), isPending: false, isError: false };
+  mocks.navigate.mockReset();
   mocks.products = {
     data: { items: [] },
     isPending: false,
     isError: false,
   };
   mocks.publicProduct = { data: undefined, isPending: false, isError: false };
+  mocks.launches = discoveryQuery();
   mocks.bookings = {
     data: { items: [], nextCursor: null },
     isPending: false,
@@ -524,6 +582,33 @@ describe("anonymous public launch page", () => {
       isPending: false,
       isError: false,
     };
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-10-19",
+            selectedDate: "2026-10-16",
+            hasSnapshot: true,
+            items: [
+              {
+                product: {
+                  id: "product-1",
+                  name: "Launchpad demo",
+                  pitch: "A clear launch story",
+                  logoUrl: null,
+                  topics: [],
+                },
+                rank: 3,
+                activeVoteCount: 4,
+                score: 4,
+                viewerVoted: null,
+              },
+            ],
+            nextCursor: null,
+          },
+        ],
+      },
+    });
     view.rerender(
       <PublicLaunchPage
         identityClient={{} as IdentityClient}
@@ -536,5 +621,227 @@ describe("anonymous public launch page", () => {
     websiteLink.focus();
     expect(document.activeElement).toBe(websiteLink);
     expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("RANK #3 · 4 votes")).toBeTruthy();
+  });
+});
+
+describe("guest launch discovery", () => {
+  it("composes a reloadable archive date and navigates adjacent selections", () => {
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-11-02",
+            selectedDate: "2026-10-20",
+            items: [],
+            nextCursor: null,
+          },
+        ],
+      },
+    });
+
+    render(
+      <PublicLaunchArchive
+        date="2026-10-20"
+        identityClient={{} as IdentityClient}
+      />,
+    );
+
+    expect(screen.getByText("October 20, 2026")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Previous day/ }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/launches/archive/2026-10-19");
+  });
+  it("renders public product cards with only approved summary fields", () => {
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-11-02",
+            selectedDate: "2026-11-01",
+            items: [
+              {
+                product: {
+                  id: "product-1",
+                  name: "A very long product name that wraps safely",
+                  pitch: "A product pitch for the public launch card.",
+                  logoUrl: "/assets/logo.png",
+                  topics: ["Developer tools", "Productivity"],
+                },
+                rank: 1,
+                activeVoteCount: 6,
+                score: 6,
+                viewerVoted: null,
+              },
+            ],
+            nextCursor: null,
+            hasSnapshot: true,
+          },
+        ],
+      },
+    });
+    renderLaunchDiscovery();
+
+    expect(
+      screen.getByRole("heading", {
+        name: "A very long product name that wraps safely",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("A product pitch for the public launch card."),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("img", {
+          name: "A very long product name that wraps safely",
+        })
+        .getAttribute("src"),
+    ).toBe("/assets/logo.png");
+    expect(
+      screen
+        .getByRole("img", {
+          name: "A very long product name that wraps safely",
+        })
+        .getAttribute("loading"),
+    ).toBe("lazy");
+    expect(screen.getByText("Developer tools")).toBeTruthy();
+    expect(screen.getByText("Productivity")).toBeTruthy();
+    const productLinks = screen.getAllByRole("link", {
+      name: "A very long product name that wraps safely",
+    });
+    expect(productLinks).toHaveLength(2);
+    expect(productLinks[0].getAttribute("href")).toBe("/launches/product-1");
+    expect(screen.queryByText(/Private description|private\.png/)).toBeNull();
+    expect(screen.getByText("RANK #1")).toBeTruthy();
+    expect(screen.getByText("6 votes")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain(
+      "Showing 1 launch for November 1, 2026",
+    );
+  });
+
+  it("shows loading, empty, and retryable failure states separately", () => {
+    mocks.launches = discoveryQuery({ data: undefined, isPending: true });
+    const view = renderLaunchDiscovery();
+    expect(screen.getByRole("status").textContent).toBe("Loading launches…");
+
+    mocks.launches = discoveryQuery();
+    view.rerender(
+      <LaunchDiscovery
+        client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
+        date="2026-11-01"
+        onDateChange={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "No launches on this day" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain(
+      "No launches for November 1, 2026",
+    );
+
+    const retry = vi.fn();
+    mocks.launches = discoveryQuery({
+      data: undefined,
+      isError: true,
+      error: new Error("private diagnostic"),
+      refetch: retry,
+    });
+    view.rerender(
+      <LaunchDiscovery
+        client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
+        date="2026-11-01"
+        onDateChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Launches could not be loaded. Try again.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledOnce();
+    expect(screen.queryByText("private diagnostic")).toBeNull();
+  });
+
+  it("moves between UTC days and supports direct selection through today", () => {
+    const onDateChange = vi.fn();
+    mocks.launches = discoveryQuery();
+    renderLaunchDiscovery(onDateChange);
+
+    fireEvent.click(screen.getByRole("button", { name: /Previous day/ }));
+    expect(onDateChange).toHaveBeenLastCalledWith("2026-10-31");
+    fireEvent.click(screen.getByRole("button", { name: /Next day/ }));
+    expect(onDateChange).toHaveBeenLastCalledWith("2026-11-02");
+    const date = screen.getByLabelText("Choose a UTC date");
+    expect(date.getAttribute("max")).toBe("2026-11-02");
+    fireEvent.change(date, { target: { value: "2026-10-20" } });
+    expect(onDateChange).toHaveBeenLastCalledWith("2026-10-20");
+
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-11-02",
+            selectedDate: "2026-11-02",
+            items: [],
+            nextCursor: null,
+          },
+        ],
+      },
+    });
+    cleanup();
+    renderLaunchDiscovery(onDateChange, "2026-11-02");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /Next day/,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("appends pages using Load more and hides the control when the cursor ends", () => {
+    const fetchNextPage = vi.fn();
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-11-02",
+            selectedDate: "2026-11-01",
+            items: [
+              {
+                product: {
+                  id: "product-1",
+                  name: "Launchpad demo",
+                  pitch: "A clear launch story",
+                  logoUrl: null,
+                  topics: [],
+                },
+                rank: 1,
+                activeVoteCount: 1,
+                score: 1,
+                viewerVoted: null,
+              },
+            ],
+            nextCursor: "cursor-next",
+          },
+        ],
+      },
+      hasNextPage: true,
+      fetchNextPage,
+    });
+    const view = renderLaunchDiscovery();
+    fireEvent.click(screen.getByRole("button", { name: "Load more launches" }));
+    expect(fetchNextPage).toHaveBeenCalledOnce();
+
+    mocks.launches = discoveryQuery();
+    view.rerender(
+      <LaunchDiscovery
+        client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
+        date="2026-11-01"
+        onDateChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Load more/ })).toBeNull();
   });
 });

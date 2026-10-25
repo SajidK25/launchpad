@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from typing import Any, cast
+from uuid import uuid4
 
 import strawberry
 from fastapi import HTTPException, Request, Response
@@ -27,6 +28,15 @@ from app.modules.products.policies import ProductForbiddenError, ProductNotFound
 from app.modules.products.service import ProductService, ProductValidationError
 from app.modules.users.graphql import ProfileQuery
 from app.modules.users.service import ProfileService
+from app.modules.votes.graphql import VoteQuery
+from app.modules.votes.policies import VoteForbiddenError, VoteReadValidationError
+from app.modules.votes.repository import VoteRepository
+from app.modules.votes.service import (
+    RankingRedis,
+    VoteRankingProductAccess,
+    VoteRankingProjectionService,
+    VoteReadService,
+)
 from app.shared.config.settings import Settings
 from app.shared.email.codec import EmailPayloadCodec
 
@@ -44,6 +54,11 @@ _ALLOWED_ROOT_FIELDS = frozenset(
         "viewerLaunchBookings",
         "viewerLaunchNotificationPreferences",
         "publicProduct",
+        "publicLaunches",
+        "publicProductCatalog",
+        "publicCatalogTopics",
+        "dailyProductRanking",
+        "pendingVoteReviews",
     }
 )
 _MAX_QUERY_LENGTH = 8192
@@ -60,6 +75,7 @@ class Query(
     NotificationQuery,
     LaunchQuery,
     LaunchPreferenceQuery,
+    VoteQuery,
 ):
     """The application's single read root; no mutation or subscription exists."""
 
@@ -71,7 +87,12 @@ class ProductsWithoutLaunchesQuery(ProfileQuery, ProductQuery, NotificationQuery
 
 @strawberry.type
 class LaunchesWithoutProductsQuery(
-    ProfileQuery, PublicProductQuery, NotificationQuery, LaunchQuery, LaunchPreferenceQuery
+    ProfileQuery,
+    PublicProductQuery,
+    NotificationQuery,
+    LaunchQuery,
+    LaunchPreferenceQuery,
+    VoteQuery,
 ):
     """Composed launch read root without private product reads."""
 
@@ -98,6 +119,10 @@ class PrivateReadRouter(GraphQLRouter):
                 encoded["message"] = "product unavailable"
             elif isinstance(error.original_error, ProductValidationError):
                 encoded["message"] = "invalid product query"
+            elif isinstance(error.original_error, VoteForbiddenError):
+                encoded["message"] = "vote review access is forbidden"
+            elif isinstance(error.original_error, VoteReadValidationError):
+                encoded["message"] = "invalid vote query"
             else:
                 encoded["message"] = "request could not be completed"
         return response
@@ -141,6 +166,7 @@ def context_getter(
     session_service: SessionService,
     profile_service_factory: Callable[[MemberContext | None], ProfileService],
     payload_codec: EmailPayloadCodec,
+    ranking_redis: RankingRedis | None = None,
 ) -> Callable[..., Any]:
     """Validate the request before resolving a fresh session-bound read context."""
 
@@ -174,6 +200,8 @@ def context_getter(
                 except UnauthenticatedError:
                     secret = None
         response.headers["Cache-Control"] = "no-store"
+        request_id = uuid4().hex
+        response.headers["X-Request-ID"] = request_id
 
         def product_service_factory() -> ProductService:
             return ProductService(member_access=AuthAccessService(), payload_codec=payload_codec)
@@ -185,13 +213,35 @@ def context_getter(
                 payload_codec=payload_codec,
             )
 
+        def vote_read_service_factory() -> VoteReadService:
+            products = cast(VoteRankingProductAccess, product_service_factory())
+            repository = VoteRepository(
+                score_half_life_seconds=settings.vote_score_half_life_seconds
+            )
+            projection = (
+                VoteRankingProjectionService(
+                    products=products,
+                    repository=repository,
+                    redis=ranking_redis,
+                )
+                if ranking_redis is not None
+                else None
+            )
+            return VoteReadService(
+                products=products,
+                repository=repository,
+                projection=projection,
+            )
+
         return {
             "member": member,
+            "request_id": request_id,
             "session_secret": secret,
             "session_factory": session_factory,
             "service_factory": profile_service_factory,
             "product_service_factory": product_service_factory,
             "launch_booking_service_factory": launch_booking_service_factory,
+            "vote_read_service_factory": vote_read_service_factory,
             "notification_service_factory": lambda: NotificationService(
                 member_access=AuthAccessService(), payload_codec=payload_codec
             ),

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -56,7 +57,13 @@ from app.shared.storage.objects import (
 )
 
 if TYPE_CHECKING:
-    from app.modules.products.repository import ProductRepository, TopicChoice
+    from app.modules.products.repository import (
+        ProductRepository,
+        PublicCatalogRow,
+        PublicLaunchLogoRow,
+        PublicLaunchRow,
+        TopicChoice,
+    )
 
 
 class ProductValidationError(ValueError):
@@ -189,6 +196,43 @@ class PublicProductProjection:
     logo: ProductAssetResult | None
     screenshots: tuple[ProductAssetResult, ...]
     topics: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PublicLaunchCard:
+    """Small anonymous card projection for one published product."""
+
+    id: UUID
+    name: str
+    pitch: str
+    logo: ProductAssetResult | None
+    topics: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PublicLaunchPage:
+    """One bounded page of launched products for a UTC calendar date."""
+
+    today_date: date
+    selected_date: date
+    items: tuple[PublicLaunchCard, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PublicCatalogPage:
+    """One bounded page of public cards matching catalog filters."""
+
+    items: tuple[PublicLaunchCard, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PublicCatalogTopicOptions:
+    """Bounded public topic suggestions and still-public selected labels."""
+
+    choices: tuple[TopicChoice, ...]
+    selected: tuple[TopicChoice, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,6 +390,16 @@ class ProductPrivateMedia:
 
     body: bytes
     media_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProductVotingContext:
+    """Minimal launched-product facts available to the voting module."""
+
+    product_id: UUID
+    owner_account_id: UUID
+    launch_date: date
+    launched: bool
 
 
 class ProductService:
@@ -683,7 +737,7 @@ class ProductService:
                 )
             if current_time < launch_time:
                 raise ProductConflictError("launch time has not arrived")
-            return await self.repository.transition_launch_state(
+            launched = await self.repository.transition_launch_state(
                 session,
                 product=product,
                 expected_version=product.version,
@@ -692,6 +746,49 @@ class ProductService:
                 now=current_time,
                 launched_at=current_time,
             )
+            await self._record_launch_event(session, launched)
+            return launched
+
+    async def voting_context(
+        self, session: AsyncSession, *, product_id: UUID, lock: bool = False
+    ) -> ProductVotingContext | None:
+        """Expose owner and UTC launch date only for a currently public launch."""
+
+        product = await self.repository.get_product(session, product_id=product_id, lock=lock)
+        if product is None or product.status != "launched" or product.launched_at is None:
+            return None
+        return ProductVotingContext(
+            product_id=product.id,
+            owner_account_id=product.founder_id,
+            launch_date=product.launched_at.astimezone(UTC).date(),
+            launched=True,
+        )
+
+    async def _record_launch_event(self, session: AsyncSession, product: Product) -> None:
+        """Insert encrypted launch membership into the publication transaction."""
+
+        if product.launched_at is None:
+            raise ProductInfrastructureError("launch context is unavailable")
+        try:
+            key_id, encrypted_payload = self.payload_codec.encode(
+                {
+                    "product_id": product.id,
+                    "owner_account_id": product.founder_id,
+                    "launch_date": product.launched_at.astimezone(UTC).date().isoformat(),
+                }
+            )
+            await self.outbox_repository.add(
+                session,
+                OutboxEvent(
+                    event_type="product.launched.v1",
+                    aggregate_id=product.id,
+                    key_id=key_id,
+                    encrypted_payload=encrypted_payload,
+                    available_at=product.launched_at,
+                ),
+            )
+        except Exception as error:
+            raise ProductInfrastructureError("product launch could not be recorded") from error
 
     async def public_projection(
         self, session: AsyncSession, *, product_id: UUID
@@ -726,6 +823,204 @@ class ProductService:
             screenshots=tuple(asset for asset in views if asset.kind == "screenshot"),
             topics=tuple(topic.selected_label for topic in topics),
         )
+
+    async def public_launches(
+        self,
+        session: AsyncSession,
+        *,
+        requested_date: date | None,
+        first: int = 20,
+        after: str | None = None,
+    ) -> PublicLaunchPage:
+        """Return a bounded, anonymous-safe page for one UTC date."""
+
+        today_date = self.clock().astimezone(UTC).date()
+        selected_date = requested_date or today_date
+        if selected_date > today_date:
+            raise ProductValidationError("future launch dates are unavailable", fields=("date",))
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        cursor = _parse_public_launch_cursor(after, selected_date) if after is not None else None
+        day_start = datetime.combine(selected_date, datetime.min.time(), tzinfo=UTC)
+        next_day_start = day_start + timedelta(days=1)
+        products: list[PublicLaunchRow] = await self.repository.list_public_launches(
+            session,
+            day_start=day_start,
+            next_day_start=next_day_start,
+            limit=first + 1,
+            after=cursor,
+        )
+        visible = products[:first]
+        product_ids = tuple(product.id for product in visible)
+        logos: dict[UUID, PublicLaunchLogoRow] = await self.repository.list_public_launch_logos(
+            session, product_ids=product_ids
+        )
+        topics = await self.repository.list_public_launch_topics(session, product_ids=product_ids)
+        items = tuple(
+            PublicLaunchCard(
+                id=product.id,
+                name=product.name,
+                pitch=product.pitch,
+                logo=_public_launch_logo_view(logos[product.id]) if product.id in logos else None,
+                topics=tuple(topics.get(product.id, ())),
+            )
+            for product in visible
+            if product.name is not None and product.pitch is not None
+        )
+        next_cursor = (
+            _public_launch_cursor(selected_date, visible[-1].sort_key, visible[-1].id)
+            if len(products) > first and visible and visible[-1].name is not None
+            else None
+        )
+        return PublicLaunchPage(
+            today_date=today_date,
+            selected_date=selected_date,
+            items=items,
+            next_cursor=next_cursor,
+        )
+
+    async def public_launch_cards_by_ids(
+        self,
+        session: AsyncSession,
+        *,
+        product_ids: tuple[UUID, ...],
+        launch_date: date | None = None,
+    ) -> tuple[PublicLaunchCard, ...]:
+        """Batch-load launched-only cards in the caller's rank order."""
+
+        unique_ids = tuple(dict.fromkeys(product_ids))
+        if not 1 <= len(unique_ids) <= 50:
+            if not unique_ids:
+                return ()
+            raise ProductValidationError("invalid public product batch", fields=("productIds",))
+        products = await self.repository.list_public_launch_cards_by_ids(
+            session, product_ids=unique_ids, launch_date=launch_date
+        )
+        visible = {product.id: product for product in products}
+        product_ids = tuple(product_id for product_id in unique_ids if product_id in visible)
+        logos: dict[UUID, PublicLaunchLogoRow] = await self.repository.list_public_launch_logos(
+            session, product_ids=product_ids
+        )
+        topics = await self.repository.list_public_launch_topics(session, product_ids=product_ids)
+        return tuple(
+            PublicLaunchCard(
+                id=product_id,
+                name=cast(str, visible[product_id].name),
+                pitch=cast(str, visible[product_id].pitch),
+                logo=_public_launch_logo_view(logos[product_id]) if product_id in logos else None,
+                topics=tuple(topics.get(product_id, ())),
+            )
+            for product_id in product_ids
+            if visible[product_id].name is not None and visible[product_id].pitch is not None
+        )
+
+    async def public_launch_cards_for_date(
+        self, session: AsyncSession, *, launch_date: date
+    ) -> tuple[PublicLaunchCard, ...]:
+        """Batch-load the launched-only candidate cards for one ranking date."""
+
+        products = await self.repository.list_public_launch_cards_for_date(
+            session, launch_date=launch_date
+        )
+        product_ids = tuple(product.id for product in products)
+        logos = await self.repository.list_public_launch_logos(session, product_ids=product_ids)
+        topics = await self.repository.list_public_launch_topics(session, product_ids=product_ids)
+        return tuple(
+            PublicLaunchCard(
+                id=product.id,
+                name=product.name,
+                pitch=product.pitch,
+                logo=_public_launch_logo_view(logos[product.id]) if product.id in logos else None,
+                topics=tuple(topics.get(product.id, ())),
+            )
+            for product in products
+            if product.name is not None and product.pitch is not None
+        )
+
+    async def public_product_catalog(
+        self,
+        session: AsyncSession,
+        *,
+        search: str | None = None,
+        topic_ids: tuple[UUID, ...] = (),
+        first: int = 20,
+        after: str | None = None,
+    ) -> PublicCatalogPage:
+        """Return a bounded public catalog page using normalized, validated filters."""
+
+        if search is not None and len(search) > 200:
+            raise ProductValidationError("search text is too long", fields=("search",))
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        normalized_search = " ".join((search or "").split())
+        terms = tuple(normalized_search.split())
+        normalized_topic_ids = tuple(sorted(set(topic_ids), key=str))
+        if len(normalized_topic_ids) > 20:
+            raise ProductValidationError("too many topics", fields=("topicIds",))
+        filter_fingerprint = _public_catalog_filter_fingerprint(terms, normalized_topic_ids)
+        cursor = (
+            _parse_public_catalog_cursor(after, filter_fingerprint) if after is not None else None
+        )
+        products: list[PublicCatalogRow] = await self.repository.list_public_catalog(
+            session,
+            terms=terms,
+            topic_ids=normalized_topic_ids,
+            limit=first + 1,
+            after=cursor,
+        )
+        visible = products[:first]
+        product_ids = tuple(product.id for product in visible)
+        logos: dict[UUID, PublicLaunchLogoRow] = await self.repository.list_public_launch_logos(
+            session, product_ids=product_ids
+        )
+        topics = await self.repository.list_public_launch_topics(session, product_ids=product_ids)
+        items = tuple(
+            PublicLaunchCard(
+                id=product.id,
+                name=product.name,
+                pitch=product.pitch,
+                logo=_public_launch_logo_view(logos[product.id]) if product.id in logos else None,
+                topics=tuple(topics.get(product.id, ())),
+            )
+            for product in visible
+        )
+        next_cursor = (
+            _public_catalog_cursor(
+                filter_fingerprint,
+                visible[-1].launched_at,
+                visible[-1].sort_key,
+                visible[-1].id,
+            )
+            if len(products) > first and visible
+            else None
+        )
+        return PublicCatalogPage(items=items, next_cursor=next_cursor)
+
+    async def public_catalog_topics(
+        self,
+        session: AsyncSession,
+        *,
+        query: str | None = None,
+        selected_ids: tuple[UUID, ...] = (),
+        first: int = 20,
+    ) -> PublicCatalogTopicOptions:
+        """Return bounded launched-only topic suggestions and selected labels."""
+
+        if query is not None and len(query) > 200:
+            raise ProductValidationError("search text is too long", fields=("query",))
+        if not 1 <= first <= 50:
+            raise ProductValidationError("invalid page size", fields=("first",))
+        normalized_ids = tuple(sorted(set(selected_ids), key=str))
+        if len(normalized_ids) > 20:
+            raise ProductValidationError("too many topics", fields=("selectedIds",))
+        normalized_query = query.strip() if query and query.strip() else None
+        choices = await self.repository.list_public_catalog_topic_choices(
+            session, query=normalized_query, limit=first
+        )
+        selected = await self.repository.list_public_catalog_selected_topics(
+            session, topic_ids=normalized_ids
+        )
+        return PublicCatalogTopicOptions(choices=tuple(choices), selected=tuple(selected))
 
     async def edit_launched_product(
         self,
@@ -1890,6 +2185,80 @@ def _parse_read_cursor(value: str) -> tuple[datetime, UUID]:
     except ValueError as error:
         raise ProductValidationError("invalid cursor", fields=("after",)) from error
     return timestamp, submission_id
+
+
+def _public_launch_cursor(selected_date: date, sort_key: str, product_id: UUID) -> str:
+    payload = json.dumps(
+        [selected_date.isoformat(), sort_key, str(product_id)], separators=(",", ":")
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _parse_public_launch_cursor(value: str, selected_date: date) -> tuple[str, UUID]:
+    try:
+        payload = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        cursor_date, name_key, product_text = json.loads(payload)
+        product_id = UUID(product_text)
+        if cursor_date != selected_date.isoformat() or not isinstance(name_key, str):
+            raise ValueError("cursor date or sort key is invalid")
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProductValidationError("invalid cursor", fields=("after",)) from error
+    return name_key, product_id
+
+
+def _public_catalog_filter_fingerprint(terms: tuple[str, ...], topic_ids: tuple[UUID, ...]) -> str:
+    payload = json.dumps(
+        [tuple(term.casefold() for term in terms), tuple(sorted(map(str, topic_ids)))],
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _public_catalog_cursor(
+    filter_fingerprint: str,
+    launched_at: datetime,
+    sort_key: str,
+    product_id: UUID,
+) -> str:
+    payload = json.dumps(
+        [filter_fingerprint, launched_at.isoformat(), sort_key, str(product_id)],
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _parse_public_catalog_cursor(value: str, filter_fingerprint: str) -> tuple[datetime, str, UUID]:
+    try:
+        payload = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+        decoded = json.loads(payload)
+        if not isinstance(decoded, list) or len(decoded) != 4:
+            raise ValueError("catalog cursor must have four fields")
+        cursor_fingerprint, timestamp_value, sort_key, product_value = decoded
+        if (
+            not isinstance(cursor_fingerprint, str)
+            or not hmac.compare_digest(cursor_fingerprint, filter_fingerprint)
+            or not isinstance(timestamp_value, str)
+            or not isinstance(sort_key, str)
+            or not isinstance(product_value, str)
+        ):
+            raise ValueError("catalog cursor does not match the request")
+        launched_at = datetime.fromisoformat(timestamp_value)
+        product_id = UUID(product_value)
+        if launched_at.tzinfo is None:
+            raise ValueError("catalog cursor timestamp has no timezone")
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProductValidationError("invalid cursor", fields=("after",)) from error
+    return launched_at, sort_key, product_id
+
+
+def _public_launch_logo_view(asset: PublicLaunchLogoRow) -> ProductAssetResult:
+    return ProductAssetResult(
+        id=asset.id,
+        kind=cast(Literal["logo", "screenshot"], asset.kind),
+        state=asset.state,
+        media_type=cast(Literal["image/jpeg", "image/png", "image/webp"], asset.media_type),
+        byte_count=asset.byte_count,
+    )
 
 
 def validate_submission_content(content: ProductContentInput) -> ProductContentInput:

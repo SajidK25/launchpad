@@ -1013,6 +1013,130 @@
         "required": ["loc", "msg", "type"],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VoteInput": {
+        "additionalProperties": false,
+        "description": "Target product for a member cast command.",
+        "properties": {
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          }
+        },
+        "required": ["product_id"],
+        "title": "VoteInput",
+        "type": "object"
+      },
+      "VoteLiveTicketResponse": {
+        "description": "Short-lived anonymous ticket for the current public ranking stream.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "ticket": {
+            "title": "Ticket",
+            "type": "string"
+          }
+        },
+        "required": ["ticket", "expires_at"],
+        "title": "VoteLiveTicketResponse",
+        "type": "object"
+      },
+      "VoteResponse": {
+        "description": "Confirmed vote state returned only after the transaction commits.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "cast_at": {
+            "format": "date-time",
+            "title": "Cast At",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "vote_id": {
+            "format": "uuid",
+            "title": "Vote Id",
+            "type": "string"
+          }
+        },
+        "required": ["vote_id", "product_id", "active", "cast_at", "replayed"],
+        "title": "VoteResponse",
+        "type": "object"
+      },
+      "VoteReviewDecisionInput": {
+        "additionalProperties": false,
+        "description": "Bounded reviewer outcome and rationale for one pending risk flag.",
+        "properties": {
+          "outcome": {
+            "enum": ["cleared", "invalidated"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["outcome", "reason"],
+        "title": "VoteReviewDecisionInput",
+        "type": "object"
+      },
+      "VoteReviewDecisionResponse": {
+        "description": "Auditable result returned after the review transaction succeeds.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "flag_id": {
+            "format": "uuid",
+            "title": "Flag Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": ["cleared", "invalidated"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewer_account_id": {
+            "format": "uuid",
+            "title": "Reviewer Account Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "flag_id",
+          "reviewer_account_id",
+          "outcome",
+          "reason",
+          "created_at"
+        ],
+        "title": "VoteReviewDecisionResponse",
+        "type": "object"
       }
     }
   },
@@ -2813,6 +2937,256 @@
           }
         },
         "summary": "Create Review Decision"
+      }
+    },
+    "/api/v1/votes": {
+      "post": {
+        "operationId": "cast_vote_api_v1_votes_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-turnstile-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Turnstile-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cast Vote"
+      }
+    },
+    "/api/v1/votes/live-ticket": {
+      "post": {
+        "operationId": "issue_live_ticket_api_v1_votes_live_ticket_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteLiveTicketResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Issue Live Ticket"
+      }
+    },
+    "/api/v1/votes/reviews/{flag_id}/decision": {
+      "post": {
+        "operationId": "decide_vote_review_api_v1_votes_reviews__flag_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flag_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Flag Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteReviewDecisionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteReviewDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Vote Review"
+      }
+    },
+    "/api/v1/votes/{product_id}": {
+      "delete": {
+        "operationId": "withdraw_vote_api_v1_votes__product_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-turnstile-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Turnstile-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Vote"
       }
     }
   }

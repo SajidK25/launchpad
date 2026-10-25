@@ -65,6 +65,39 @@ class Product(ProductBase):
             "id",
             postgresql_where=text("status = 'approved'"),
         ),
+        Index(
+            "ix_products_launched_at",
+            "launched_at",
+            postgresql_where=text("status = 'launched'"),
+        ),
+        Index(
+            "ix_products_launched_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+            postgresql_where=text("status = 'launched'"),
+        ),
+        Index(
+            "ix_products_launched_pitch_trgm",
+            "pitch",
+            postgresql_using="gin",
+            postgresql_ops={"pitch": "gin_trgm_ops"},
+            postgresql_where=text("status = 'launched'"),
+        ),
+        Index(
+            "ix_products_launched_description_trgm",
+            "description",
+            postgresql_using="gin",
+            postgresql_ops={"description": "gin_trgm_ops"},
+            postgresql_where=text("status = 'launched'"),
+        ),
+        Index(
+            "ix_products_launched_catalog_order",
+            text("launched_at DESC"),
+            text("lower(name)"),
+            text("id"),
+            postgresql_where=text("status = 'launched'"),
+        ),
         Index("ix_products_website_key", "website_key"),
     )
 
@@ -241,6 +274,7 @@ class ProductTopic(ProductBase):
             name="ck_product_topics_selected_label",
         ),
         Index("uq_product_topics_product_position", "product_id", "position", unique=True),
+        Index("ix_product_topics_topic_product", "topic_id", "product_id"),
     )
 
     product_id: Mapped[UUID] = mapped_column(

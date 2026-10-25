@@ -13,6 +13,8 @@ COPY packages/contracts ./packages/contracts
 
 FROM tooling AS build
 
+ARG VITE_TURNSTILE_SITE_KEY=
+ENV VITE_TURNSTILE_SITE_KEY=${VITE_TURNSTILE_SITE_KEY}
 RUN npm run build
 
 FROM nginx:1.27.4-alpine@sha256:4ff102c5d78d254a6f0da062b3cf39eaf07f01eec0927fd21e219d0af8bc0591 AS runtime
