@@ -23,6 +23,7 @@ export function LaunchDiscovery({
   const selectedDate = firstPage?.selectedDate ?? date;
   const items = launches.data?.pages.flatMap((page) => page.items) ?? [];
   const Heading = headingLevel;
+  const childHeadingLevel = headingLevel === "h1" ? "h2" : "h3";
   useRankingLive({
     date,
     enabled:
@@ -107,7 +108,11 @@ export function LaunchDiscovery({
               0
             </span>
             <div>
-              <h3>No launches on this day</h3>
+              {headingLevel === "h1" ? (
+                <h2>No launches on this day</h2>
+              ) : (
+                <h3>No launches on this day</h3>
+              )}
               <p>Choose another date to explore launches.</p>
             </div>
           </div>
@@ -125,6 +130,7 @@ export function LaunchDiscovery({
                 item={item}
                 key={item.product.id}
                 launchDate={selectedDate ?? todayDate ?? ""}
+                headingLevel={childHeadingLevel}
                 votingOpen={selectedDate === todayDate}
               />
             ))}

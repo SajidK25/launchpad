@@ -79,6 +79,25 @@ function expectHomeDiscoveryVisible() {
   expect(screen.getByTestId("launch-discovery")).toBeTruthy();
 }
 
+function expectRetainedSectionsVisible() {
+  expect(
+    screen.getByRole("heading", {
+      level: 2,
+      name: "Take your product from ready to released.",
+    }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("heading", { name: "A launch process you can follow" }),
+  ).toBeTruthy();
+  for (const step of ["Prepare", "Get reviewed", "Choose a date", "Publish"])
+    expect(screen.getByRole("heading", { name: step })).toBeTruthy();
+  expect(
+    screen.getByRole("heading", {
+      name: "Know where your launch stands.",
+    }),
+  ).toBeTruthy();
+}
+
 beforeEach(() => {
   mocks.session = { data: null, isPending: false, isError: false };
   mocks.connectivity = { state: "connected", refresh: vi.fn() };
@@ -224,6 +243,7 @@ describe("HomePage", () => {
     expect(
       screen.queryByRole("link", { name: "Create your account" }),
     ).toBeNull();
+    expectRetainedSectionsVisible();
     fireEvent.click(screen.getByRole("link", { name: "Go to your workspace" }));
     expect(mocks.navigate).toHaveBeenCalledWith("/products");
   });

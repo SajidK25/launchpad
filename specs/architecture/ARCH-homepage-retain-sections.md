@@ -65,6 +65,8 @@ No API contract changes.
 |-----------|-----------------|---------|------------------|
 | Component prop | Optional `headingLevel: "h1" \| "h2"`, default `"h2"` | Selects the semantic level of the existing discovery title while keeping its text, section, query, and interactions unchanged. Homepage passes `"h1"`; archive callers omit the prop. | No new runtime errors; the value controls the rendered heading element. |
 
+For descendants, `LaunchDiscovery` renders an H2 empty-state title when its own title is H1, otherwise H3. It passes that same child level to `RankedLaunchCard`; the card defaults to H3 for its existing archive/default uses.
+
 **Auth requirements:** None added. Existing public discovery and session behavior remains unchanged.
 
 ## Module Boundaries
@@ -94,8 +96,11 @@ _The concrete answer to "where does this land in the codebase?" — produced dur
 | `apps/web/src/home/home.css` | Restore the previous hero, workflow cards, reassurance panel, and responsive styles; integrate spacing with the first-position discovery section. |
 | `apps/web/src/home/HomePage.test.tsx` | Replace assertions that the old sections are absent; cover section order, heading levels, retained copy/actions, feed-state independence, and existing session/outage behavior. |
 | `apps/web/src/App.test.tsx` | Update the application-level homepage heading assertion to expect Today’s launches as H1 and the restored hero as H2, while retaining the public-shell and outage assertions. |
-| `apps/web/src/launches/LaunchDiscovery.tsx` | Support H1 or H2 rendering for its title, defaulting to H2 so existing archive use remains unchanged. |
-| `apps/web/src/launches/LaunchScreens.test.tsx` | Verify the discovery section retains its default H2 when used by archive screens. |
+| `apps/web/src/launches/LaunchDiscovery.tsx` | Support H1 or H2 rendering for its title, defaulting to H2; keep empty-state and product-card headings one level below that title. |
+| `apps/web/src/votes/RankedLaunchCard.tsx` | Accept an optional card-title heading level so homepage cards use H2 beneath the H1 and archive cards retain H3. |
+| `apps/web/src/votes/RankedLaunchCard.test.tsx` | Assert the default card title remains H3 and the explicit homepage level is honored. |
+| `apps/web/src/launches/LaunchScreens.test.tsx` | Verify homepage H1 discovery renders its empty-state and product titles at H2, while archive/default discovery remains H2. |
+| `tests/browser/frontend-accessibility.spec.ts` | Verify the actual homepage heading outline, keyboard order between retained account actions, and visible focus styling in a browser. |
 
 ### Deleted / replaced
 
@@ -119,12 +124,12 @@ _The concrete answer to "where does this land in the codebase?" — produced dur
 |------|--------|--------------|-----|
 | Public homepage composition | Discovery becomes first content; prior informational sections return beneath it | M | Main hierarchy and page height change; section order, feed-state and responsive behavior need coverage. |
 | Application-level homepage regression tests | Update expected H1/H2 while preserving outage and shell assertions | M | The old compact-hero H1 expectation conflicts with the approved homepage H1; the application test protects integration behavior. |
-| Shared launch discovery | Adds an optional heading-level setting | M | The same component is used by archives; preserving the default H2 prevents a cross-route accessibility regression. |
+| Shared launch discovery and ranked cards | Adds optional heading-level settings and keeps child headings below the active section heading | M | The same components are used by archives; preserving H2/H3 defaults prevents cross-route semantic changes. |
 | Identity and navigation actions | Existing CTA behavior remains but is restored below the discovery list | L | No auth or destination changes; layout order and keyboard traversal are affected. |
 | Public shell/footer | No code change; footer follows the longer homepage | L | Shared shell already wraps page content and owns the footer. |
 | API, database, and deployment data | No change | L | This is frontend-only and introduces no contract, persistence, or migration impact. |
 
-**Contract changes:** Internal React component prop only (`headingLevel`, optional and defaulting to current behavior). No REST, GraphQL, URL, or external client contract changes.
+**Contract changes:** Internal React component props only (`LaunchDiscovery.headingLevel` and `RankedLaunchCard.headingLevel`, both preserving their existing defaults). No REST, GraphQL, URL, or external client contract changes.
 
 **Cross-cutting ripples:** Accessibility heading hierarchy and keyboard reading order; responsive layout and CSS; homepage component tests. No auth policy, telemetry, migrations, feature flags, or backend deployment changes.
 
@@ -144,7 +149,7 @@ _The concrete answer to "where does this land in the codebase?" — produced dur
 | A1 | Render Today’s launches as the first main homepage section, followed by all prior homepage sections in their established order. | Put the marketing hero first; omit some supporting sections. | Preserves daily discovery priority while restoring the content requested in the brief and screenshot. | R1, R2, R3, R4 |
 | A2 | Keep the hero, account actions, workflow content, and reassurance copy/behavior intact. | Rewrite copy, destinations, or product guidance during the layout adjustment. | The requested change is placement and retention, not a product-message or workflow change. | R2, R3, R4 |
 | A3 | Keep supporting sections rendered regardless of feed loading, empty, or error state. | Gate the rest of the page on feed success. | Maintains useful guidance and account entry points during normal loading and service failure. | R5 |
-| A4 | Make Today’s launches the homepage H1; render the restored hero title as H2; keep archive discovery H2 by default. | Keep the later hero as H1; globally change archive heading levels. | Aligns the semantic outline with the required visual/content priority without changing archive pages. | R1, R6, N1 |
+| A4 | Make Today’s launches the homepage H1; render discovery empty-state and product titles as H2, the restored hero title as H2, and preserve archive discovery H2 with H3 descendants. | Keep the later hero as H1; globally change archive heading levels. | Aligns the semantic outline with the required visual/content priority, avoids skipped heading levels on the homepage, and preserves archive structure. | R1, R6, N1 |
 | A6 | Update the existing application-level homepage heading expectation with the new hierarchy. | Keep the obsolete expectation and leave the application regression suite failing. | The old assertion names the compact hero as H1; updating it verifies the approved page while retaining outage and shell coverage. | R1, N1 |
 | A5 | Reuse existing neobrutalist styles and the shared shell footer. | Create a new visual system or duplicate footer markup. | Preserves the approved design direction and shell ownership. | R4, R6 |
 
@@ -166,7 +171,7 @@ _The concrete answer to "where does this land in the codebase?" — produced dur
 | `HomePage.tsx` and `HomePage.test.tsx` | Feed may accidentally move below the supporting sections, or session/outage actions may disappear during composition. | Assert semantic section order and cover guest, member, reviewer, session failure, outage, and feed-state cases. |
 | `App.test.tsx` | Integration expectation for the previous compact-hero H1 becomes stale; outage and public-shell assertions could be lost while updating it. | Assert Today’s launches H1 and the restored hero H2; retain existing outage and shell assertions. |
 | `home.css` | Restored styles may overflow at narrow sizes or obscure focus indicators. | Verify 320px and desktop layouts; check keyboard focus visibility and text wrapping. |
-| `LaunchDiscovery.tsx` and `LaunchScreens.test.tsx` | Heading prop may alter archive markup or break section labeling. | Default to H2 and assert archive use remains H2; homepage explicitly requests H1. |
+| `LaunchDiscovery.tsx`, `RankedLaunchCard.tsx`, and related tests | A homepage H1 could be followed by H3 titles, or the heading option could alter archive markup. | Homepage empty-state and card titles render as H2; default/archive discovery remains H2 with H3 descendants. Test actual discovery and card components. |
 | `AppShell.tsx` (touched but not changed) | Footer could be duplicated or appear before the retained sections if moved into the page. | Leave shell ownership unchanged; verify footer follows the full page content. |
 
 ## Open Questions
