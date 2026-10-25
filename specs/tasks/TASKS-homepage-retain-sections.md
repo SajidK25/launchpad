@@ -8,7 +8,7 @@
 > **Priority:** medium
 > **Depends on:** None
 > **Satisfies REQs:** R1, R2, R3, R4, R5, R6, N1
-> **Footprint slice:** Modified: `HomePage.tsx`, `home.css`, `LaunchDiscovery.tsx`, `RankedLaunchCard.tsx`, `HomePage.test.tsx`, `App.test.tsx`, `LaunchScreens.test.tsx`, `RankedLaunchCard.test.tsx`, `tests/browser/frontend-accessibility.spec.ts`
+> **Footprint slice:** Modified: `HomePage.tsx`, `home.css`, `LaunchDiscovery.tsx`, `RankedLaunchCard.tsx`, `HomePage.test.tsx`, `App.test.tsx`, `LaunchScreens.test.tsx`, `RankedLaunchCard.test.tsx`, `tests/browser/frontend-accessibility.spec.ts`, `tests/browser/connectivity.spec.ts`, `tests/browser/member-identity.spec.ts`
 > **High-risk areas touched:** Public homepage composition (M); shared launch discovery heading behavior (M)
 
 ### Description
@@ -21,6 +21,7 @@ Restore the previous homepage hero and account actions, four-step launch-process
 - **Heading outline and keyboard order** — inspect the homepage heading outline and navigate with Tab; expected: Today’s launches is the H1, the restored hero is H2, later sections have meaningful headings, and focus follows the displayed content order with visible focus. _(verifies R1, R6, N1)_
 - **Discovery descendant heading levels** — render the actual `LaunchDiscovery` with `headingLevel="h1"` for empty and populated responses; expected: empty-state and product titles are H2. Render it with its default H2; expected: card titles remain H3. _(verifies R1, N1; closes review finding)_
 - **Browser heading and keyboard focus** — run the guest discovery Playwright scenario; expected: actual page H1/child heading levels are correct, Tab from Create your account reaches Sign in, reverse Tab returns, and keyboard focus has a visible outline. _(verifies R1, R6, N1; closes manual review finding)_
+- **Homepage heading in loading/error states** — run browser connectivity checks with the daily feed response unavailable; expected: the page continues to identify the homepage section as Today’s launches before the API date is known. _(verifies R1, R5, N1)_
 - **Feed state independence** — use component tests to render loading, empty, and error feed states; expected: each state remains inside the discovery section and all retained sections still render after it. On the running page, confirm the feed’s loading, empty, or retryable error presentation does not hide the supporting content. _(verifies R5; covers ARCH forward stress scenarios)_
 - **Responsive layout** — inspect at 320px and a common desktop width; expected: sections remain in the specified order, text and cards remain readable, and the document has no page-level horizontal scrolling. _(verifies R6)_
 - **Account and outage behavior** — exercise guest, eligible founder, reviewer/admin, failed-session, and connectivity-outage states; expected: existing CTA destinations, safe guest fallback, and outage recovery action remain unchanged. _(guards ARCH backward-regression risk for `HomePage.tsx`; verifies R2)_
@@ -38,6 +39,7 @@ Restore the previous homepage hero and account actions, four-step launch-process
 - `LaunchScreens.test.tsx`: actual discovery H1 with H2 empty/card descendants, default H2 with H3 card descendants, and existing public archive navigation.
 - `RankedLaunchCard.test.tsx`: card-title heading level default and override.
 - `tests/browser/frontend-accessibility.spec.ts`: rendered heading hierarchy, action keyboard order, and visible focus outline.
+- `tests/browser/connectivity.spec.ts` and `tests/browser/member-identity.spec.ts`: current homepage heading and navigation checks.
 - Browser/UI: 320px and desktop layout, focus visibility/order, full page content and shared footer placement.
 
 ### Implementation Notes
@@ -73,6 +75,7 @@ _Anchored on ARCH's Change Footprint — every entry below maps to a specific Fo
 - `apps/web/src/votes/RankedLaunchCard.tsx` (render product title at optional H2/H3 level, default H3)
 - `apps/web/src/votes/RankedLaunchCard.test.tsx` (cover card-title heading levels)
 - `tests/browser/frontend-accessibility.spec.ts` (verify actual heading hierarchy and keyboard focus order/visibility)
+- `tests/browser/connectivity.spec.ts` and `tests/browser/member-identity.spec.ts` (use the approved homepage heading and retain outage/session route coverage)
 
 **Must NOT modify:**
 - `apps/web/src/App.tsx` (shell and route composition remains a regression boundary)

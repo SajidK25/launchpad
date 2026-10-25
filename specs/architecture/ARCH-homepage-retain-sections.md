@@ -65,7 +65,7 @@ No API contract changes.
 |-----------|-----------------|---------|------------------|
 | Component prop | Optional `headingLevel: "h1" \| "h2"`, default `"h2"` | Selects the semantic level of the existing discovery title while keeping its text, section, query, and interactions unchanged. Homepage passes `"h1"`; archive callers omit the prop. | No new runtime errors; the value controls the rendered heading element. |
 
-For descendants, `LaunchDiscovery` renders an H2 empty-state title when its own title is H1, otherwise H3. It passes that same child level to `RankedLaunchCard`; the card defaults to H3 for its existing archive/default uses.
+For descendants, `LaunchDiscovery` renders an H2 empty-state title when its own title is H1, otherwise H3. It passes that same child level to `RankedLaunchCard`; the card defaults to H3 for its existing archive/default uses. When the homepage date is omitted and the API has not returned a date yet, the component still labels the section “Today’s launches,” including pending and error states.
 
 **Auth requirements:** None added. Existing public discovery and session behavior remains unchanged.
 
@@ -96,11 +96,13 @@ _The concrete answer to "where does this land in the codebase?" — produced dur
 | `apps/web/src/home/home.css` | Restore the previous hero, workflow cards, reassurance panel, and responsive styles; integrate spacing with the first-position discovery section. |
 | `apps/web/src/home/HomePage.test.tsx` | Replace assertions that the old sections are absent; cover section order, heading levels, retained copy/actions, feed-state independence, and existing session/outage behavior. |
 | `apps/web/src/App.test.tsx` | Update the application-level homepage heading assertion to expect Today’s launches as H1 and the restored hero as H2, while retaining the public-shell and outage assertions. |
-| `apps/web/src/launches/LaunchDiscovery.tsx` | Support H1 or H2 rendering for its title, defaulting to H2; keep empty-state and product-card headings one level below that title. |
+| `apps/web/src/launches/LaunchDiscovery.tsx` | Support H1 or H2 rendering for its title, defaulting to H2; keep the homepage title stable as Today’s launches before its API date arrives, and keep empty-state and product-card headings one level below it. |
 | `apps/web/src/votes/RankedLaunchCard.tsx` | Accept an optional card-title heading level so homepage cards use H2 beneath the H1 and archive cards retain H3. |
 | `apps/web/src/votes/RankedLaunchCard.test.tsx` | Assert the default card title remains H3 and the explicit homepage level is honored. |
 | `apps/web/src/launches/LaunchScreens.test.tsx` | Verify homepage H1 discovery renders its empty-state and product titles at H2, while archive/default discovery remains H2. |
 | `tests/browser/frontend-accessibility.spec.ts` | Verify the actual homepage heading outline, keyboard order between retained account actions, and visible focus styling in a browser. |
+| `tests/browser/connectivity.spec.ts` | Use the current homepage H1 in healthy, failed, and recovered connectivity assertions. |
+| `tests/browser/member-identity.spec.ts` | Assert the current homepage H1 and retained hero after account-route navigation. |
 
 ### Deleted / replaced
 
@@ -149,7 +151,7 @@ _The concrete answer to "where does this land in the codebase?" — produced dur
 | A1 | Render Today’s launches as the first main homepage section, followed by all prior homepage sections in their established order. | Put the marketing hero first; omit some supporting sections. | Preserves daily discovery priority while restoring the content requested in the brief and screenshot. | R1, R2, R3, R4 |
 | A2 | Keep the hero, account actions, workflow content, and reassurance copy/behavior intact. | Rewrite copy, destinations, or product guidance during the layout adjustment. | The requested change is placement and retention, not a product-message or workflow change. | R2, R3, R4 |
 | A3 | Keep supporting sections rendered regardless of feed loading, empty, or error state. | Gate the rest of the page on feed success. | Maintains useful guidance and account entry points during normal loading and service failure. | R5 |
-| A4 | Make Today’s launches the homepage H1; render discovery empty-state and product titles as H2, the restored hero title as H2, and preserve archive discovery H2 with H3 descendants. | Keep the later hero as H1; globally change archive heading levels. | Aligns the semantic outline with the required visual/content priority, avoids skipped heading levels on the homepage, and preserves archive structure. | R1, R6, N1 |
+| A4 | Make Today’s launches the homepage H1 even before the API supplies its date; render discovery empty-state and product titles as H2, the restored hero title as H2, and preserve archive discovery H2 with H3 descendants. | Keep the later hero as H1; globally change archive heading levels. | Aligns the semantic outline with the required visual/content priority, avoids skipped heading levels on the homepage, and preserves archive structure through loading and errors. | R1, R6, N1 |
 | A6 | Update the existing application-level homepage heading expectation with the new hierarchy. | Keep the obsolete expectation and leave the application regression suite failing. | The old assertion names the compact hero as H1; updating it verifies the approved page while retaining outage and shell coverage. | R1, N1 |
 | A5 | Reuse existing neobrutalist styles and the shared shell footer. | Create a new visual system or duplicate footer markup. | Preserves the approved design direction and shell ownership. | R4, R6 |
 
