@@ -220,3 +220,5 @@ None.
 | Linked REQ absent from the reviewed commit | The linked `REQ-homepage-retain-sections.md` is included in the follow-up source artifact set. | Present in the follow-up working tree. |
 
 **Follow-up checks:** All 33 frontend test files passed (223 tests); TypeScript typecheck, ESLint, and production build passed. The focused browser keyboard/focus test passed. An initial browser attempt served from the repository root and returned 404; the successful run served `apps/web/dist` from the web app directory.
+
+**PR CI follow-up:** PR #8 exposed older browser assertions that still expected “Fresh products. Every day.” The homepage now consistently identifies itself as “Today’s launches” while the API date is pending or unavailable. Updated the connectivity, accessibility, and member-identity browser specs. All five affected browser tests passed on the rebased build, along with the LaunchDiscovery component test (18 cases), typecheck, lint, and build.

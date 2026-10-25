@@ -157,7 +157,7 @@ test("representative public, account, founder, reviewer, and launch pages pass a
   fixtures.setSignedIn(false);
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Fresh products. Every day." }),
+    page.getByRole("heading", { level: 1, name: "Today’s launches" }),
   ).toBeVisible();
   await expectNoSeriousAccessibilityIssues(page);
 

@@ -758,10 +758,13 @@ describe("guest launch discovery", () => {
       <LaunchDiscovery
         client={{} as LaunchClient}
         identityClient={{} as IdentityClient}
-        date="2026-11-01"
         onDateChange={vi.fn()}
+        headingLevel="h1"
       />,
     );
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Today’s launches" }),
+    ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toBe(
       "Launches could not be loaded. Try again.",
     );
