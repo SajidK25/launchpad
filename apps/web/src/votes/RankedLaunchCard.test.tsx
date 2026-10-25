@@ -31,13 +31,22 @@ describe("RankedLaunchCard", () => {
     expect(screen.getByText("0 votes")).toBeTruthy();
     expect(screen.getByText("A public launch pitch")).toBeTruthy();
     expect(screen.getByText("Developer tools")).toBeTruthy();
-    expect(
-      screen
-        .getByRole("heading", { name: "Launchpad demo" })
-        .querySelector("a")
-        ?.getAttribute("href"),
-    ).toBe("/launches/product-1");
+    const title = screen.getByRole("heading", {
+      level: 3,
+      name: "Launchpad demo",
+    });
+    expect(title.querySelector("a")?.getAttribute("href")).toBe(
+      "/launches/product-1",
+    );
     expect(screen.queryByText(/score|viewerVoted|private/i)).toBeNull();
+  });
+
+  it("uses the requested card-title heading level", () => {
+    render(<RankedLaunchCard headingLevel="h2" item={item} />);
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Launchpad demo" }),
+    ).toBeTruthy();
   });
 
   it("marks pre-voting archive entries as unranked without fabricated votes", () => {

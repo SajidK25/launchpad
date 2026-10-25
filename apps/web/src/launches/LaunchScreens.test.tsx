@@ -110,6 +110,7 @@ function renderPublicLaunch(productId = "product-1") {
 function renderLaunchDiscovery(
   onDateChange = vi.fn(),
   date: string | undefined = "2026-11-01",
+  headingLevel: "h1" | "h2" = "h2",
 ) {
   return {
     onDateChange,
@@ -118,6 +119,7 @@ function renderLaunchDiscovery(
         client={{} as LaunchClient}
         identityClient={{} as IdentityClient}
         date={date}
+        headingLevel={headingLevel}
         onDateChange={onDateChange}
       />,
     ),
@@ -766,6 +768,70 @@ describe("guest launch discovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledOnce();
     expect(screen.queryByText("private diagnostic")).toBeNull();
+  });
+
+  it("keeps homepage discovery descendants one level below its H1", () => {
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-11-02",
+            selectedDate: "2026-11-02",
+            items: [],
+            nextCursor: null,
+          },
+        ],
+      },
+    });
+    const view = renderLaunchDiscovery(vi.fn(), undefined, "h1");
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Today’s launches" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: "No launches on this day",
+      }),
+    ).toBeTruthy();
+
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-11-02",
+            selectedDate: "2026-11-02",
+            items: [
+              {
+                product: {
+                  id: "product-1",
+                  name: "Launchpad demo",
+                  pitch: "A clear launch story",
+                  logoUrl: null,
+                  topics: [],
+                },
+                rank: null,
+                activeVoteCount: null,
+                score: null,
+                viewerVoted: null,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    view.rerender(
+      <LaunchDiscovery
+        client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
+        onDateChange={vi.fn()}
+        headingLevel="h1"
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Launchpad demo" }),
+    ).toBeTruthy();
   });
 
   it("moves between UTC days and supports direct selection through today", () => {
