@@ -150,6 +150,49 @@ def test_launch_notice_replay_and_disabled_channels_do_not_duplicate_delivery_in
     asyncio.run(verify())
 
 
+def test_launch_notice_supports_in_site_only_and_no_channel_preferences() -> None:
+    async def verify() -> None:
+        founder_id, product_id = uuid4(), uuid4()
+        repository = _Repository(
+            {
+                "reminder_email": False,
+                "reminder_in_site": True,
+                "live_email": False,
+                "live_in_site": True,
+                "failure_email": False,
+                "failure_in_site": False,
+            }
+        )
+        outbox = _Outbox()
+        service = NotificationService(
+            preference_repository=repository,
+            launch_notice_repository=repository,
+            outbox_repository=outbox,
+            idempotent_outbox_repository=outbox,
+            payload_codec=EmailPayloadCodec({"launch-only": b"n" * 32}, "launch-only"),
+        )
+        session = cast(AsyncSession, object())
+        inbox_only_booking = SimpleNamespace(
+            id=uuid4(), founder_id=founder_id, product_id=product_id
+        )
+        no_channel_booking = SimpleNamespace(
+            id=uuid4(), founder_id=founder_id, product_id=product_id
+        )
+
+        notice = await service.record_launch_notice(
+            session, booking=inbox_only_booking, kind="launch_live"
+        )
+        omitted = await service.record_launch_notice(
+            session, booking=no_channel_booking, kind="launch_failed"
+        )
+
+        assert notice is repository.notices[(inbox_only_booking.id, "launch_live")]
+        assert {event.event_type for event in outbox.events} == {"notification.changed.v1"}
+        assert omitted is None
+
+    asyncio.run(verify())
+
+
 @pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="requires check PostgreSQL")
 def test_postgres_launch_notices_dedupe_and_failure_reason_ignores_channel_preferences() -> None:
     async def verify() -> None:
