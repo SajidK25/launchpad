@@ -194,7 +194,7 @@ Add a narrow users-owned provisioning operation that accepts a verified demo acc
 
 ## Task T4: Suppress email for seed review notifications
 
-> **Status:** in progress
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** s
 > **Priority:** critical
@@ -258,7 +258,7 @@ Add an explicit notification-service policy that seed composition can use to per
 
 ## Task T5: Seed private product lifecycle examples
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** high
@@ -320,7 +320,7 @@ Compose the existing auth, users, product, review, launch-booking, and notificat
 
 ## Task T6: Seed public launches across the UTC archive window
 
-> **Status:** not started
+> **Status:** in progress
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
