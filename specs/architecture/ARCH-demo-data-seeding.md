@@ -151,7 +151,7 @@ _The concrete answer to "where does this land in the codebase?" — produced dur
 | `apps/api/app/operations/demo_seed/repository.py` | Persist and lock seed dataset/artifact ownership records. | Feature repository transaction/query conventions. |
 | `apps/api/app/operations/demo_seed/models.py` | Define operations-owned PostgreSQL models. | Feature-local SQLAlchemy models. |
 | `apps/api/app/operations/demo_seed/fixtures.py` | Define stable synthetic identities, product copy, topic mapping, dates, and asset manifest. | Existing typed schemas/data fixtures. |
-| `apps/api/app/operations/demo_seed/assets/` | Hold fictional profile avatars, product logos, and screenshots. | Shared storage image validation requirements; visual assets must be produced with the configured Higgsfield MCP. |
+| `apps/api/app/operations/demo_seed/assets/` | Hold fictional profile avatars, product logos, screenshots, and the prompt manifest. | Shared storage image validation requirements; this task uses the user's explicitly authorized OpenAI image generation substitute for Higgsfield. |
 | `apps/api/app/operations/demo_seed/tests/` | Cover target gate, collisions, ledger rerun/recovery, no-email behavior, cleanup retention, and safe reporting. | `apps/api/app/modules/products/tests/` and `apps/api/app/modules/launches/tests/`. |
 | `apps/api/alembic/versions/0017_demo_seed_ownership.py` | Add the dataset and artifact ledger tables/indexes without touching feature histories. | Latest revision `0016_votes_and_daily_rankings.py`. |
 | `scripts/seed_demo.sh` | Host entry point for either Compose target; private credential capture/reuse and target arguments. | Existing `scripts/deploy_production.sh` shell safety conventions. |
@@ -254,11 +254,9 @@ _The concrete answer to "where does this land in the codebase?" — produced dur
 | Production Compose/deployment | One-shot service could enter normal startup, bind a host port, retain credential output in logs, or run during deploy. | Keep it under `ops`, restart `no`, no published ports, use the `none` logging driver, and do not invoke it from deploy workflow/controller; inspect resolved Compose config in verification. |
 | Worker and outbox | Existing unrelated email events could be affected by disabling worker/provider settings. | Do not alter worker settings or provider credentials; only seed-generated email-request event types are prohibited. |
 
-## Open Questions
+## Resolved Implementation Decisions
 
-- The configured Higgsfield MCP required by `AGENTS.md` is not exposed in this planning session, so synthetic avatar/logo/screenshot asset production cannot be confirmed here.
-  - **Impact if unresolved:** The seed implementation can be designed and tested against fixture paths, but the agreed 20+ distinct image fixtures cannot be generated in this environment.
-  - **Suggested default:** Make asset production a task prerequisite and generate/validate checked-in fictional fixture files in a session with the configured Higgsfield MCP; do not substitute real third-party images or bypass shared validation.
+- The user authorized OpenAI image generation as a substitute for Higgsfield for this fixture task, to avoid consuming Higgsfield credits. The checked-in assets are synthetic, fictional, distinct, locally bundled, and pass through the same shared image validation and private storage path as normal uploads.
 
 ## Out of Scope
 

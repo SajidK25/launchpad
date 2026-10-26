@@ -450,7 +450,7 @@ Expose `seed`, `cleanup`, and explicit `rotate-credentials` operations through t
 
 ## Task T8: Wire Compose operation, private credentials, assets, and documentation
 
-> **Status:** in progress — fixture asset production is blocked because the configured Higgsfield MCP is unavailable in this session. The CLI fails before database/storage access when those files are absent; no substitute imagery was added.
+> **Status:** complete — 72 unique synthetic images were generated with OpenAI image generation as a user-authorized substitute for Higgsfield; no Higgsfield credits were used. `assets/manifest.json` records prompts; the fixture test verifies completeness, distinct bytes, PNG validity, and storage size bounds.
 > **Verification:** checklist
 > **Effort:** l
 > **Priority:** critical
@@ -469,7 +469,7 @@ Make the approved one-shot command usable in local development and on the design
 - **Local Compose service** — render `docker compose --profile ops config --format json`; expected: demo seed service is one-shot under `ops`, uses local PostgreSQL/MinIO settings, has no published ports, restart is disabled, and logging driver is `none`.
 - **Production Compose service** — on the designated VM, render production Compose using the installed release environment; expected: pinned API image, R2/API env, backend-only network, read-only root-owned marker, no ports, `ops` profile, restart disabled, and logging driver `none`; default Compose startup/deployment does not run it.
 - **Host credential handling** — run wrapper in a disposable local demo target; expected: generated credentials are written once to a host file with mode `0600`, the wrapper refuses to overwrite it, reruns feed it through stdin, and no password appears in terminal summaries or retained Docker logs.
-- **Fixture bundle audit** — use fixture manifest/count and existing image-validation tests; expected: 20 distinct synthetic founder avatars and unique fictional logo/screenshot files for all 26 product examples, accepted by current image validators, with no real identities or third-party product sites. Asset creation uses the configured Higgsfield MCP per `AGENTS.md`.
+- **Fixture bundle audit** — run `python -m pytest apps/api/app/operations/demo_seed/tests/test_fixture_bundle.py -q`; expected: 20 distinct synthetic founder avatars and unique fictional logo/screenshot files for all 26 product examples, accepted by the current storage image validator, with no real identities or third-party product sites. Per the user's explicit instruction for this task, OpenAI image generation was used as a substitute for unavailable Higgsfield MCP without consuming Higgsfield credits.
 - **Operator guide and local demo** — follow `docs/DEMO_DATA_SEEDING.md` on local Compose; expected: the guide explains credentials, target selection, cleanup limits, and all required feature records are visible; it explicitly requires a human VM/customer-data check and states seeding is never part of deployment.
 
 ### Implementation Notes
@@ -484,7 +484,7 @@ Make the approved one-shot command usable in local development and on the design
 
 - Do NOT run the seed on the VM or against any production-configured database as part of implementation or deployment automation.
 - Do NOT add production ports, alter R2 credentials, or modify the deploy controller/workflow.
-- Do NOT substitute remote/third-party assets or generate images without the configured Higgsfield MCP; if it is unavailable, stop the asset subtask and request access.
+- Do NOT use remote/third-party media or real-person likenesses. The user explicitly authorized OpenAI image generation as a Higgsfield substitute for this task; that authorization is scoped to these demo fixtures.
 - Only wire local/approved-VM Compose operation and the explicitly approved fixtures/docs.
 
 ### Files Expected
@@ -492,7 +492,8 @@ Make the approved one-shot command usable in local development and on the design
 **New files:**
 - `scripts/seed_demo.sh` (host-side command and private credential capture/reuse)
 - `apps/api/app/operations/demo_seed/__main__.py` (module command entry point)
-- `apps/api/app/operations/demo_seed/assets/` (20 avatars and unique product fixture media, produced with Higgsfield)
+- `apps/api/app/operations/demo_seed/assets/` (20 avatars, 52 unique product images, and a prompt manifest; generated with the user-authorized no-cost substitute)
+- `apps/api/app/operations/demo_seed/tests/test_fixture_bundle.py` (bundle, uniqueness, and storage-validator checks)
 - `docs/DEMO_DATA_SEEDING.md` (local and VM operator steps, guard, credentials, cleanup limits)
 
 **Modified files:**

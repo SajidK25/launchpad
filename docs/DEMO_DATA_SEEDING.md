@@ -12,7 +12,7 @@ The CLI validates and loads all fixture images before it connects to PostgreSQL 
 - `apps/api/app/operations/demo_seed/assets/products/launch-01-logo.png` through `launch-20-logo.png` and matching `launch-NN-screenshot.png`
 - `apps/api/app/operations/demo_seed/assets/products/private-{draft,submitted,changes-requested,rejected,approved,scheduled}-{logo,screenshot}.png`
 
-The avatar keys are synthetic and must be distinct. Every product gets its own fictional logo and screenshot. Use the configured Higgsfield MCP for these assets; do not substitute external or third-party media. Each file must be a supported PNG and at most 5 MiB. Without the complete bundle, `seed` fails before database or storage access.
+The avatar keys are synthetic and distinct. Every product gets its own fictional logo and screenshot. These assets were generated with OpenAI image generation as a user-authorized substitute for Higgsfield, so no Higgsfield credits were used; no third-party product media or real-person likenesses are included. `assets/manifest.json` records each generation prompt and file. Each file must be a supported PNG and at most 5 MiB. The fixture test validates the complete bundle with the same image decoder and bounds used by storage. Without the complete bundle, `seed` fails before database or storage access.
 
 ## Local development
 
