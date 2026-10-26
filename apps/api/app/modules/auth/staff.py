@@ -107,23 +107,43 @@ class StaffManagementService:
         if role not in {"member", "reviewer", "admin"}:
             raise StaffManagementError("invalid role")
         operator = _operator_actor(actor)
-        async with session.begin():
-            account = await self.repository.find_account_by_id(
-                session, target_account_id, lock=True
+        if session.in_transaction():
+            return await self._set_role_in_transaction(
+                session,
+                target_account_id=target_account_id,
+                role=role,
+                operator=operator,
             )
-            if account is None:
-                raise StaffManagementError("account unavailable")
-            if role != "member" and account.verified_at is None:
-                raise StaffManagementError("staff account must be verified")
-            if account.role == role:
-                raise StaffManagementError("role unchanged")
-            before = _audit_state(account)
-            account.role = role
-            now = datetime.now(UTC)
-            account.updated_at = now
-            _add_audit(session, account, operator, "set_role", before, now)
-            await session.flush()
-            return _account_state(account)
+        async with session.begin():
+            return await self._set_role_in_transaction(
+                session,
+                target_account_id=target_account_id,
+                role=role,
+                operator=operator,
+            )
+
+    async def _set_role_in_transaction(
+        self,
+        session: AsyncSession,
+        *,
+        target_account_id: UUID,
+        role: AccountRole,
+        operator: str,
+    ) -> AccountState:
+        account = await self.repository.find_account_by_id(session, target_account_id, lock=True)
+        if account is None:
+            raise StaffManagementError("account unavailable")
+        if role != "member" and account.verified_at is None:
+            raise StaffManagementError("staff account must be verified")
+        if account.role == role:
+            raise StaffManagementError("role unchanged")
+        before = _audit_state(account)
+        account.role = role
+        now = datetime.now(UTC)
+        account.updated_at = now
+        _add_audit(session, account, operator, "set_role", before, now)
+        await session.flush()
+        return _account_state(account)
 
     async def set_suspension(
         self,
