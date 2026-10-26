@@ -70,7 +70,7 @@ Add PostgreSQL records for one seed dataset per approved target and a stable-key
 
 ## Task T2: Provision verified demo accounts through auth
 
-> **Status:** in progress
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** s
 > **Priority:** high
@@ -135,7 +135,7 @@ Add an internal auth-owned operation to create verified fictional accounts from 
 
 ## Task T3: Publish demo profiles with validated synthetic photos
 
-> **Status:** not started
+> **Status:** in progress
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
