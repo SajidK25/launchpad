@@ -104,6 +104,7 @@ def _build_services(
 
 async def _execute(arguments: list[str] | None = None) -> int:
     args = parse_args(arguments)
+    stage = "settings and target validation"
     try:
         settings = load_settings()
         authorize_target(
@@ -115,6 +116,7 @@ async def _execute(arguments: list[str] | None = None) -> int:
         product_media: dict[str, bytes] = {}
         credentials: dict[str, str] = {}
         if args.command == "seed":
+            stage = "fixture and credential preflight"
             profile_media, product_media = load_fixture_media()
             payload = sys.stdin.read(32_769)
             existing_payload = payload if payload.strip() else None
@@ -123,6 +125,7 @@ async def _execute(arguments: list[str] | None = None) -> int:
             if existing_payload is not None and generated:
                 raise ValueError("saved credential manifest is incomplete")
 
+        stage = "database compatibility check"
         database = Database.connect(str(settings.database_url))
         try:
             await database.ensure_compatible()
@@ -140,6 +143,7 @@ async def _execute(arguments: list[str] | None = None) -> int:
                 access_key_id=settings.storage_access_key_id.get_secret_value(),
                 secret_access_key=settings.storage_secret_access_key.get_secret_value(),
             )
+            stage = "object storage readiness"
             await StorageClient(
                 endpoint_url=str(settings.storage_endpoint_url),
                 access_key_id=settings.storage_access_key_id.get_secret_value(),
@@ -151,6 +155,7 @@ async def _execute(arguments: list[str] | None = None) -> int:
             sessions = async_sessionmaker(database.engine, expire_on_commit=False)
             repository = DemoSeedRepository()
             async with database.engine.connect() as lock_connection:
+                stage = "seed target lock"
                 await repository.acquire_session_target_lock(
                     lock_connection, target_id=args.target_id
                 )
@@ -158,6 +163,7 @@ async def _execute(arguments: list[str] | None = None) -> int:
                 try:
                     if args.command == "seed":
                         now = datetime.now(UTC)
+                        stage = "seed identity preflight"
                         async with sessions() as session:
                             await service.preflight_seed(session, target_id=args.target_id)
                         async with sessions() as session, session.begin():
@@ -169,9 +175,11 @@ async def _execute(arguments: list[str] | None = None) -> int:
                                 now=now,
                             )
                             anchor = dataset.anchor_utc_date
+                        stage = "seed dataset reconciliation"
                         if generated:
                             sys.stdout.write(encode_credentials(credentials))
                             sys.stdout.flush()
+                        stage = "account and profile provisioning"
                         account_ids = await service.seed_accounts_and_profiles(
                             sessions,
                             target_id=args.target_id,
@@ -183,6 +191,7 @@ async def _execute(arguments: list[str] | None = None) -> int:
                             for fixture in FOUNDER_FIXTURES
                         }
                         reviewer_id = account_ids["reviewer"]
+                        stage = "private product workflows"
                         async with sessions() as session, session.begin():
                             private = await service.seed_private_products(
                                 session,
@@ -190,6 +199,7 @@ async def _execute(arguments: list[str] | None = None) -> int:
                                 founder_ids=founder_ids,
                                 reviewer_id=reviewer_id,
                             )
+                        stage = "public launch workflows"
                         launched = await service.seed_public_launches(
                             sessions,
                             target_id=args.target_id,
@@ -275,9 +285,10 @@ async def _execute(arguments: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    except Exception:
+    except Exception as error:
         print(
-            "Demo seed failed: operation did not complete; no record details were logged.",
+            "Demo seed failed during "
+            f"{stage} ({type(error).__name__}); no record details were logged.",
             file=sys.stderr,
         )
         return 1
