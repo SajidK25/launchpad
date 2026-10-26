@@ -23,6 +23,20 @@ class PrivateProductFixture:
     submit: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class PublicProductFixture:
+    """One launched catalog example with its stable archive-day offset."""
+
+    seed_key: str
+    founder_key: str
+    name: str
+    pitch: str
+    description: str
+    website_url: str
+    topics: tuple[str, ...]
+    day_offset: int
+
+
 PRIVATE_PRODUCT_FIXTURES = (
     PrivateProductFixture(
         "product-private-draft",
@@ -88,6 +102,44 @@ PRIVATE_PRODUCT_FIXTURES = (
         "approved",
         schedule=True,
     ),
+)
+
+_PUBLIC_PRODUCTS = (
+    ("Brightpath", "A simple map for better team habits", ("Productivity", "Business")),
+    ("Morrow", "Turn reading notes into useful ideas", ("Education", "Writing")),
+    ("Pebble Plan", "Keep small projects moving", ("Productivity", "Design")),
+    ("Signal Grove", "Understand customer feedback faster", ("Analytics", "Business")),
+    ("Open Lantern", "A clearer way to share research", ("Research", "Education")),
+    ("Tempo Garden", "Make room for focused work", ("Productivity", "Health")),
+    ("Copper Kite", "Plan creative work with confidence", ("Design", "Business")),
+    ("Common Thread", "Keep community projects connected", ("Community", "Productivity")),
+    ("Paper Current", "Write useful updates in less time", ("Writing", "Productivity")),
+    ("Northstar Notes", "A lightweight research notebook", ("Research", "Education")),
+    ("Good Orchard", "Organize recurring customer work", ("Business", "Analytics")),
+    ("Soft Signal", "Find patterns in product conversations", ("Analytics", "Research")),
+    ("Blue Heron", "Bring calm to shared calendars", ("Productivity", "Community")),
+    ("Mosaic Route", "Coordinate work across small teams", ("Business", "Productivity")),
+    ("Lumen Desk", "A gentle home for creative planning", ("Design", "Writing")),
+    ("Kindred Map", "Help local groups plan together", ("Community", "Education")),
+    ("Clover Index", "Collect and revisit useful references", ("Research", "Productivity")),
+    ("Amber Draft", "Make publishing feel more manageable", ("Writing", "Design")),
+    ("Tandem Field", "Track experiments with a small team", ("Analytics", "Business")),
+    ("Willow Works", "A shared workspace for independent makers", ("Community", "Design")),
+)
+
+PUBLIC_PRODUCT_FIXTURES = tuple(
+    PublicProductFixture(
+        seed_key=f"product-launched-{index:02d}",
+        founder_key=f"founder-{index:02d}",
+        name=name,
+        pitch=pitch,
+        description=f"{name} is a fictional Launchpad demo product. {pitch}. "
+        "It helps independent teams make steady progress with a focused, approachable workflow.",
+        website_url=f"https://{name.lower().replace(' ', '-')}.demo.launchpad.example",
+        topics=topics,
+        day_offset=(index - 1) % 8,
+    )
+    for index, (name, pitch, topics) in enumerate(_PUBLIC_PRODUCTS, start=1)
 )
 
 

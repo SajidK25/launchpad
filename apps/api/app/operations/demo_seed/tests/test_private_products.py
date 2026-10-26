@@ -121,9 +121,11 @@ class _Launches:
 
 
 def _service(ownership: _Ownership, products: _Products, launches: _Launches) -> DemoSeedService:
+    notifications = SimpleNamespace(send_review_email=True)
     return DemoSeedService(
         products=cast(Any, products),
         launches=cast(Any, launches),
+        notifications=cast(Any, notifications),
         storage=cast(Any, object()),
         ownership=cast(Any, ownership),
         product_media={"logo": b"fixture-logo", "screenshot": b"fixture-shot"},
@@ -151,6 +153,7 @@ def test_private_products_use_review_and_booking_services_and_rerun_by_ledger() 
         ownership, products = _Ownership(), _Products()
         launches = _Launches(products)
         service = _service(ownership, products, launches)
+        assert service.notifications.send_review_email is False
         founder_ids = {f"founder-{index:02d}": uuid4() for index in range(1, 7)}
         reviewer_id = uuid4()
         ids = await service.seed_private_products(

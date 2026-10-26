@@ -320,7 +320,7 @@ Compose the existing auth, users, product, review, launch-booking, and notificat
 
 ## Task T6: Seed public launches across the UTC archive window
 
-> **Status:** in progress
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
@@ -381,7 +381,7 @@ Create at least 20 complete fictional launched products, one per demo founder, u
 
 ## Task T7: Add safe operator commands and bounded cleanup
 
-> **Status:** not started
+> **Status:** in progress
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical

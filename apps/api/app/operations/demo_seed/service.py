@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.launches.service import LaunchBookingService
+from app.modules.notifications.service import NotificationService
 from app.modules.products.schemas import ProductAssetIntentInput, ProductContentInput
 from app.modules.products.service import ProductAssetStorage, ProductService
-from app.operations.demo_seed.fixtures import PRIVATE_PRODUCT_FIXTURES
+from app.operations.demo_seed.fixtures import (
+    PRIVATE_PRODUCT_FIXTURES,
+    PUBLIC_PRODUCT_FIXTURES,
+)
 from app.operations.demo_seed.repository import DemoSeedRepository
 
 
@@ -26,6 +30,7 @@ class DemoSeedService:
         launches: LaunchBookingService,
         storage: ProductAssetStorage,
         ownership: DemoSeedRepository | None = None,
+        notifications: NotificationService,
         product_media: Mapping[str, bytes],
         clock: Callable[[], datetime] | None = None,
     ) -> None:
@@ -34,7 +39,13 @@ class DemoSeedService:
         self.storage = storage
         self.ownership = ownership or DemoSeedRepository()
         self.product_media = product_media
-        self.clock = clock or (lambda: datetime.now(UTC))
+        self._current_time = (clock or (lambda: datetime.now(UTC)))().astimezone(UTC)
+        self.clock: Callable[[], datetime] = lambda: self._current_time
+        self.products.clock = self.clock
+        self.launches.clock = self.clock
+        self.notifications = notifications
+        self.notifications.send_review_email = False
+        self.products.review_notifications = notifications
 
     async def seed_private_products(
         self,
@@ -150,6 +161,158 @@ class DemoSeedService:
             )
             created[fixture.seed_key] = product_id
         return created
+
+    async def seed_public_launches(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        *,
+        target_id: str,
+        anchor_utc_date: date,
+        founder_ids: Mapping[str, UUID],
+        reviewer_id: UUID,
+    ) -> dict[str, UUID]:
+        """Publish 20 products over the anchor date and its seven-day archive window.
+
+        Each launch is committed with its ledger ownership in its own database
+        transaction. The injected clock advances through the normal booking and
+        publication services; no product or booking state is written directly.
+        """
+
+        if len(founder_ids) < 20:
+            raise ValueError("at least 20 demo founder accounts are required")
+
+        launch_ids: dict[str, UUID] = {}
+        for fixture in PUBLIC_PRODUCT_FIXTURES:
+            founder_id = founder_ids.get(fixture.founder_key)
+            if founder_id is None:
+                raise ValueError(f"missing owner for fixture {fixture.seed_key}")
+            launch_date = anchor_utc_date - timedelta(days=fixture.day_offset)
+            async with sessions() as session, session.begin():
+                existing = await self.ownership.get_artifact(
+                    session, target_id=target_id, seed_key=fixture.seed_key
+                )
+                if existing is not None:
+                    if existing.artifact_kind != "product":
+                        raise RuntimeError("seed fixture ownership kind does not match")
+                    launch_ids[fixture.seed_key] = existing.entity_id
+                    continue
+
+                await self.notifications.update_launch_preferences(
+                    session,
+                    actor_id=founder_id,
+                    values={
+                        "reminder_email": False,
+                        "reminder_in_site": True,
+                        "live_email": False,
+                        "live_in_site": True,
+                        "failure_email": False,
+                        "failure_in_site": True,
+                    },
+                )
+                booking_time = datetime.combine(
+                    launch_date - timedelta(days=1), time(hour=0, minute=1), tzinfo=UTC
+                )
+                self._current_time = booking_time
+                draft = await self.products.create_draft(session, actor_id=founder_id)
+                saved = await self.products.save_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=draft.id,
+                    expected_version=draft.version,
+                    content=ProductContentInput(
+                        name=fixture.name,
+                        pitch=fixture.pitch,
+                        description=fixture.description,
+                        website_url=fixture.website_url,
+                    ),
+                    topic_names=list(fixture.topics),
+                )
+                media_prefix = fixture.seed_key.removeprefix("product-")
+                logo_id = await self._upload_asset(
+                    session,
+                    founder_id=founder_id,
+                    product_id=saved.id,
+                    kind="logo",
+                    media_key=f"{media_prefix}-logo",
+                )
+                screenshot_id = await self._upload_asset(
+                    session,
+                    founder_id=founder_id,
+                    product_id=saved.id,
+                    kind="screenshot",
+                    media_key=f"{media_prefix}-screenshot",
+                )
+                attached = await self.products.attach_assets(
+                    session,
+                    actor_id=founder_id,
+                    product_id=saved.id,
+                    expected_version=saved.version,
+                    logo_asset_id=logo_id,
+                    screenshot_asset_ids=(screenshot_id,),
+                )
+                submission = await self.products.submit_draft(
+                    session,
+                    actor_id=founder_id,
+                    product_id=attached.id,
+                    expected_version=attached.version,
+                )
+                decision = await self.products.decide_review(
+                    session,
+                    actor_id=reviewer_id,
+                    product_id=attached.id,
+                    submission_id=submission.id,
+                    expected_version=submission.product_version,
+                    outcome="approved",
+                    feedback=None,
+                    idempotency_key=f"demo-seed:{target_id}:{fixture.seed_key}:review",
+                )
+                booking = await self.launches.book(
+                    session,
+                    actor_id=founder_id,
+                    product_id=attached.id,
+                    launch_date=launch_date,
+                    expected_version=decision.version,
+                    idempotency_key=f"demo-seed:{target_id}:{fixture.seed_key}:booking",
+                )
+                launch_time = booking.launch_at.astimezone(UTC)
+                self._current_time = launch_time
+                product = await self.products.publish_scheduled_product(
+                    session,
+                    product_id=attached.id,
+                    launch_at=launch_time,
+                    now=launch_time,
+                )
+                if product.status != "launched":
+                    raise RuntimeError(f"publication did not complete for {fixture.seed_key}")
+                closed = await self.launches.record_publication_outcome(
+                    session,
+                    booking_id=booking.id,
+                    outcome="launched",
+                    now=launch_time,
+                )
+                if closed is None:
+                    raise RuntimeError("published booking could not be closed")
+                await self.notifications.record_launch_notice(
+                    session, booking=closed, kind="launch_live"
+                )
+                await self.ownership.record_artifact(
+                    session,
+                    target_id=target_id,
+                    seed_key=fixture.seed_key,
+                    artifact_kind="product",
+                    entity_id=attached.id,
+                    now=launch_time,
+                )
+                await self.ownership.record_artifact(
+                    session,
+                    target_id=target_id,
+                    seed_key=f"{fixture.seed_key}:booking",
+                    artifact_kind="booking",
+                    entity_id=booking.id,
+                    now=launch_time,
+                )
+                launch_ids[fixture.seed_key] = attached.id
+        return launch_ids
 
     async def _upload_asset(
         self,
