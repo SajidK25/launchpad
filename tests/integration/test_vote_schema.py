@@ -130,7 +130,7 @@ def test_fresh_database_migrates_to_vote_schema_head(
                     ).all()
                 )
                 revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-                assert revision == "0016_votes_and_daily_rankings"
+                assert revision == "0017_demo_seed_ownership"
                 assert {
                     "votes",
                     "vote_idempotency_receipts",
@@ -139,6 +139,8 @@ def test_fresh_database_migrates_to_vote_schema_head(
                     "daily_ranking_snapshots",
                     "daily_ranking_entries",
                     "voting_feature_state",
+                    "demo_seed_datasets",
+                    "demo_seed_artifacts",
                 } <= tables
         finally:
             await database.close()
