@@ -6,9 +6,9 @@ from datetime import date, datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from uuid6 import uuid7
 
 from app.operations.demo_seed.models import DemoSeedArtifact, DemoSeedDataset
@@ -26,6 +26,26 @@ class DemoSeedRepository:
 
         await session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:target_id, 0))"),
+            {"target_id": target_id},
+        )
+
+    async def acquire_session_target_lock(
+        self, connection: AsyncConnection, *, target_id: str
+    ) -> None:
+        """Hold one target lock across the CLI's per-artifact transactions."""
+
+        await connection.execute(
+            text("SELECT pg_advisory_lock(hashtextextended(:target_id, 0))"),
+            {"target_id": target_id},
+        )
+
+    async def release_session_target_lock(
+        self, connection: AsyncConnection, *, target_id: str
+    ) -> None:
+        """Release the long-running command lock, including after a failed seed."""
+
+        await connection.execute(
+            text("SELECT pg_advisory_unlock(hashtextextended(:target_id, 0))"),
             {"target_id": target_id},
         )
 
@@ -108,3 +128,32 @@ class DemoSeedRepository:
         session.add(artifact)
         await session.flush()
         return artifact
+
+    async def list_artifacts(
+        self, session: AsyncSession, *, target_id: str
+    ) -> list[DemoSeedArtifact]:
+        """Return only stable ownership rows for an explicitly selected target."""
+
+        return list(
+            await session.scalars(
+                select(DemoSeedArtifact)
+                .where(DemoSeedArtifact.target_id == target_id)
+                .order_by(DemoSeedArtifact.seed_key)
+            )
+        )
+
+    async def delete_artifact(
+        self, session: AsyncSession, *, target_id: str, seed_key: str, entity_id: UUID
+    ) -> bool:
+        """Remove one exact ownership mapping after its domain record was deleted."""
+
+        deleted_id = await session.scalar(
+            delete(DemoSeedArtifact)
+            .where(
+                DemoSeedArtifact.target_id == target_id,
+                DemoSeedArtifact.seed_key == seed_key,
+                DemoSeedArtifact.entity_id == entity_id,
+            )
+            .returning(DemoSeedArtifact.id)
+        )
+        return deleted_id is not None

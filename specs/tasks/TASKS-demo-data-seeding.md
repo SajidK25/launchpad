@@ -381,7 +381,7 @@ Create at least 20 complete fictional launched products, one per demo founder, u
 
 ## Task T7: Add safe operator commands and bounded cleanup
 
-> **Status:** in progress
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical
@@ -450,7 +450,7 @@ Expose `seed`, `cleanup`, and explicit `rotate-credentials` operations through t
 
 ## Task T8: Wire Compose operation, private credentials, assets, and documentation
 
-> **Status:** not started
+> **Status:** in progress — fixture asset production is blocked because the configured Higgsfield MCP is unavailable in this session. The CLI fails before database/storage access when those files are absent; no substitute imagery was added.
 > **Verification:** checklist
 > **Effort:** l
 > **Priority:** critical

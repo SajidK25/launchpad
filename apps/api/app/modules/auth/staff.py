@@ -53,6 +53,16 @@ class AuthAccessService:
             suspended_at=account.suspended_at,
         )
 
+    async def profile_identity_data(
+        self, session: AsyncSession, account_id: UUID
+    ) -> tuple[UUID, str, bool] | None:
+        """Return the minimal identity fields required by the users boundary."""
+
+        account = await self.repository.find_account_by_id(session, account_id)
+        if account is None:
+            return None
+        return account.id, account.email_display, account.verified_at is not None
+
     async def founder_states(
         self, session: AsyncSession, account_ids: Sequence[UUID]
     ) -> dict[UUID, AccountState]:

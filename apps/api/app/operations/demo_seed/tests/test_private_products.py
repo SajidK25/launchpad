@@ -122,13 +122,18 @@ class _Launches:
 
 def _service(ownership: _Ownership, products: _Products, launches: _Launches) -> DemoSeedService:
     notifications = SimpleNamespace(send_review_email=True)
+    media = {
+        f"private-{fixture.seed_key.removeprefix('product-private-')}-{kind}": b"fixture"
+        for fixture in PRIVATE_PRODUCT_FIXTURES
+        for kind in ("logo", "screenshot")
+    }
     return DemoSeedService(
         products=cast(Any, products),
         launches=cast(Any, launches),
         notifications=cast(Any, notifications),
         storage=cast(Any, object()),
         ownership=cast(Any, ownership),
-        product_media={"logo": b"fixture-logo", "screenshot": b"fixture-shot"},
+        product_media=media,
         clock=lambda: datetime(2026, 10, 26, 12, tzinfo=UTC),
     )
 

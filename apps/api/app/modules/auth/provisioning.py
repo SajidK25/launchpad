@@ -78,6 +78,29 @@ class DemoAccountProvisioningService:
         self.staff_management = staff_management or StaffManagementService()
         self.clock = clock or (lambda: datetime.now(UTC))
 
+    async def preflight_identity(
+        self,
+        session: AsyncSession,
+        *,
+        email: str,
+        owned_account_id: UUID | None,
+    ) -> UUID | None:
+        """Check a planned account identity without creating or changing rows."""
+
+        identity = canonicalize_email(email)
+        existing = await self.repository.find_account_by_email_key(session, identity.key)
+        if existing is None:
+            if owned_account_id is not None:
+                owned = await self.repository.find_account_by_id(session, owned_account_id)
+                if owned is None:
+                    raise DemoAccountConflict("owned account is unavailable")
+                raise DemoAccountConflict("ownership record does not match")
+            return None
+        account_id = getattr(existing, "id", None)
+        if owned_account_id is None or account_id != owned_account_id:
+            raise DemoAccountConflict("identity is already in use")
+        return owned_account_id
+
     async def provision_verified_account(
         self,
         session: AsyncSession,
@@ -131,9 +154,38 @@ class DemoAccountProvisioningService:
     ) -> AccountState:
         """Grant only reviewer access via the existing audited staff boundary."""
 
+        account = await self.repository.find_account_by_id(session, account_id, lock=True)
+        if account is None:
+            raise DemoAccountConflict("owned reviewer account is unavailable")
+        current_role = getattr(account, "role", None)
+        if current_role == "reviewer":
+            verified_at = getattr(account, "verified_at", None)
+            if verified_at is None:
+                raise DemoAccountConflict("reviewer account is not verified")
+            return AccountState(
+                account_id=account_id,
+                verified=True,
+                role="reviewer",
+                suspended_at=getattr(account, "suspended_at", None),
+            )
+        if current_role != "member":
+            raise DemoAccountConflict("owned reviewer account has an unexpected role")
         return await self.staff_management.set_role(
             session,
             target_account_id=account_id,
             role="reviewer",
             actor=actor,
         )
+
+    async def rotate_owned_password(
+        self, session: AsyncSession, *, account_id: UUID, password: str
+    ) -> bool:
+        """Rotate one caller-verified seed-owned account without email side effects."""
+
+        account = await self.repository.find_account_by_id(session, account_id, lock=True)
+        if account is None:
+            return False
+        setattr(account, "password_hash", hash_password(password))
+        setattr(account, "updated_at", self.clock().astimezone(UTC))
+        await session.flush()
+        return True

@@ -168,14 +168,46 @@ def test_rejects_unowned_email_collision_without_mutation() -> None:
     asyncio.run(verify())
 
 
+def test_preflight_rejects_unowned_email_without_creating_an_account() -> None:
+    async def verify() -> None:
+        repository = FakeAuthRepository()
+        service = DemoAccountProvisioningService(repository=repository)
+        now = datetime.now(UTC)
+        account = await repository.create_account(
+            _session(),
+            email_display="occupied@example.com",
+            email_key="occupied@example.com",
+            password_hash="unchanged-hash",
+            now=now,
+        )
+        with pytest.raises(DemoAccountConflict, match="identity is already in use"):
+            await service.preflight_identity(
+                _session(), email="occupied@example.com", owned_account_id=None
+            )
+        assert len(repository.accounts_by_email) == 1
+        assert account.password_hash == "unchanged-hash"
+
+    asyncio.run(verify())
+
+
 def test_reviewer_grant_uses_audited_staff_service_and_never_admin() -> None:
     async def verify() -> None:
         staff = FakeStaffManagement()
+        repository = FakeAuthRepository()
+        now = datetime.now(UTC)
+        account = await repository.create_account(
+            _session(),
+            email_display="reviewer@example.com",
+            email_key="reviewer@example.com",
+            password_hash="reviewer-hash",
+            now=now,
+        )
+        account.verified_at = now
         service = DemoAccountProvisioningService(
-            repository=FakeAuthRepository(),
+            repository=repository,
             staff_management=staff,
         )
-        account_id = uuid7()
+        account_id = account.id
         result = await service.grant_reviewer(
             _session(), account_id=account_id, actor="demo-seed-operator"
         )
@@ -205,6 +237,40 @@ def test_rejects_mismatched_ledger_account_without_mutation() -> None:
                 password="random-secret-04",
                 owned_account_id=uuid7(),
             )
+
+    asyncio.run(verify())
+
+
+def test_explicit_password_rotation_changes_only_the_selected_account() -> None:
+    async def verify() -> None:
+        repository = FakeAuthRepository()
+        now = datetime(2026, 10, 26, tzinfo=UTC)
+        service = DemoAccountProvisioningService(repository=repository, clock=lambda: now)
+        first = await service.provision_verified_account(
+            _session(), email="one@example.com", password="original-demo-secret-01"
+        )
+        second = await service.provision_verified_account(
+            _session(), email="two@example.com", password="untouched-demo-secret-02"
+        )
+        one = repository.accounts_by_email["one@example.com"]
+        two = repository.accounts_by_email["two@example.com"]
+        original_two_hash = two.password_hash
+
+        rotated = await service.rotate_owned_password(
+            _session(), account_id=first.account_id, password="replacement-demo-secret-03"
+        )
+
+        assert rotated is True
+        assert verify_password("replacement-demo-secret-03", one.password_hash)
+        assert one.updated_at == now
+        assert two.password_hash == original_two_hash
+        assert (
+            await service.rotate_owned_password(
+                _session(), account_id=uuid7(), password="unknown-demo-secret-04"
+            )
+            is False
+        )
+        assert second.account_id == two.id
 
     asyncio.run(verify())
 

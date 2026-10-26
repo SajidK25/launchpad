@@ -37,6 +37,18 @@ class PublicProductFixture:
     day_offset: int
 
 
+@dataclass(frozen=True, slots=True)
+class FounderFixture:
+    """Stable fictional account and profile identity for one demo founder."""
+
+    seed_key: str
+    email: str
+    display_name: str
+    bio: str
+    profile_links: tuple[str, ...]
+    avatar_key: str
+
+
 PRIVATE_PRODUCT_FIXTURES = (
     PrivateProductFixture(
         "product-private-draft",
@@ -104,6 +116,50 @@ PRIVATE_PRODUCT_FIXTURES = (
     ),
 )
 
+_FOUNDER_NAMES = (
+    "Avery Stone",
+    "Jordan Reed",
+    "Casey Brooks",
+    "Morgan Ellis",
+    "Riley Hart",
+    "Taylor Quinn",
+    "Cameron Wells",
+    "Drew Parker",
+    "Skyler James",
+    "Emerson Lane",
+    "Rowan Bell",
+    "Finley Gray",
+    "Peyton Blair",
+    "Reese Morgan",
+    "Sage Turner",
+    "Dakota Ellis",
+    "Kendall Fox",
+    "Jamie Rivers",
+    "Shiloh West",
+    "Robin Hayes",
+)
+
+FOUNDER_FIXTURES = tuple(
+    FounderFixture(
+        seed_key=f"founder-{index:02d}",
+        email=f"founder-{index:02d}@demo.launchpad.example",
+        display_name=name,
+        bio=f"{name} is a fictional independent maker building thoughtful tools for small teams.",
+        profile_links=(f"https://founder-{index:02d}.demo.launchpad.example",),
+        avatar_key=f"avatar-{index:02d}",
+    )
+    for index, name in enumerate(_FOUNDER_NAMES, start=1)
+)
+
+REVIEWER_FIXTURE = FounderFixture(
+    seed_key="reviewer",
+    email="reviewer@demo.launchpad.example",
+    display_name="Demo Reviewer",
+    bio="A fictional Launchpad reviewer account for stakeholder walkthroughs.",
+    profile_links=("https://reviewer.demo.launchpad.example",),
+    avatar_key="avatar-reviewer",
+)
+
 _PUBLIC_PRODUCTS = (
     ("Brightpath", "A simple map for better team habits", ("Productivity", "Business")),
     ("Morrow", "Turn reading notes into useful ideas", ("Education", "Writing")),
@@ -146,6 +202,31 @@ PUBLIC_PRODUCT_FIXTURES = tuple(
 def fixture_asset_path(name: str) -> Path:
     """Resolve a checked-in fixture path without exposing arbitrary paths."""
 
-    if name not in {"logo", "screenshot"}:
-        raise ValueError("unknown product fixture asset")
-    return Path(__file__).with_name("assets") / "products" / f"demo-{name}.png"
+    if name.startswith("avatar-") and name[7:].isdigit() and len(name) == 9:
+        return Path(__file__).with_name("assets") / "avatars" / f"{name}.png"
+    if name.startswith("launched-"):
+        parts = name.split("-")
+        if len(parts) == 3 and parts[1].isdigit() and parts[2] in {"logo", "screenshot"}:
+            return (
+                Path(__file__).with_name("assets")
+                / "products"
+                / f"launch-{parts[1]}-{parts[2]}.png"
+            )
+    if name.startswith("private-"):
+        parts = name.split("-")
+        if len(parts) >= 3 and parts[-1] in {"logo", "screenshot"}:
+            stable_name = "-".join(parts[1:-1])
+            if stable_name in {
+                "draft",
+                "submitted",
+                "changes-requested",
+                "rejected",
+                "approved",
+                "scheduled",
+            }:
+                return (
+                    Path(__file__).with_name("assets")
+                    / "products"
+                    / f"private-{stable_name}-{parts[-1]}.png"
+                )
+    raise ValueError("unknown demo fixture asset")
