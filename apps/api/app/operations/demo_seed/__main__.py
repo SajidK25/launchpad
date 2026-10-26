@@ -279,9 +279,11 @@ async def _execute(arguments: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    except (OSError, ValueError):
+    except (OSError, ValueError) as error:
         print(
-            "Demo seed failed: required fixture, credential, or domain data is invalid.",
+            "Demo seed failed during "
+            f"{stage} ({type(error).__name__}); "
+            "required fixture, credential, or domain data is invalid.",
             file=sys.stderr,
         )
         return 1
