@@ -135,7 +135,7 @@ Add an internal auth-owned operation to create verified fictional accounts from 
 
 ## Task T3: Publish demo profiles with validated synthetic photos
 
-> **Status:** in progress
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
@@ -194,7 +194,7 @@ Add a narrow users-owned provisioning operation that accepts a verified demo acc
 
 ## Task T4: Suppress email for seed review notifications
 
-> **Status:** not started
+> **Status:** in progress
 > **Verification:** tdd
 > **Effort:** s
 > **Priority:** critical
