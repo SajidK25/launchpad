@@ -74,14 +74,14 @@ export function App() {
   switch (route.type) {
     case "home":
       surface = (
-        <PublicShell>
+        <PublicShell identityClient={identityClient}>
           <HomePage identityClient={identityClient} />
         </PublicShell>
       );
       break;
     case "account":
       surface = (
-        <PublicShell>
+        <PublicShell identityClient={identityClient}>
           <IdentityRoutes client={identityClient} />
         </PublicShell>
       );
@@ -95,7 +95,7 @@ export function App() {
       break;
     case "public-profile":
       surface = (
-        <PublicShell>
+        <PublicShell identityClient={identityClient}>
           <ProfileRoutes identityClient={identityClient} />
         </PublicShell>
       );
@@ -129,7 +129,7 @@ export function App() {
     case "discover": {
       const params = new URLSearchParams(locationSearch);
       surface = (
-        <PublicShell>
+        <PublicShell identityClient={identityClient}>
           <DiscoverPage
             client={launchClient}
             initialSearch={params.get("q") ?? ""}
@@ -143,7 +143,7 @@ export function App() {
     }
     case "public-launch-archive":
       surface = (
-        <PublicShell>
+        <PublicShell identityClient={identityClient}>
           <PublicLaunchArchive
             date={route.date}
             identityClient={identityClient}
@@ -153,7 +153,7 @@ export function App() {
       break;
     case "public-launch":
       surface = (
-        <PublicShell>
+        <PublicShell identityClient={identityClient}>
           <PublicLaunchPage
             identityClient={identityClient}
             productId={route.productId}
@@ -163,7 +163,7 @@ export function App() {
       break;
     case "unavailable":
       surface = (
-        <PublicShell>
+        <PublicShell identityClient={identityClient}>
           <UnavailableState
             title="This page isn’t available"
             description="Check the address or return to the Launchpad home page."
