@@ -180,3 +180,30 @@ def test_notification_service_never_calls_a_delivery_provider() -> None:
         assert len(outbox.events) == 2
 
     asyncio.run(verify())
+
+
+def test_seed_review_delivery_keeps_inbox_and_live_events_without_email_request() -> None:
+    async def verify() -> None:
+        decision_id, founder_id, product_id = uuid4(), uuid4(), uuid4()
+        repository, outbox = _NotificationRepository(), _OutboxRepository()
+        codec = EmailPayloadCodec({"test": b"n" * 32}, "test")
+        service = NotificationService(
+            repository=cast(Any, repository),
+            outbox_repository=outbox,
+            payload_codec=codec,
+            send_review_email=False,
+        )
+
+        notice = await service.record_review_outcome(
+            cast(AsyncSession, object()),
+            decision=SimpleNamespace(id=decision_id, outcome="approved"),
+            founder_id=founder_id,
+            product_id=product_id,
+        )
+
+        assert repository.rows[decision_id] is notice
+        assert notice.recipient_account_id == founder_id
+        assert len(outbox.events) == 1
+        assert outbox.events[0].event_type == "notification.changed.v1"
+
+    asyncio.run(verify())

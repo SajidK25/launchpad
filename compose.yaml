@@ -179,6 +179,42 @@ services:
       timeout: 3s
       retries: 3
 
+  demo-seed:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    profiles: ["ops"]
+    entrypoint: ["python", "-m", "app.operations.demo_seed"]
+    environment:
+      PYTHONPATH: /workspace/apps/api
+      LAUNCHPAD_ENVIRONMENT: development
+      LAUNCHPAD_DATABASE_URL: postgresql://launchpad_development:launchpad_development_password@postgres:5432/launchpad_development
+      LAUNCHPAD_REDIS_URL: redis://redis:6379/0
+      LAUNCHPAD_STORAGE_PROVIDER: minio
+      LAUNCHPAD_STORAGE_REGION: us-east-1
+      LAUNCHPAD_STORAGE_ENDPOINT_URL: http://minio:9000
+      LAUNCHPAD_STORAGE_ACCESS_KEY_ID: launchpad_development_minio_runtime
+      LAUNCHPAD_STORAGE_SECRET_ACCESS_KEY: launchpad_development_minio_runtime_password
+      LAUNCHPAD_TRUSTED_WEB_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+      LAUNCHPAD_MAIL_WEB_ORIGIN: http://localhost:8080
+      LAUNCHPAD_MAIL_SENDER: noreply@example.com
+      LAUNCHPAD_OUTBOX_KEY_ID: development-v1
+      LAUNCHPAD_OUTBOX_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      LAUNCHPAD_PUBLIC_UPLOAD_ENDPOINT_URL: http://localhost:9000
+      LAUNCHPAD_PRODUCTS_ENABLED: "true"
+      LAUNCHPAD_REVIEW_WRITES_ENABLED: "true"
+      LAUNCHPAD_LAUNCHES_ENABLED: "true"
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    logging:
+      driver: none
+
 volumes:
   development_minio_data:
   development_postgres_data:

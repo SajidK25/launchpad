@@ -6,7 +6,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -139,5 +139,38 @@ def test_operator_actor_must_be_a_bounded_single_identifier(actor: str) -> None:
                 role="reviewer",
                 actor=actor,
             )
+
+    asyncio.run(verify())
+
+
+def test_set_role_reuses_an_existing_caller_transaction() -> None:
+    async def verify() -> None:
+        account_id = uuid4()
+        account = SimpleNamespace(
+            id=account_id,
+            verified_at=datetime.now(UTC),
+            role="member",
+            suspended_at=None,
+            updated_at=None,
+        )
+        repository: Any = SimpleNamespace(find_account_by_id=AsyncMock(return_value=account))
+        session: Any = SimpleNamespace(
+            in_transaction=Mock(return_value=True),
+            add=Mock(),
+            flush=AsyncMock(),
+        )
+
+        state = await StaffManagementService(repository=repository).set_role(
+            session,
+            target_account_id=account_id,
+            role="reviewer",
+            actor="demo-seed-operator",
+        )
+
+        assert state.role == "reviewer"
+        assert account.role == "reviewer"
+        repository.find_account_by_id.assert_awaited_once_with(session, account_id, lock=True)
+        session.add.assert_called_once()
+        session.flush.assert_awaited_once()
 
     asyncio.run(verify())
