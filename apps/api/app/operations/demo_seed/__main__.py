@@ -102,6 +102,20 @@ def _build_services(
     return store, member_access
 
 
+def _build_storage_probe(settings: Settings) -> StorageClient:
+    """Build the readiness client with the configured provider semantics."""
+
+    if settings.storage_access_key_id is None or settings.storage_secret_access_key is None:
+        raise ConfigurationError("Private storage settings are required.")
+    return StorageClient(
+        endpoint_url=str(settings.storage_endpoint_url),
+        access_key_id=settings.storage_access_key_id.get_secret_value(),
+        secret_access_key=settings.storage_secret_access_key.get_secret_value(),
+        provider=settings.storage_provider,
+        region_name=settings.storage_region,
+    )
+
+
 async def _execute(arguments: list[str] | None = None) -> int:
     args = parse_args(arguments)
     stage = "settings and target validation"
@@ -144,12 +158,7 @@ async def _execute(arguments: list[str] | None = None) -> int:
                 secret_access_key=settings.storage_secret_access_key.get_secret_value(),
             )
             stage = "object storage readiness"
-            await StorageClient(
-                endpoint_url=str(settings.storage_endpoint_url),
-                access_key_id=settings.storage_access_key_id.get_secret_value(),
-                secret_access_key=settings.storage_secret_access_key.get_secret_value(),
-                region_name=settings.storage_region,
-            ).probe(settings.storage_bucket)
+            await _build_storage_probe(settings).probe(settings.storage_bucket)
             service, _ = _build_services(settings, storage)
             service.product_media = product_media
             sessions = async_sessionmaker(database.engine, expire_on_commit=False)
