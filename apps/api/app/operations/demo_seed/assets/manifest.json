@@ -1,0 +1,294 @@
+{
+  "version": 1,
+  "generator": "OpenAI image generation; user-authorized substitute for Higgsfield with no Higgsfield credits used",
+  "assets": [
+    {
+      "file": "avatars/avatar-01.png",
+      "prompt": "Use case: photorealistic-natural. Create a square 1:1 synthetic editorial portrait of a fictional South Asian woman founder in her early 30s, shoulder-length dark hair, warm confident expression, cream blouse, muted sage-green studio background, head-and-shoulders, soft natural window lighting. Entirely fictional person, not resembling any real or known individual. No text, logo, or watermark."
+    },
+    {
+      "file": "avatars/avatar-02.png",
+      "prompt": "Use case: photorealistic-natural. Create a square 1:1 synthetic editorial portrait of a fictional South Asian man founder, early 30s, short curly hair, gentle smile, charcoal overshirt, warm tan studio background, head-and-shoulders, soft natural window lighting. Original fictional person, not resembling any real or known individual. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-03.png",
+      "prompt": "Use case: photorealistic-natural. Create a square 1:1 synthetic editorial portrait of a fictional Black woman founder, around 40, short natural hair, confident relaxed expression, mustard blouse, muted dusty-blue studio background, head-and-shoulders, soft natural lighting. Original fictional person, not resembling any real or known individual. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-04.png",
+      "prompt": "Use case: photorealistic-natural. Create a square 1:1 synthetic editorial portrait of a fictional white male founder in his late 20s, wavy auburn hair, subtle freckles, friendly expression, forest-green knit shirt, warm cream backdrop, head-and-shoulders portrait, soft window light. Original fictional person, no resemblance to a known person. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-05.png",
+      "prompt": "Use case: photorealistic-natural. Create a square 1:1 synthetic editorial portrait of a fictional Latina founder in her mid 30s, dark shoulder-length curls, bright warm expression, cobalt-blue jacket, soft pale-coral studio background, head-and-shoulders, natural diffused lighting. Original fictional person, not resembling any known person. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-06.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial head-and-shoulders portrait of a fictional East Asian woman founder in her early 30s, neat chin-length dark hair, thoughtful smile, ivory blouse, terracotta studio background, soft window light. Entirely fictional, no resemblance to a known person. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-07.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial head-and-shoulders portrait of a fictional Arab man founder in his late 30s, close-cropped dark hair and short beard, calm friendly look, light blue button-up shirt, pale olive background, soft natural lighting. Entirely fictional, not a real person. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-08.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial portrait of a fictional South Asian woman founder around 27, long dark braid, round glasses, curious smile, plum sweater, soft warm yellow studio background, head-and-shoulders, natural light. Entirely fictional, no known-person likeness. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-09.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial portrait of a fictional white woman founder in her early 40s, short silver-blonde bob, bright smile, navy shirt, muted lavender background, head-and-shoulders crop, soft daylight. Original fictional person, no resemblance to any known person. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-10.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial portrait of a fictional Black man founder in his early 30s, short coiled hair, subtle beard, composed warm expression, rust-colored overshirt, soft pale teal backdrop, shoulders-up, natural studio daylight. Entirely fictional, no real-person likeness. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-11.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial head-and-shoulders portrait of a fictional Southeast Asian man founder in his late 20s, short dark hair, gentle smile, cream T-shirt and olive overshirt, muted peach background, natural soft light. Original fictional face, not a known person. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-12.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial head-and-shoulders portrait of a fictional mixed-race woman founder in her late 30s, voluminous dark curls, confident smile, pale blue blouse, deep warm beige studio background, natural window light. Entirely fictional, no real-person likeness. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-13.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial portrait of a fictional East Asian man founder around 42, salt-and-pepper hair, thin round glasses, relaxed thoughtful look, charcoal jacket, muted sage background, shoulders-up, diffused daylight. Fictional person only. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-14.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial portrait of a fictional Black woman founder around 28, short locs, bright smile, simple cream top, muted plum studio background, head-and-shoulders, soft natural light. Entirely fictional and not resembling a known person. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-15.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial headshot of a fictional white male founder in his mid 30s, dark wavy hair, neat beard, easygoing expression, burgundy shirt, soft light gray-blue background, natural diffused studio light. Fictional individual, no known-person resemblance. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-16.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial head-and-shoulders portrait of a fictional South Asian man founder around 45, closely cropped hair with a little gray, kind expression, denim-blue shirt, warm cream background, softly lit. Entirely fictional, no real-person likeness. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-17.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial portrait of a fictional Latina founder around 30, shoulder-length dark waves, confident friendly expression, forest-green blouse, light peach background, head-and-shoulders and natural daylight. Fictional, not a known person. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-18.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial portrait of a fictional East African woman founder in her mid 30s, short natural curls, calm open smile, mustard cardigan over white shirt, muted blue-green studio background, head-and-shoulders, soft window light. Entirely fictional. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-19.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial headshot of a fictional East Asian man founder in his early 30s, dark textured hair, warm smile, navy casual shirt, dusty rose backdrop, soft natural window lighting. Entirely fictional, no recognizable real person. No text, logos, watermark."
+    },
+    {
+      "file": "avatars/avatar-20.png",
+      "prompt": "Use case: photorealistic-natural. Square 1:1 synthetic editorial portrait of a fictional white woman founder in her late 20s, short dark pixie cut, thoughtful smile, terracotta knit top, muted pale green background, head-and-shoulders crop, soft daylight. Original fictional person. No text, logos, watermark."
+    },
+    {
+      "file": "products/launch-01-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Brightpath\". Concept: rising sun above a winding path, warm coral and deep teal. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-02-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Morrow\". Concept: open book page forming a crescent sunrise, soft indigo and amber. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-03-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Pebble Plan\". Concept: three smooth pebbles arranged as a forward-moving stepping path, moss green and charcoal. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-04-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Signal Grove\". Concept: simple leaf combined with two broadcast signal arcs, forest green and lime. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-05-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Open Lantern\". Concept: minimal lantern silhouette with an open-book glow, cobalt blue and golden yellow. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-06-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Tempo Garden\". Concept: small clock face blooming into a simple flower, teal and sunny yellow. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-07-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Copper Kite\". Concept: minimal copper-orange kite with a flowing curved string. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-08-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Common Thread\". Concept: three interwoven circles connected by one continuous thread, indigo and coral. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-09-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Paper Current\". Concept: folded paper shape flowing like a small blue river, navy and sky blue. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-10-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Northstar Notes\". Concept: four-point north star nested in a bookmark shape, deep blue and gold. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-11-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Good Orchard\". Concept: small orchard tree with fruit arranged like a simple rising chart, leafy green and orange. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-12-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Soft Signal\". Concept: rounded speech bubble containing one gentle pulse line, violet and pale aqua. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-13-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Blue Heron\". Concept: elegant simplified heron neck forming a calendar square, navy and blue. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-14-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Mosaic Route\". Concept: three bright geometric tiles pointing along a path, turquoise and amber. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-15-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Lumen Desk\". Concept: minimal desk lamp casting a small round glow, dark teal and warm cream. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-16-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Kindred Map\". Concept: friendly map pin surrounded by three simple connected dots, teal and coral. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-17-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Clover Index\". Concept: four leaf clover combined with a small index tab, green and butter yellow. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-18-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Amber Draft\". Concept: amber colored feather quill drawing one fluid line, amber and deep navy. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-19-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Tandem Field\". Concept: two adjacent field plots with a small experiment spark, green and cobalt. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-20-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Willow Works\". Concept: graceful willow leaf paired with simple maker tool shapes, forest green and copper. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/private-draft-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Draftboard\". Concept: simple stack of two cards with one pencil stroke, charcoal and sunny yellow. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/private-submitted-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Fieldnote\". Concept: field notebook outline with one pressed leaf, deep green and cream. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/private-changes-requested-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Patchwork\". Concept: two interlocking patch shapes with a small repair spark, coral and navy. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/private-rejected-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Quietframe\". Concept: calm rounded square frame with a small moon, dark violet and pale blue. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/private-approved-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Cedar Metrics\". Concept: cedar branch forming a clean vertical bar chart, green and copper. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/private-scheduled-logo.png",
+      "prompt": "Use case: logo-brand. Create a single centered, compact fictional product logo mark for \"Orbit Ledger\". Concept: small orbital ring around a tidy ledger grid, midnight blue and orange. Clean flat geometric vector-like illustration, balanced silhouette, limited 2–3 color palette, crisp edges, readable when displayed at 64 pixels. Transparent background. No letters, words, initials, border, mockup, or watermark."
+    },
+    {
+      "file": "products/launch-01-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Brightpath\". Interface concept: team habits dashboard with a clean weekly path, glowing milestones, team progress cards and a small rising activity chart; coral and teal accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-02-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Morrow\". Interface concept: reading notes workspace with a large article pane, highlighted passages, idea cards and a calm reading progress rail; indigo and amber accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-03-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Pebble Plan\". Interface concept: lightweight project board with rounded task cards arranged in three columns and a small timeline strip; moss green and warm stone accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-04-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Signal Grove\". Interface concept: customer feedback analytics dashboard with a large listening trend chart, sentiment clusters and feedback snippets; forest green and lime accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-05-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Open Lantern\". Interface concept: research sharing workspace with an open report canvas, source cards and a bright side panel for collaborators; cobalt and golden accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-06-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Tempo Garden\". Interface concept: focused work planner with a simple circular focus timer, weekly calendar garden-like progress and soft task cards; teal and sunny yellow accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-07-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Copper Kite\". Interface concept: creative project planning dashboard with a visual roadmap, floating task groups and a milestone ribbon; copper and deep blue accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-08-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Common Thread\". Interface concept: community project hub with member activity, shared event cards, connected groups and a collaborative timeline; indigo and coral accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-09-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Paper Current\". Interface concept: writing workspace with a clean document canvas, compact outline sidebar, revision timeline and subtle flow motif; navy and sky blue accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-10-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Northstar Notes\". Interface concept: research notebook dashboard with a starry navigation motif, note cards, citation list and prominent search area; midnight blue and gold accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-11-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Good Orchard\". Interface concept: small business customer-work dashboard with orchard-like project cards, recurring work schedule and a gentle revenue trend chart; leaf green and orange accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-12-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Soft Signal\". Interface concept: product conversation analytics workspace with a large quiet trend line, grouped topic bubbles and concise conversation cards; violet and aqua accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-13-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Blue Heron\". Interface concept: shared calendar dashboard with calm week columns, elegantly spaced events and a side panel for team availability; navy and clear blue accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-14-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Mosaic Route\". Interface concept: small team coordination dashboard with a tiled project map, connected route lines and compact status cards; turquoise and amber accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-15-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Lumen Desk\". Interface concept: creative planning workspace with a bright desk-like canvas, idea cards, project timeline and a warm focus panel; dark teal and cream accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-16-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Kindred Map\". Interface concept: local group collaboration map with connected neighborhood project pins, member circles and shared upcoming tasks; teal and coral accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-17-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Clover Index\". Interface concept: reference library dashboard with a structured index, saved-link cards, tag chips and a compact revisit queue; green and butter yellow accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-18-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Amber Draft\". Interface concept: publishing workspace with a warm document editor, draft status rail, simple outline and a small publishing schedule; amber and navy accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-19-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Tandem Field\". Interface concept: team experiment tracking dashboard with two side-by-side test cards, outcome charts and a clean observation log; green and cobalt accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/launch-20-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Willow Works\". Interface concept: independent maker workspace with a collaborative project board, gentle willow inspired sidebar and shared task cards; forest green and copper accents. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/private-draft-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Draftboard\". Interface concept: private project handoff workspace in draft state, tidy status cards, project checklist, attached notes panel and a clear unsaved draft treatment; charcoal and yellow. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/private-submitted-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Fieldnote\". Interface concept: research notes workspace with interview cards, highlighted notes, organized source panel and a pending review status strip; deep green and cream. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/private-changes-requested-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Patchwork\". Interface concept: maintenance request organizer with an issue queue, small priority tags, a reviewer feedback panel and a visible revise-next hint; coral and navy. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/private-rejected-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Quietframe\". Interface concept: quiet planning workspace with a simple focus board, reflection cards and a clear decision history panel; violet and pale blue. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/private-approved-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Cedar Metrics\". Interface concept: maker analytics dashboard with three compact metric cards, a clean bar chart and an approval state marker; cedar green and copper. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    },
+    {
+      "file": "products/private-scheduled-screenshot.png",
+      "prompt": "Use case: ui-mockup. Create one fictional web application screenshot for \"Orbit Ledger\". Interface concept: client work planning dashboard with recurring work cards, a calendar date selector, timeline and scheduled state marker; midnight blue and orange. Landscape 4:3 composition, the UI fills the entire image edge to edge, straight-on flat screen capture, no monitor or device frame. High quality realistic product UI mockup with precise spacing, clear visual hierarchy, crisp cards and charts. Use only abstract icons and short non-readable placeholder strokes instead of text. No legible words, no real company branding, no external product UI, no watermark."
+    }
+  ]
+}

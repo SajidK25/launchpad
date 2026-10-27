@@ -4,6 +4,7 @@
 .env.*.local
 *.secret
 .launchpad-secret-marker
+.launchpad-demo-credentials/
 
 # Python tooling
 __pycache__/

@@ -14,7 +14,26 @@ import "./shell.css";
 
 type ShellProps = { children: ReactNode };
 
-export function PublicShell({ children }: ShellProps) {
+export function PublicShell({
+  children,
+  identityClient,
+}: ShellProps & { identityClient: IdentityClient }) {
+  const session = useCurrentSession(identityClient);
+  const logout = useLogout(identityClient);
+  const [signOutError, setSignOutError] = useState("");
+
+  async function signOut() {
+    setSignOutError("");
+    try {
+      await logout.mutateAsync();
+      navigate("/signin");
+    } catch {
+      setSignOutError("We could not sign you out. Please try again.");
+    }
+  }
+
+  const account = session.isError ? undefined : session.data;
+
   return (
     <div className="app-shell app-shell--public">
       <a className="app-skip-link" href="#main-content">
@@ -32,19 +51,56 @@ export function PublicShell({ children }: ShellProps) {
           <a href="/discover" onClick={handleNavigation("/discover")}>
             Discover
           </a>
-          <a href="/signin" onClick={handleNavigation("/signin")}>
-            Sign in
-          </a>
-          <a
-            className="ui-action ui-action--primary"
-            href="/register"
-            onClick={handleNavigation("/register")}
-          >
-            Create account
-          </a>
+          {!session.isPending && !session.isError && !account ? (
+            <>
+              <a href="/signin" onClick={handleNavigation("/signin")}>
+                Sign in
+              </a>
+              <a
+                className="ui-action ui-action--primary"
+                href="/register"
+                onClick={handleNavigation("/register")}
+              >
+                Create account
+              </a>
+            </>
+          ) : null}
+          {account ? (
+            <>
+              {account.suspended ? (
+                <span className="app-public-nav-label">Access paused</span>
+              ) : !account.verified ? (
+                <a href="/verify" onClick={handleNavigation("/verify")}>
+                  Verify email
+                </a>
+              ) : account.role === "member" ? (
+                <a href="/products" onClick={handleNavigation("/products")}>
+                  Your workspace
+                </a>
+              ) : (
+                <a
+                  href="/products/review"
+                  onClick={handleNavigation("/products/review")}
+                >
+                  Review queue
+                </a>
+              )}
+              <button
+                className="ui-action ui-action--secondary"
+                disabled={logout.isPending}
+                onClick={() => void signOut()}
+                type="button"
+              >
+                {logout.isPending ? "Signing out…" : "Sign out"}
+              </button>
+            </>
+          ) : null}
         </nav>
       </header>
       <main className="app-main" id="main-content" tabIndex={-1}>
+        {signOutError ? (
+          <StatusBanner variant="danger">{signOutError}</StatusBanner>
+        ) : null}
         {children}
       </main>
       <footer className="app-footer">

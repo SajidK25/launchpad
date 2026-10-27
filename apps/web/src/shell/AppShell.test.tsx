@@ -42,6 +42,12 @@ function session(role: "member" | "reviewer" | "admin" = "member") {
   };
 }
 
+function renderPublic(children = <p>Public content</p>) {
+  return render(
+    <PublicShell identityClient={identityClient}>{children}</PublicShell>,
+  );
+}
+
 function renderWorkspace(children = <p>Private workspace content</p>) {
   return render(
     <WorkspaceShell identityClient={identityClient}>{children}</WorkspaceShell>,
@@ -60,12 +66,9 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("PublicShell", () => {
-  it("frames public content with a skip link, one main landmark, and no private links", () => {
-    render(
-      <PublicShell>
-        <h1>Welcome to Launchpad</h1>
-      </PublicShell>,
-    );
+  it("frames signed-out content with guest actions and no private links", () => {
+    mocks.session = { data: null, isPending: false, isError: false };
+    renderPublic(<h1>Welcome to Launchpad</h1>);
 
     expect(
       screen
@@ -87,23 +90,107 @@ describe("PublicShell", () => {
   });
 
   it("uses lightweight navigation for Discover", () => {
-    render(
-      <PublicShell>
-        <h1>Discover</h1>
-      </PublicShell>,
-    );
+    renderPublic(<h1>Discover</h1>);
     fireEvent.click(screen.getByRole("link", { name: "Discover" }));
     expect(mocks.navigate).toHaveBeenCalledWith("/discover");
   });
 
-  it("uses lightweight navigation for Discover", () => {
-    render(
-      <PublicShell>
-        <h1>Discover</h1>
+  it.each([
+    ["member", "Your workspace", "/products"],
+    ["reviewer", "Review queue", "/products/review"],
+    ["admin", "Review queue", "/products/review"],
+  ] as const)(
+    "shows the appropriate workspace link for a verified %s",
+    (role, label, href) => {
+      mocks.session = session(role);
+      renderPublic();
+
+      expect(
+        screen.getByRole("link", { name: label }).getAttribute("href"),
+      ).toBe(href);
+      expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+      expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Create account" })).toBeNull();
+    },
+  );
+
+  it("shows verification navigation for an unverified account", () => {
+    mocks.session = {
+      ...session(),
+      data: { ...session().data, verified: false },
+    };
+    renderPublic();
+
+    expect(screen.getByRole("link", { name: "Verify email" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Create account" })).toBeNull();
+  });
+
+  it("shows a paused label for a suspended account", () => {
+    mocks.session = {
+      ...session(),
+      data: { ...session().data, suspended: true },
+    };
+    renderPublic();
+
+    expect(screen.getByText("Access paused")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Your workspace" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Create account" })).toBeNull();
+  });
+
+  it("hides account actions while the shared session is loading or unavailable", () => {
+    mocks.session = { data: undefined, isPending: true, isError: false };
+    const view = renderPublic();
+
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Create account" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+
+    mocks.session = { data: undefined, isPending: false, isError: true };
+    view.rerender(
+      <PublicShell identityClient={identityClient}>
+        <p>Public content</p>
       </PublicShell>,
     );
-    fireEvent.click(screen.getByRole("link", { name: "Discover" }));
-    expect(mocks.navigate).toHaveBeenCalledWith("/discover");
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Create account" })).toBeNull();
+  });
+
+  it("updates account actions after login and logout without a page reload", () => {
+    mocks.session = { data: null, isPending: false, isError: false };
+    const view = renderPublic();
+    expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
+
+    mocks.session = session();
+    view.rerender(
+      <PublicShell identityClient={identityClient}>
+        <p>Public content</p>
+      </PublicShell>,
+    );
+    expect(screen.getByRole("link", { name: "Your workspace" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+
+    mocks.session = { data: null, isPending: false, isError: false };
+    view.rerender(
+      <PublicShell identityClient={identityClient}>
+        <p>Public content</p>
+      </PublicShell>,
+    );
+    expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Your workspace" })).toBeNull();
+  });
+
+  it("signs out through the shared mutation and navigates after success", async () => {
+    renderPublic();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() =>
+      expect(mocks.logout.mutateAsync).toHaveBeenCalledOnce(),
+    );
+    expect(mocks.navigate).toHaveBeenCalledWith("/signin");
   });
 });
 

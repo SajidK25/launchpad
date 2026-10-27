@@ -143,6 +143,7 @@ class NotificationService:
         payload_codec: NotificationPayloadCodec,
         member_access: NotificationMemberAccess | None = None,
         clock: Callable[[], datetime] | None = None,
+        send_review_email: bool = True,
     ) -> None:
         self.repository = repository or NotificationRepository()
         self.preference_repository = preference_repository or NotificationRepository()
@@ -150,6 +151,7 @@ class NotificationService:
         self.outbox_repository = outbox_repository or OutboxRepository()
         self.idempotent_outbox_repository = idempotent_outbox_repository or OutboxRepository()
         self.payload_codec = payload_codec
+        self.send_review_email = send_review_email
         if member_access is None:
             from app.modules.auth.staff import AuthAccessService
 
@@ -376,7 +378,7 @@ class NotificationService:
         founder_id: UUID,
         product_id: UUID,
     ) -> Notification:
-        """Add one durable notice and two encrypted outbox requests atomically."""
+        """Add one durable notice and its configured encrypted outbox requests."""
 
         existing = await self.repository.find_review_notification(session, decision.id)
         if existing is not None:
@@ -393,24 +395,25 @@ class NotificationService:
         )
         await self.repository.add(session, notification)
 
-        email_key, email_payload = self.payload_codec.encode(
-            {
-                "recipient_account_id": founder_id,
-                "review_decision_id": decision.id,
-                "notification_id": notification.id,
-                "kind": notification.kind,
-            }
-        )
-        await self.outbox_repository.add(
-            session,
-            OutboxEvent(
-                event_type="review.outcome_email_requested.v1",
-                aggregate_id=decision.id,
-                key_id=email_key,
-                encrypted_payload=email_payload,
-                available_at=self.clock(),
-            ),
-        )
+        if self.send_review_email:
+            email_key, email_payload = self.payload_codec.encode(
+                {
+                    "recipient_account_id": founder_id,
+                    "review_decision_id": decision.id,
+                    "notification_id": notification.id,
+                    "kind": notification.kind,
+                }
+            )
+            await self.outbox_repository.add(
+                session,
+                OutboxEvent(
+                    event_type="review.outcome_email_requested.v1",
+                    aggregate_id=decision.id,
+                    key_id=email_key,
+                    encrypted_payload=email_payload,
+                    available_at=self.clock(),
+                ),
+            )
 
         live_key, live_payload = self.payload_codec.encode(
             {

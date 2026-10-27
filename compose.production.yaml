@@ -177,6 +177,26 @@ services:
     restart: "no"
     logging: *bounded-logging
 
+  demo-seed:
+    <<: *api-image
+    profiles: ["ops"]
+    env_file:
+      - /etc/launchpad/api.env
+    environment:
+      LAUNCHPAD_ENVIRONMENT: production
+      PYTHONPATH: /workspace/apps/api
+    entrypoint: ["python", "-m", "app.operations.demo_seed"]
+    volumes:
+      - /etc/launchpad/demo-seed-target:/etc/launchpad/demo-seed-target:ro
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    logging:
+      driver: none
+
 networks:
   ingress:
     internal: true

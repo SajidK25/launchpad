@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +25,12 @@ from app.modules.users.policies import (
 )
 from app.modules.users.repository import ProfileRepository
 from app.shared.events.outbox import OutboxEvent
-from app.shared.storage.objects import ObjectOperationError, ObjectValidationError
+from app.shared.storage.objects import (
+    MAX_PHOTO_BYTES,
+    SUPPORTED_MEDIA_TYPES,
+    ObjectOperationError,
+    ObjectValidationError,
+)
 
 _UNSET = object()
 
@@ -200,6 +205,139 @@ class ProfileService:
             published_at=self.clock(),
         )
         return _result(*saved)
+
+    async def provision_demo_profile(
+        self,
+        session: Any,
+        *,
+        actor_id: UUID,
+        seed_key: str,
+        display_name: str,
+        bio: str,
+        links: list[str],
+        photo_bytes: bytes,
+        content_type: str,
+        storage: Any,
+    ) -> ProfileResult:
+        """Create a complete public profile using the normal private photo pipeline.
+
+        The deterministic upload identity lets a retry reuse a photo that already
+        passed private storage validation without uploading a duplicate object.
+        """
+
+        member = await self._require_member(session, actor_id, lock=True)
+        require_verified(member.verified)
+        if not seed_key or seed_key != seed_key.strip() or len(seed_key) > 160:
+            raise ProfileValidationError("profile seed key is invalid")
+        validate_profile_fields(
+            display_name=display_name,
+            bio=bio,
+            photo_key=None,
+            links=links,
+        )
+        if content_type not in SUPPORTED_MEDIA_TYPES:
+            raise ProfileValidationError("photo type is unsupported")
+        if not photo_bytes or len(photo_bytes) > MAX_PHOTO_BYTES:
+            raise ProfileValidationError("photo is too large or empty")
+
+        loaded = await self.repository.get(session, actor_id, lock=True)
+        if loaded is None:
+            await self.repository.create_private(session, actor_id)
+            loaded = await self.repository.get(session, actor_id, lock=True)
+        if loaded is None:
+            raise ProfileInfrastructureError("profile could not be initialized")
+        profile, current_links = loaded
+        if (
+            profile.visibility == "public"
+            and profile.display_name == display_name
+            and profile.bio == bio
+            and current_links == links
+            and profile.photo_key is not None
+            and await self.repository.has_validated_photo(
+                session, actor_id, profile.photo_key, lock=True
+            )
+        ):
+            return _result(profile, current_links)
+
+        upload_id = uuid5(NAMESPACE_URL, f"launchpad-demo-profile-photo:{actor_id}:{seed_key}")
+        photo_key = await self.repository.get_validated_photo_key(session, actor_id, upload_id)
+        if photo_key is None:
+            intent = await self.repository.get_photo_upload_for_transfer(
+                session, account_id=actor_id, upload_id=upload_id, lock=True
+            )
+            if intent is None:
+                try:
+                    staging = await storage.create_staging_upload(
+                        account_id=actor_id,
+                        upload_id=upload_id,
+                        content_type=content_type,
+                        size=len(photo_bytes),
+                    )
+                except ObjectValidationError as error:
+                    raise ProfileValidationError("photo upload is invalid") from error
+                except ObjectOperationError as error:
+                    raise ProfileInfrastructureError(
+                        "photo upload could not be prepared"
+                    ) from error
+                await self.repository.create_photo_upload(
+                    session,
+                    account_id=actor_id,
+                    upload_id=upload_id,
+                    staging_key=staging.object_key,
+                    declared_byte_count=len(photo_bytes),
+                    declared_media_type=content_type,
+                    expires_in=900,
+                    now=self.clock(),
+                )
+                intent = await self.repository.get_photo_upload_for_transfer(
+                    session, account_id=actor_id, upload_id=upload_id, lock=True
+                )
+            if (
+                intent is None
+                or intent.state != "pending"
+                or intent.declared_byte_count != len(photo_bytes)
+                or intent.declared_media_type != content_type
+            ):
+                raise ProfileConflictError("photo upload is not available for this seed")
+            try:
+                await storage.put_staging(
+                    object_key=intent.staging_key,
+                    body=photo_bytes,
+                    content_type=content_type,
+                )
+                cleaned = await storage.finalize_staging(
+                    account_id=actor_id,
+                    upload_id=upload_id,
+                    declared_content_type=content_type,
+                )
+            except ObjectValidationError as error:
+                raise ProfileValidationError("photo upload is invalid") from error
+            except ObjectOperationError as error:
+                raise ProfileInfrastructureError("photo upload could not be finalized") from error
+            completed = await self.repository.complete_photo_upload(
+                session,
+                account_id=actor_id,
+                upload_id=upload_id,
+                clean_key=cleaned.object_key,
+                media_type=cleaned.media_type,
+                byte_count=cleaned.byte_count,
+            )
+            photo_key = await self.repository.get_validated_photo_key(session, actor_id, upload_id)
+            if not completed and photo_key is None:
+                raise ProfileConflictError("photo upload could not be recorded")
+        if photo_key is None:
+            raise ProfileInfrastructureError("validated profile photo is unavailable")
+
+        await self.update_profile(
+            session,
+            actor_id=actor_id,
+            display_name=display_name,
+            bio=bio,
+            photo_key=photo_key,
+            links=links,
+            expected_version=profile.version,
+        )
+        return await self.publish(session, actor_id=actor_id)
 
     async def unpublish(
         self, session: Any, *, actor_id: UUID, expected_version: int | None = None
