@@ -258,11 +258,22 @@ that compatible release is healthy and every old worker has been drained. Postgr
 for booking history and outbox work; Redis only carries retryable due-work hints.
 
 The production Compose default is `LAUNCHPAD_LAUNCHES_ENABLED=false`. The controller's
-`current-release.env` contains image digests and runtime paths, not this switch. After a production
-deployment, enable launches explicitly on the VM as the `deploy` user; use `false` to disable new
-launch API/public-route access during rollback. Each subsequent controller deployment starts with
-the safe default again, so re-enable only after checking that release's compatible API and worker.
-These commands recreate only the API service and print only the boolean switch value:
+`current-release.env` records the validated host policy alongside image digests and runtime paths.
+Production hosts without `/etc/launchpad/runtime.env` retain the safe disabled default. A designated
+staging host may persist launch availability with a root-owned policy file after its compatible API
+and workers have been verified:
+
+```sh
+printf '%s\n' 'LAUNCHPAD_LAUNCHES_ENABLED=true' | \
+  sudo install -o root -g deploy -m 0640 /dev/stdin /etc/launchpad/runtime.env
+```
+
+The controller accepts only `LAUNCHPAD_LAUNCHES_ENABLED=true|false` in this non-secret file, rejects
+symlinks and unsafe ownership or permissions, and carries the setting through normal rollout and
+schema-safe image rollback. Remove the file to restore the default-off policy on the next deployment.
+For a one-release activation before persistent policy is installed, enable launches explicitly on
+the VM as the `deploy` user. Use `false` to disable new launch API/public-route access during
+rollback. These commands recreate only the API service and print only the boolean switch value:
 
 ```sh
 sudo -u deploy env LAUNCHPAD_LAUNCHES_ENABLED=true docker compose \
