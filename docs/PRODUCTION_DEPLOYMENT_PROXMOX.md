@@ -80,6 +80,14 @@ See [`PRODUCTION_RECOVERY.md`](PRODUCTION_RECOVERY.md) for operator-led database
 
 ## Voting rollout and rollback
 
+Launch scheduling and anonymous launch reads remain disabled by default. On a designated,
+customer-free staging VM, persist the independently verified launch rollout by installing
+`/etc/launchpad/runtime.env` as `root:deploy` mode `0640` with the single line
+`LAUNCHPAD_LAUNCHES_ENABLED=true`. The deployment controller validates this non-secret policy and
+preserves it across verified releases and schema-safe image rollback. Production hosts without the
+file continue to default off. See the development guide's production launch feature-switch section
+for the one-release command and rollback procedure.
+
 Voting is independently gated by `LAUNCHPAD_VOTE_WRITES_ENABLED` (Compose default
 `false`). Keep launch scheduling enabled as needed; do not enable vote writes until
 the release migration is applied and the matching API, worker, and scheduler are
