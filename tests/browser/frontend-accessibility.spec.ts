@@ -157,7 +157,10 @@ test("representative public, account, founder, reviewer, and launch pages pass a
   fixtures.setSignedIn(false);
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { level: 1, name: "Today’s launches" }),
+    page.getByRole("heading", {
+      level: 1,
+      name: "Take your product from ready to released.",
+    }),
   ).toBeVisible();
   await expectNoSeriousAccessibilityIssues(page);
 
@@ -306,15 +309,18 @@ test("guest launch discovery keeps keyboard focus and announces accessible archi
     "No launches for October 22, 2026",
   );
   await expect(
-    page.getByRole("heading", { level: 1, name: "Today’s launches" }),
+    page.getByRole("heading", {
+      level: 1,
+      name: "Take your product from ready to released.",
+    }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { level: 2, name: "No launches on this day" }),
+    page.getByRole("heading", { level: 3, name: "No launches on this day" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
       level: 2,
-      name: "Take your product from ready to released.",
+      name: "Today’s launches",
     }),
   ).toBeVisible();
 

@@ -14,7 +14,7 @@ test("shows healthy, failed, and recovered API connectivity", async ({
     await expect(
       page.getByRole("heading", {
         level: 1,
-        name: "Today’s launches",
+        name: "Take your product from ready to released.",
       }),
     ).toBeVisible();
   }).toPass({ timeout: 15_000 });
@@ -27,7 +27,7 @@ test("shows healthy, failed, and recovered API connectivity", async ({
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Today’s launches",
+      name: "Take your product from ready to released.",
     }),
   ).toBeVisible();
   await expect(

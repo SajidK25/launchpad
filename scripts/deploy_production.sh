@@ -240,6 +240,7 @@ printf '[deploy] release manifest verified commit=%s run=%s attempt=%s\n' \
 
 stage="validating_runtime_policy"
 launches_enabled="false"
+demo_home_latest_launch_enabled="false"
 if [[ -e "$runtime_env_file" || -L "$runtime_env_file" ]]; then
     [[ -f "$runtime_env_file" && ! -L "$runtime_env_file" ]] || fail "Production runtime policy file is missing or unsafe."
     runtime_env_owner="$(stat -c '%u' -- "$runtime_env_file")" || fail "Could not inspect production runtime policy ownership."
@@ -248,11 +249,14 @@ if [[ -e "$runtime_env_file" || -L "$runtime_env_file" ]]; then
     runtime_env_size="$(stat -c '%s' -- "$runtime_env_file")" || fail "Could not inspect production runtime policy size."
     [[ "$runtime_env_size" =~ ^[0-9]+$ ]] || fail "Production runtime policy size is invalid."
     (( runtime_env_size <= 4096 )) || fail "Production runtime policy size is invalid."
-    launches_enabled="$(python3 - "$runtime_env_file" <<'PY'
+    runtime_policy_values="$(python3 - "$runtime_env_file" <<'PY'
 import sys
 
 path = sys.argv[1]
-allowed = {"LAUNCHPAD_LAUNCHES_ENABLED"}
+allowed = {
+    "LAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED",
+    "LAUNCHPAD_LAUNCHES_ENABLED",
+}
 values: dict[str, str] = {}
 try:
     with open(path, encoding="utf-8") as source:
@@ -271,9 +275,14 @@ try:
             values[key] = value
 except (OSError, UnicodeError):
     raise SystemExit(1)
-print(values.get("LAUNCHPAD_LAUNCHES_ENABLED", "false"))
+print(
+    values.get("LAUNCHPAD_LAUNCHES_ENABLED", "false"),
+    values.get("LAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED", "false"),
+    sep="\t",
+)
 PY
 )" || fail "Production runtime policy is invalid."
+    IFS=$'\t' read -r launches_enabled demo_home_latest_launch_enabled <<<"$runtime_policy_values"
 fi
 
 health_timeout="${LAUNCHPAD_DEPLOY_HEALTH_TIMEOUT_SECONDS:-180}"
@@ -286,8 +295,8 @@ compose_base=(docker compose --project-name "$project_name" --file "$compose_fil
 web_port="${LAUNCHPAD_WEB_PORT:-18080}"
 [[ "$web_port" =~ ^[0-9]+$ && "$web_port" -ge 1024 && "$web_port" -le 65535 ]] || fail "Production web port is invalid."
 candidate_tmp="$(mktemp "${TMPDIR:-/tmp}/launchpad-release.XXXXXX")" || fail "Could not prepare temporary release configuration."
-printf 'LAUNCHPAD_API_DIGEST=%s\nLAUNCHPAD_WEB_DIGEST=%s\nLAUNCHPAD_STATE_DIR=%s\nLAUNCHPAD_WEB_PORT=%s\nLAUNCHPAD_LAUNCHES_ENABLED=%s\n' \
-    "${api_image##*@}" "${web_image##*@}" "$state_dir" "$web_port" "$launches_enabled" >"$candidate_tmp" || fail "Could not prepare release configuration."
+printf 'LAUNCHPAD_API_DIGEST=%s\nLAUNCHPAD_WEB_DIGEST=%s\nLAUNCHPAD_STATE_DIR=%s\nLAUNCHPAD_WEB_PORT=%s\nLAUNCHPAD_LAUNCHES_ENABLED=%s\nLAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=%s\n' \
+    "${api_image##*@}" "${web_image##*@}" "$state_dir" "$web_port" "$launches_enabled" "$demo_home_latest_launch_enabled" >"$candidate_tmp" || fail "Could not prepare release configuration."
 chmod 0600 "$candidate_tmp" || fail "Could not protect release configuration."
 compose=("${compose_base[@]}" --env-file "$candidate_tmp" --profile ops)
 previous_env="${LAUNCHPAD_PRODUCTION_RELEASE_ENV:-$state_dir/current-release.env}"
@@ -475,8 +484,8 @@ rollback_or_leave() {
     if (( previous_available )) && [[ "$actual" == "$database_schema" ]]; then
         stage="restoring_previous_images"
         restore_env="$release_dir/$previous_commit.env"
-        printf 'LAUNCHPAD_API_DIGEST=%s\nLAUNCHPAD_WEB_DIGEST=%s\nLAUNCHPAD_STATE_DIR=%s\nLAUNCHPAD_WEB_PORT=%s\nLAUNCHPAD_LAUNCHES_ENABLED=%s\n' \
-            "${previous_api##*@}" "${previous_web##*@}" "$state_dir" "${LAUNCHPAD_WEB_PORT:-18080}" "$launches_enabled" >"$restore_env.tmp.$$" || return 1
+        printf 'LAUNCHPAD_API_DIGEST=%s\nLAUNCHPAD_WEB_DIGEST=%s\nLAUNCHPAD_STATE_DIR=%s\nLAUNCHPAD_WEB_PORT=%s\nLAUNCHPAD_LAUNCHES_ENABLED=%s\nLAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=%s\n' \
+            "${previous_api##*@}" "${previous_web##*@}" "$state_dir" "${LAUNCHPAD_WEB_PORT:-18080}" "$launches_enabled" "$demo_home_latest_launch_enabled" >"$restore_env.tmp.$$" || return 1
         chmod 0600 "$restore_env.tmp.$$" && mv -f -- "$restore_env.tmp.$$" "$restore_env" || return 1
         restore=("${compose_base[@]}" --env-file "$restore_env" --profile ops)
         "${restore[@]}" up --detach --wait --wait-timeout "$health_timeout" web api worker scheduler || return 1
@@ -570,10 +579,10 @@ if ! readiness_checks "$health_timeout"; then
     fail "$failure_reason"
 fi
 stage="persisting_release"
-python3 - "$state_dir" "$commit" "$schema_revision" "$api_image" "$web_image" "$release_id" "$previous_commit" "$previous_schema" "$previous_api" "$previous_web" "$launches_enabled" <<'PY' || fail "Could not persist successful release state."
+python3 - "$state_dir" "$commit" "$schema_revision" "$api_image" "$web_image" "$release_id" "$previous_commit" "$previous_schema" "$previous_api" "$previous_web" "$launches_enabled" "$demo_home_latest_launch_enabled" <<'PY' || fail "Could not persist successful release state."
 import json, os, sys, tempfile
 from datetime import UTC, datetime
-state, commit, schema, api, web, release_id, previous, previous_schema, previous_api, previous_web, launches_enabled = sys.argv[1:]
+state, commit, schema, api, web, release_id, previous, previous_schema, previous_api, previous_web, launches_enabled, demo_home_latest_launch_enabled = sys.argv[1:]
 records = {
     "current-release.json": {"commit": commit, "schema_revision": schema, "api_image": api, "web_image": web, "release_id": release_id, "updated_at": datetime.now(UTC).isoformat()},
     "current-release.env": None,
@@ -581,7 +590,7 @@ records = {
 }
 for name, value in records.items():
     if value is None:
-        content = f"LAUNCHPAD_API_DIGEST={api.split('@', 1)[1]}\nLAUNCHPAD_WEB_DIGEST={web.split('@', 1)[1]}\nLAUNCHPAD_STATE_DIR={state}\nLAUNCHPAD_WEB_PORT={os.environ.get('LAUNCHPAD_WEB_PORT', '18080')}\nLAUNCHPAD_LAUNCHES_ENABLED={launches_enabled}\n"
+        content = f"LAUNCHPAD_API_DIGEST={api.split('@', 1)[1]}\nLAUNCHPAD_WEB_DIGEST={web.split('@', 1)[1]}\nLAUNCHPAD_STATE_DIR={state}\nLAUNCHPAD_WEB_PORT={os.environ.get('LAUNCHPAD_WEB_PORT', '18080')}\nLAUNCHPAD_LAUNCHES_ENABLED={launches_enabled}\nLAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED={demo_home_latest_launch_enabled}\n"
     else:
         content = json.dumps(value, sort_keys=True) + "\n"
     fd, temp = tempfile.mkstemp(prefix=f".{name}.", dir=state)

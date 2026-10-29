@@ -231,6 +231,7 @@ def context_getter(
                 products=products,
                 repository=repository,
                 projection=projection,
+                demo_home_latest_launch_enabled=(settings.demo_home_latest_launch_enabled),
             )
 
         return {

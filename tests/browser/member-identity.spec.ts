@@ -58,13 +58,13 @@ test("account routes expose accessible sign-in and generic recovery paths", asyn
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Today’s launches",
+      name: "Take your product from ready to released.",
     }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
       level: 2,
-      name: "Take your product from ready to released.",
+      name: "Today’s launches",
     }),
   ).toBeVisible();
 });

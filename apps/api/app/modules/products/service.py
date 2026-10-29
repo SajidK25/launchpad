@@ -879,6 +879,17 @@ class ProductService:
             next_cursor=next_cursor,
         )
 
+    async def latest_public_launch_date(
+        self, session: AsyncSession, *, on_or_before: date
+    ) -> date | None:
+        """Resolve the newest public UTC launch date without exposing private states."""
+
+        next_day = datetime.combine(
+            on_or_before + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+        )
+        launched_at = await self.repository.latest_public_launch_time(session, before=next_day)
+        return launched_at.astimezone(UTC).date() if launched_at is not None else None
+
     async def public_launch_cards_by_ids(
         self,
         session: AsyncSession,

@@ -260,17 +260,23 @@ for booking history and outbox work; Redis only carries retryable due-work hints
 The production Compose default is `LAUNCHPAD_LAUNCHES_ENABLED=false`. The controller's
 `current-release.env` records the validated host policy alongside image digests and runtime paths.
 Production hosts without `/etc/launchpad/runtime.env` retain the safe disabled default. A designated
-staging host may persist launch availability with a root-owned policy file after its compatible API
-and workers have been verified:
+staging host may persist launch availability and the customer-free demo homepage fallback with a
+root-owned policy file after its compatible API and workers have been verified:
 
 ```sh
-printf '%s\n' 'LAUNCHPAD_LAUNCHES_ENABLED=true' | \
+printf '%s\n' \
+  'LAUNCHPAD_LAUNCHES_ENABLED=true' \
+  'LAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=true' | \
   sudo install -o root -g deploy -m 0640 /dev/stdin /etc/launchpad/runtime.env
 ```
 
-The controller accepts only `LAUNCHPAD_LAUNCHES_ENABLED=true|false` in this non-secret file, rejects
-symlinks and unsafe ownership or permissions, and carries the setting through normal rollout and
-schema-safe image rollback. Remove the file to restore the default-off policy on the next deployment.
+The controller accepts only `LAUNCHPAD_LAUNCHES_ENABLED=true|false` and
+`LAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=true|false` in this non-secret file, rejects symlinks and
+unsafe ownership or permissions, and carries both settings through normal rollout and schema-safe
+image rollback. The demo setting changes only an omitted-date homepage ranking read: if UTC today is
+empty, it selects the newest public launch day and the web page labels it accurately as Latest
+launches. Explicit archive dates remain exact. Remove the file to restore both default-off policies
+on the next deployment, and disable the demo setting before accepting real customer data.
 For a one-release activation before persistent policy is installed, enable launches explicitly on
 the VM as the `deploy` user. Use `false` to disable new launch API/public-route access during
 rollback. These commands recreate only the API service and print only the boolean switch value:

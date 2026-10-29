@@ -40,6 +40,7 @@ class Settings(BaseModel):
     environment: Literal["development", "test", "check", "production"] = "development"
     products_enabled: bool = False
     launches_enabled: bool = False
+    demo_home_latest_launch_enabled: bool = False
     review_writes_enabled: bool = False
     vote_writes_enabled: bool = False
     vote_score_half_life_seconds: int = Field(default=DEFAULT_VOTE_SCORE_HALF_LIFE_SECONDS, ge=1)

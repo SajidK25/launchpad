@@ -628,6 +628,34 @@ describe("anonymous public launch page", () => {
 });
 
 describe("guest launch discovery", () => {
+  it("labels an omitted-date fallback as the latest populated launch day", () => {
+    mocks.launches = discoveryQuery({
+      data: {
+        pages: [
+          {
+            todayDate: "2026-11-02",
+            selectedDate: "2026-10-27",
+            items: [],
+            nextCursor: null,
+          },
+        ],
+      },
+    });
+
+    render(
+      <LaunchDiscovery
+        client={{} as LaunchClient}
+        identityClient={{} as IdentityClient}
+        onDateChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Latest launches" }),
+    ).toBeTruthy();
+    expect(screen.getByText("October 27, 2026")).toBeTruthy();
+  });
+
   it("composes a reloadable archive date and navigates adjacent selections", () => {
     mocks.launches = discoveryQuery({
       data: {
@@ -773,7 +801,7 @@ describe("guest launch discovery", () => {
     expect(screen.queryByText("private diagnostic")).toBeNull();
   });
 
-  it("keeps homepage discovery descendants one level below its H1", () => {
+  it("keeps discovery descendants one level below its configured heading", () => {
     mocks.launches = discoveryQuery({
       data: {
         pages: [

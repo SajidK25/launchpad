@@ -684,6 +684,25 @@ class ProductRepository:
             for row in rows
         ]
 
+    async def latest_public_launch_time(
+        self, session: AsyncSession, *, before: datetime
+    ) -> datetime | None:
+        """Return the newest public launch time before an exclusive UTC boundary."""
+
+        return cast(
+            datetime | None,
+            await session.scalar(
+                select(Product.launched_at)
+                .where(
+                    Product.status == "launched",
+                    Product.launched_at.is_not(None),
+                    Product.launched_at < before,
+                )
+                .order_by(Product.launched_at.desc())
+                .limit(1)
+            ),
+        )
+
     async def list_public_launch_cards_by_ids(
         self,
         session: AsyncSession,

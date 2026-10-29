@@ -290,6 +290,7 @@ def test_valid_manifest_rolls_out_and_persists_healthy_release(
     assert current["web_image"].endswith(WEB_DIGEST)
     current_env = (state_dir / "current-release.env").read_text()
     assert "LAUNCHPAD_LAUNCHES_ENABLED=false\n" in current_env
+    assert "LAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=false\n" in current_env
     calls = [
         json.loads(line)
         for line in Path(deploy_environment["FAKE_DOCKER_LOG"]).read_text().splitlines()
@@ -318,10 +319,31 @@ def test_valid_runtime_policy_persists_launch_enablement(
     assert "LAUNCHPAD_LAUNCHES_ENABLED=true\n" in (state_dir / "current-release.env").read_text()
 
 
+def test_valid_runtime_policy_persists_demo_home_fallback(
+    deploy_environment: dict[str, str],
+) -> None:
+    runtime_env = Path(deploy_environment["LAUNCHPAD_PRODUCTION_RUNTIME_ENV_FILE"])
+    runtime_env.write_text(
+        "LAUNCHPAD_LAUNCHES_ENABLED=true\nLAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=true\n"
+    )
+    runtime_env.chmod(0o640)
+
+    result = run_deploy(deploy_environment)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    state_dir = Path(deploy_environment["LAUNCHPAD_PRODUCTION_STATE_DIR"])
+    release_env = state_dir / "releases" / f"{COMMIT}.env"
+    for path in (release_env, state_dir / "current-release.env"):
+        content = path.read_text()
+        assert "LAUNCHPAD_LAUNCHES_ENABLED=true\n" in content
+        assert "LAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=true\n" in content
+
+
 @pytest.mark.parametrize(
     ("content", "mode"),
     [
         ("LAUNCHPAD_LAUNCHES_ENABLED=yes\n", 0o640),
+        ("LAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=yes\n", 0o640),
         ("LAUNCHPAD_UNKNOWN_FLAG=true\n", 0o640),
         ("LAUNCHPAD_LAUNCHES_ENABLED=true\n", 0o644),
     ],
@@ -561,7 +583,9 @@ def test_migration_failure_with_unchanged_schema_restores_previous_images(
     deploy_environment["FAKE_MIGRATION_FAIL"] = "1"
     deploy_environment["FAKE_SCHEMA_AFTER"] = "head_previous"
     runtime_env = Path(deploy_environment["LAUNCHPAD_PRODUCTION_RUNTIME_ENV_FILE"])
-    runtime_env.write_text("LAUNCHPAD_LAUNCHES_ENABLED=true\n")
+    runtime_env.write_text(
+        "LAUNCHPAD_LAUNCHES_ENABLED=true\nLAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=true\n"
+    )
     runtime_env.chmod(0o640)
     result = run_deploy(deploy_environment)
 
@@ -578,6 +602,7 @@ def test_migration_failure_with_unchanged_schema_restores_previous_images(
     )
     restore_env = state_dir / "releases" / f"{'b' * 40}.env"
     assert "LAUNCHPAD_LAUNCHES_ENABLED=true\n" in restore_env.read_text()
+    assert "LAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED=true\n" in restore_env.read_text()
     assert any("worker.py --health" in call for call in calls)
     attempt = json.loads((state_dir / "last-deployment.json").read_text())
     assert attempt["stage"] == "rolled_back"
