@@ -102,6 +102,10 @@ class PublicLaunchPage(Protocol):
 
 
 class VoteRankingProductAccess(Protocol):
+    async def latest_public_launch_date(
+        self, session: AsyncSession, *, on_or_before: date
+    ) -> date | None: ...
+
     async def public_launches(
         self,
         session: AsyncSession,
@@ -534,11 +538,13 @@ class VoteReadService:
         repository: VoteRepository | None = None,
         projection: VoteRankingProjectionService | None = None,
         clock: Callable[[], datetime] | None = None,
+        demo_home_latest_launch_enabled: bool = False,
     ) -> None:
         self.products = products
         self.repository = repository or VoteRepository()
         self.projection = projection
         self.clock = clock or (lambda: datetime.now(UTC))
+        self.demo_home_latest_launch_enabled = demo_home_latest_launch_enabled
 
     async def daily_product_ranking(
         self,
@@ -556,6 +562,11 @@ class VoteReadService:
             raise VoteReadValidationError("invalid page size")
         today_date = _utc(self.clock()).date()
         selected_date = requested_date or today_date
+        if requested_date is None and product_id is None and self.demo_home_latest_launch_enabled:
+            selected_date = (
+                await self.products.latest_public_launch_date(session, on_or_before=today_date)
+                or today_date
+            )
         if selected_date > today_date:
             raise VoteReadValidationError("future launch dates are unavailable")
         if product_id is not None and after is not None:

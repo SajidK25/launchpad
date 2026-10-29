@@ -24,6 +24,11 @@ export function LaunchDiscovery({
   const isToday =
     selectedDate === todayDate ||
     (date === undefined && selectedDate === undefined);
+  const isLatestFallback =
+    date === undefined &&
+    selectedDate !== undefined &&
+    todayDate !== undefined &&
+    selectedDate !== todayDate;
   const items = launches.data?.pages.flatMap((page) => page.items) ?? [];
   const Heading = headingLevel;
   const childHeadingLevel = headingLevel === "h1" ? "h2" : "h3";
@@ -40,7 +45,11 @@ export function LaunchDiscovery({
         <div>
           <p className="launch-kicker">PUBLIC RELEASES</p>
           <Heading id="launch-discovery-title">
-            {isToday ? "Today’s launches" : "Launches on this day"}
+            {isToday
+              ? "Today’s launches"
+              : isLatestFallback
+                ? "Latest launches"
+                : "Launches on this day"}
           </Heading>
           {selectedDate ? (
             <p className="launch-discovery-date-label">

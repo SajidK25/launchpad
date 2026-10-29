@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -35,10 +35,19 @@ class RecordingPublicLaunchRepository:
 
     def __init__(self) -> None:
         self.products: list[PublicLaunchRow] = []
+        self.latest_launch_time: datetime | None = None
+        self.latest_before: datetime | None = None
         self.logos: dict[UUID, PublicLaunchLogoRow] = {}
         self.topics: dict[UUID, tuple[str, ...]] = {}
         self.logo_calls: list[tuple[UUID, ...]] = []
         self.topic_calls: list[tuple[UUID, ...]] = []
+
+    async def latest_public_launch_time(
+        self, session: AsyncSession, *, before: datetime
+    ) -> datetime | None:
+        del session
+        self.latest_before = before
+        return self.latest_launch_time
 
     async def list_public_launches(
         self,
@@ -154,6 +163,26 @@ def test_public_launches_uses_api_clock_when_date_is_omitted() -> None:
         assert repository.query["day_start"] == now.replace(
             hour=0, minute=0, second=0, microsecond=0
         )
+
+    asyncio.run(verify())
+
+
+def test_latest_public_launch_date_uses_an_exclusive_next_day_boundary() -> None:
+    async def verify() -> None:
+        repository = RecordingPublicLaunchRepository()
+        repository.latest_launch_time = datetime(2026, 10, 27, 23, 30, tzinfo=UTC)
+        service = ProductService(
+            member_access=AuthAccessService(),
+            payload_codec=EmailPayloadCodec({"reads-test": b"r" * 32}, "reads-test"),
+            repository=cast(ProductRepository, repository),
+        )
+
+        selected = await service.latest_public_launch_date(
+            cast(AsyncSession, None), on_or_before=date(2026, 10, 29)
+        )
+
+        assert selected == date(2026, 10, 27)
+        assert repository.latest_before == datetime(2026, 10, 30, tzinfo=UTC)
 
     asyncio.run(verify())
 
@@ -1014,6 +1043,13 @@ def test_public_launches_filter_utc_day_and_page_only_published_cards() -> None:
                 beta_card = next(card for card in cards if card.name == "beta")
                 assert beta_card.logo is not None and beta_card.logo.id == UUID(int=30)
                 assert beta_card.topics == ("AI tools",)
+                assert (
+                    await service.latest_public_launch_date(session, on_or_before=selected)
+                    == selected
+                )
+                assert await service.latest_public_launch_date(
+                    session, on_or_before=selected - timedelta(days=1)
+                ) == selected - timedelta(days=1)
                 assert all(page.next_cursor for page in pages[:-1])
                 assert pages[-1].next_cursor is None
                 empty = await service.public_launches(

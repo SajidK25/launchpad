@@ -72,7 +72,7 @@ function renderHome() {
 function expectHomeDiscoveryVisible() {
   expect(
     screen.getByRole("heading", {
-      level: 1,
+      level: 2,
       name: "Today’s launches",
     }),
   ).toBeTruthy();
@@ -82,7 +82,7 @@ function expectHomeDiscoveryVisible() {
 function expectRetainedSectionsVisible() {
   expect(
     screen.getByRole("heading", {
-      level: 2,
+      level: 1,
       name: "Take your product from ready to released.",
     }),
   ).toBeTruthy();
@@ -109,13 +109,13 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("HomePage", () => {
-  it("renders the launches first and restores all previous homepage sections", () => {
+  it("renders the local-style hero before launches and supporting sections", () => {
     const { container } = renderHome();
 
     expectHomeDiscoveryVisible();
     expect(
       screen.getByRole("heading", {
-        level: 2,
+        level: 1,
         name: "Take your product from ready to released.",
       }),
     ).toBeTruthy();
@@ -151,14 +151,14 @@ describe("HomePage", () => {
       (element) => element.className,
     );
     expect(sections).toEqual([
-      "launch-panel",
       "home-hero",
+      "launch-panel",
       "home-journey",
       "home-principles",
     ]);
     expect(
       (mocks.discoveryProps as { headingLevel?: string }).headingLevel,
-    ).toBe("h1");
+    ).toBe("h2");
   });
 
   it.each(["loading", "empty", "error"] as const)(
@@ -196,8 +196,8 @@ describe("HomePage", () => {
         (element) => element.className,
       );
       expect(sectionOrder).toEqual([
-        "launch-panel",
         "home-hero",
+        "launch-panel",
         "home-journey",
         "home-principles",
       ]);

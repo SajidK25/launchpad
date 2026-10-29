@@ -49,19 +49,10 @@ export function HomePage({
         </StatusBanner>
       ) : null}
 
-      <LaunchDiscovery
-        client={launchClient}
-        headingLevel="h1"
-        identityClient={identityClient}
-        onDateChange={(date) =>
-          navigate(`/launches/archive/${date}`, { focusMainContent: true })
-        }
-      />
-
       <section aria-labelledby="home-title" className="home-hero">
         <div className="home-hero-copy">
           <p className="ui-eyebrow">A more deliberate product launch</p>
-          <h2 id="home-title">Take your product from ready to released.</h2>
+          <h1 id="home-title">Take your product from ready to released.</h1>
           <p className="home-hero-description">
             Prepare your product, get a staff review, reserve a launch date, and
             share its public release page—all in one clear workflow.
@@ -105,6 +96,15 @@ export function HomePage({
           <i />
         </div>
       </section>
+
+      <LaunchDiscovery
+        client={launchClient}
+        headingLevel="h2"
+        identityClient={identityClient}
+        onDateChange={(date) =>
+          navigate(`/launches/archive/${date}`, { focusMainContent: true })
+        }
+      />
 
       <section
         aria-labelledby="home-journey-title"

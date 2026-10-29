@@ -6,6 +6,20 @@ import pytest
 from app.shared.config.settings import ConfigurationError, load_settings
 
 
+def test_demo_home_latest_launch_fallback_is_explicitly_enabled() -> None:
+    base = {"LAUNCHPAD_TRUSTED_WEB_ORIGINS": "http://localhost:8080"}
+    assert load_settings(base).demo_home_latest_launch_enabled is False
+    assert (
+        load_settings(
+            {
+                **base,
+                "LAUNCHPAD_DEMO_HOME_LATEST_LAUNCH_ENABLED": "true",
+            }
+        ).demo_home_latest_launch_enabled
+        is True
+    )
+
+
 def test_documented_local_defaults_need_no_external_credentials() -> None:
     """Local settings must be usable with only safe development defaults."""
 

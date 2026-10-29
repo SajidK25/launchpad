@@ -220,13 +220,13 @@ describe("App", () => {
     expect(
       screen.getByRole("heading", {
         level: 1,
-        name: "Today’s launches",
+        name: "Take your product from ready to released.",
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole("heading", {
         level: 2,
-        name: "Take your product from ready to released.",
+        name: "Today’s launches",
       }),
     ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain(
