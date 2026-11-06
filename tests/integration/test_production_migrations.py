@@ -526,6 +526,240 @@ def test_launch_migration_preserves_review_notice_and_allows_only_scheduled_chan
     asyncio.run(verify())
 
 
+def test_comment_migration_is_additive_and_enforces_discussion_invariants(
+    integration_settings_fixture: IntegrationSettings,
+    reset_database: None,
+) -> None:
+    async def verify() -> None:
+        database = Database.connect(integration_settings_fixture.database_url)
+        author_id, product_id, other_product_id = uuid4(), uuid4(), uuid4()
+        vote_id, root_id, reply_id, receipt_id = uuid4(), uuid4(), uuid4(), uuid4()
+        now = datetime.now(UTC)
+        try:
+            async with database.engine.begin() as connection:
+
+                def upgrade_previous(sync_connection: Connection) -> None:
+                    config = _alembic_config()
+                    config.attributes["connection"] = sync_connection
+                    command.upgrade(config, "0016_votes_and_daily_rankings")
+
+                await connection.run_sync(upgrade_previous)
+                await connection.execute(
+                    text(
+                        "INSERT INTO accounts "
+                        "(id, email_display, email_key, password_hash, created_at, updated_at) "
+                        "VALUES (:id, 'comment-migration@example.test', "
+                        "'comment-migration@example.test', 'hash', :now, :now)"
+                    ),
+                    {"id": author_id, "now": now},
+                )
+                for current_product_id, website_key in (
+                    (product_id, "comment-migration.example.test"),
+                    (other_product_id, "other-comment-migration.example.test"),
+                ):
+                    await connection.execute(
+                        text(
+                            "INSERT INTO products "
+                            "(id, founder_id, status, name, pitch, description, website_url, "
+                            "website_key, launched_at, created_at, updated_at) "
+                            "VALUES (:id, :founder, 'launched', 'Discussion product', "
+                            "'Public pitch', 'Public description', :website_url, :website_key, "
+                            ":now, :now, :now)"
+                        ),
+                        {
+                            "id": current_product_id,
+                            "founder": author_id,
+                            "website_url": f"https://{website_key}",
+                            "website_key": website_key,
+                            "now": now,
+                        },
+                    )
+                await connection.execute(
+                    text(
+                        "INSERT INTO votes (id, member_id, product_id, cast_at, state) "
+                        "VALUES (:id, :member, :product, :now, 'active')"
+                    ),
+                    {"id": vote_id, "member": author_id, "product": product_id, "now": now},
+                )
+                preserved_before = (
+                    await connection.execute(
+                        text(
+                            "SELECT p.id, p.status, v.id, v.state FROM products p "
+                            "JOIN votes v ON v.product_id = p.id WHERE p.id = :product"
+                        ),
+                        {"product": product_id},
+                    )
+                ).one()
+
+            async with database.engine.begin() as connection:
+
+                def upgrade_comments(sync_connection: Connection) -> None:
+                    config = _alembic_config()
+                    config.attributes["connection"] = sync_connection
+                    command.upgrade(config, "head")
+
+                await connection.run_sync(upgrade_comments)
+                preserved_after = (
+                    await connection.execute(
+                        text(
+                            "SELECT p.id, p.status, v.id, v.state FROM products p "
+                            "JOIN votes v ON v.product_id = p.id WHERE p.id = :product"
+                        ),
+                        {"product": product_id},
+                    )
+                ).one()
+                assert preserved_after == preserved_before
+
+                expected_indexes = {
+                    "ix_comments_visible_product_created",
+                    "ix_comments_visible_parent_created",
+                    "ix_comments_author_created",
+                    "ix_comments_duplicate_lookup",
+                    "uq_comment_receipts_author_key",
+                    "ix_comment_receipts_comment",
+                }
+                index_rows = (
+                    await connection.execute(
+                        text(
+                            "SELECT indexname, indexdef FROM pg_indexes "
+                            "WHERE schemaname = current_schema() AND indexname = ANY(:names)"
+                        ),
+                        {"names": list(expected_indexes)},
+                    )
+                ).all()
+                assert {row.indexname for row in index_rows} == expected_indexes
+                definitions = {row.indexname: row.indexdef for row in index_rows}
+                assert "created_at DESC" in definitions["ix_comments_visible_product_created"]
+                assert "WHERE" in definitions["ix_comments_visible_product_created"]
+                assert "created_at DESC" in definitions["ix_comments_visible_parent_created"]
+
+                insert_comment = text(
+                    "INSERT INTO comments "
+                    "(id, product_id, author_account_id, depth, parent_id, parent_depth, "
+                    "body, body_fingerprint, moderation_status, created_at) "
+                    "VALUES (:id, :product, :author, :depth, :parent, :parent_depth, "
+                    ":body, :fingerprint, 'visible', :now)"
+                )
+                await connection.execute(
+                    insert_comment,
+                    {
+                        "id": root_id,
+                        "product": product_id,
+                        "author": author_id,
+                        "depth": 0,
+                        "parent": None,
+                        "parent_depth": None,
+                        "body": "Root comment",
+                        "fingerprint": "a" * 64,
+                        "now": now,
+                    },
+                )
+                await connection.execute(
+                    insert_comment,
+                    {
+                        "id": reply_id,
+                        "product": product_id,
+                        "author": author_id,
+                        "depth": 1,
+                        "parent": root_id,
+                        "parent_depth": 0,
+                        "body": "Direct reply",
+                        "fingerprint": "b" * 64,
+                        "now": now,
+                    },
+                )
+                await connection.execute(
+                    text(
+                        "INSERT INTO comment_idempotency_receipts "
+                        "(id, author_account_id, idempotency_key, request_fingerprint, "
+                        "comment_id, created_at) VALUES "
+                        "(:id, :author, 'comment-request-1', :fingerprint, :comment, :now)"
+                    ),
+                    {
+                        "id": receipt_id,
+                        "author": author_id,
+                        "fingerprint": "c" * 64,
+                        "comment": root_id,
+                        "now": now,
+                    },
+                )
+
+                invalid_comments = (
+                    {
+                        "id": uuid4(),
+                        "product": product_id,
+                        "author": author_id,
+                        "depth": 1,
+                        "parent": reply_id,
+                        "parent_depth": 0,
+                        "body": "Nested reply",
+                        "fingerprint": "d" * 64,
+                        "now": now,
+                    },
+                    {
+                        "id": uuid4(),
+                        "product": other_product_id,
+                        "author": author_id,
+                        "depth": 1,
+                        "parent": root_id,
+                        "parent_depth": 0,
+                        "body": "Cross-product reply",
+                        "fingerprint": "e" * 64,
+                        "now": now,
+                    },
+                    {
+                        "id": uuid4(),
+                        "product": product_id,
+                        "author": author_id,
+                        "depth": 0,
+                        "parent": root_id,
+                        "parent_depth": 0,
+                        "body": "Malformed root",
+                        "fingerprint": "f" * 64,
+                        "now": now,
+                    },
+                    {
+                        "id": uuid4(),
+                        "product": product_id,
+                        "author": author_id,
+                        "depth": 0,
+                        "parent": None,
+                        "parent_depth": None,
+                        "body": " ",
+                        "fingerprint": "0" * 64,
+                        "now": now,
+                    },
+                )
+                for values in invalid_comments:
+                    savepoint = await connection.begin_nested()
+                    with pytest.raises(IntegrityError):
+                        await connection.execute(insert_comment, values)
+                    await savepoint.rollback()
+
+                duplicate_receipt = await connection.begin_nested()
+                with pytest.raises(IntegrityError):
+                    await connection.execute(
+                        text(
+                            "INSERT INTO comment_idempotency_receipts "
+                            "(id, author_account_id, idempotency_key, request_fingerprint, "
+                            "comment_id, created_at) VALUES "
+                            "(:id, :author, 'comment-request-1', :fingerprint, :comment, :now)"
+                        ),
+                        {
+                            "id": uuid4(),
+                            "author": author_id,
+                            "fingerprint": "1" * 64,
+                            "comment": reply_id,
+                            "now": now,
+                        },
+                    )
+                await duplicate_receipt.rollback()
+        finally:
+            await database.close()
+
+    asyncio.run(verify())
+
+
 def test_migration_failure_exits_nonzero_without_storage_configuration(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

@@ -110,7 +110,7 @@ def _downgrade_to_previous(sync_connection: Connection) -> None:
     command.downgrade(config, "0015_public_catalog_search")
 
 
-def test_fresh_database_migrates_to_vote_schema_head(
+def test_fresh_database_migrates_to_repository_schema_head(
     integration_settings_fixture: IntegrationSettings,
     reset_database: None,
 ) -> None:
@@ -130,7 +130,7 @@ def test_fresh_database_migrates_to_vote_schema_head(
                     ).all()
                 )
                 revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-                assert revision == "0016_votes_and_daily_rankings"
+                assert revision == "0017_comments_replies"
                 assert {
                     "votes",
                     "vote_idempotency_receipts",
@@ -139,6 +139,8 @@ def test_fresh_database_migrates_to_vote_schema_head(
                     "daily_ranking_snapshots",
                     "daily_ranking_entries",
                     "voting_feature_state",
+                    "comments",
+                    "comment_idempotency_receipts",
                 } <= tables
         finally:
             await database.close()
