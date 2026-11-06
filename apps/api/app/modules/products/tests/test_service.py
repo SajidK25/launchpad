@@ -161,3 +161,31 @@ def test_voting_context_exposes_only_launched_product_eligibility_fields() -> No
         assert await service.voting_context(cast(Any, _Session()), product_id=product.id) is None
 
     asyncio.run(verify())
+
+
+def test_discussion_context_exposes_only_current_public_launch_identity() -> None:
+    async def verify() -> None:
+        product = _product(status="launched")
+        product.launched_at = datetime(2026, 10, 24, tzinfo=UTC)
+        repository = _Repository(product)
+        service = ProductService(
+            member_access=cast(Any, _Accounts()),
+            outbox_repository=cast(Any, _Outbox()),
+            payload_codec=cast(Any, _Codec()),
+            repository=cast(Any, repository),
+            clock=lambda: datetime(2026, 10, 24, tzinfo=UTC),
+        )
+        context = await service.discussion_context(
+            cast(Any, _Session()), product_id=product.id, lock=True
+        )
+        assert context is not None and context.product_id == product.id
+        assert not hasattr(context, "name") and not hasattr(context, "founder_id")
+        product.status = "removed"
+        assert (
+            await service.discussion_context(
+                cast(Any, _Session()), product_id=product.id, lock=True
+            )
+            is None
+        )
+
+    asyncio.run(verify())

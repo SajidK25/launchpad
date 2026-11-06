@@ -72,7 +72,7 @@ Create the additive PostgreSQL schema and SQLAlchemy mappings for immutable comm
 
 ## Task T2: Implement Transactional Discussion Rules and Persistence
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** critical

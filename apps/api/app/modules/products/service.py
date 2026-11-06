@@ -402,6 +402,13 @@ class ProductVotingContext:
     launched: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ProductDiscussionContext:
+    """Minimal current public-launch identity exposed to discussion."""
+
+    product_id: UUID
+
+
 class ProductService:
     """Create, load, and version private drafts under live account authorization."""
 
@@ -763,6 +770,16 @@ class ProductService:
             launch_date=product.launched_at.astimezone(UTC).date(),
             launched=True,
         )
+
+    async def discussion_context(
+        self, session: AsyncSession, *, product_id: UUID, lock: bool = False
+    ) -> ProductDiscussionContext | None:
+        """Expose only identity when the product currently permits public discussion."""
+
+        product = await self.repository.get_product(session, product_id=product_id, lock=lock)
+        if product is None or product.status != "launched" or product.launched_at is None:
+            return None
+        return ProductDiscussionContext(product_id=product.id)
 
     async def _record_launch_event(self, session: AsyncSession, product: Product) -> None:
         """Insert encrypted launch membership into the publication transaction."""
