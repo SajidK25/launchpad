@@ -2,16 +2,35 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, exists, insert, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid6 import uuid7
 
 from app.modules.users.models import PhotoUpload, Profile, ProfileLink
+
+
+@dataclass(frozen=True, slots=True)
+class CommentAttributionRow:
+    """Current profile fields approved for contextual discussion attribution."""
+
+    account_id: UUID
+    display_name: str | None
+    visibility: str
+    has_validated_photo: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ValidatedCommentPhoto:
+    """Users-internal pointer to one current validated profile photo."""
+
+    object_key: str
+    media_type: str
 
 
 class ProfileRepository:
@@ -48,6 +67,69 @@ class ProfileRepository:
             ).all()
         )
         return profile, links
+
+    async def comment_attribution_rows(
+        self, session: AsyncSession, account_ids: tuple[UUID, ...]
+    ) -> list[CommentAttributionRow]:
+        """Batch current names, privacy, and validated-photo availability."""
+
+        if not account_ids:
+            return []
+        validated_photo = exists(
+            select(PhotoUpload.id).where(
+                PhotoUpload.account_id == Profile.account_id,
+                PhotoUpload.clean_key == Profile.photo_key,
+                PhotoUpload.state == "cleaned",
+                PhotoUpload.byte_count.is_not(None),
+                PhotoUpload.byte_count > 0,
+                PhotoUpload.byte_count <= 5 * 1024 * 1024,
+                PhotoUpload.media_type.in_(("image/jpeg", "image/png", "image/webp")),
+            )
+        )
+        result = await session.execute(
+            select(
+                Profile.account_id,
+                Profile.display_name,
+                Profile.visibility,
+                validated_photo.label("has_validated_photo"),
+            ).where(Profile.account_id.in_(account_ids))
+        )
+        return [
+            CommentAttributionRow(
+                account_id=row.account_id,
+                display_name=row.display_name,
+                visibility=row.visibility,
+                has_validated_photo=bool(row.has_validated_photo),
+            )
+            for row in result.all()
+        ]
+
+    async def current_validated_comment_photo(
+        self, session: AsyncSession, account_id: UUID
+    ) -> ValidatedCommentPhoto | None:
+        """Resolve the current profile photo only when its upload remains validated."""
+
+        result = await session.execute(
+            select(Profile.photo_key, PhotoUpload.media_type)
+            .join(
+                PhotoUpload,
+                (PhotoUpload.account_id == Profile.account_id)
+                & (PhotoUpload.clean_key == Profile.photo_key),
+            )
+            .where(
+                Profile.account_id == account_id,
+                Profile.photo_key.is_not(None),
+                PhotoUpload.state == "cleaned",
+                PhotoUpload.byte_count.is_not(None),
+                PhotoUpload.byte_count > 0,
+                PhotoUpload.byte_count <= 5 * 1024 * 1024,
+                PhotoUpload.media_type.in_(("image/jpeg", "image/png", "image/webp")),
+            )
+        )
+        row = result.one_or_none()
+        if row is None or row.photo_key is None or row.media_type is None:
+            return None
+        return ValidatedCommentPhoto(object_key=row.photo_key, media_type=row.media_type)
 
     async def has_validated_photo(
         self,

@@ -156,7 +156,7 @@ Implement the comments-owned repository, named policies, and transactional servi
 
 ## Task T3: Preserve Current Author Attribution Across Profile Changes
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

@@ -47,6 +47,21 @@ class MemberAccess(Protocol):
     ) -> MemberIdentity | None: ...
 
 
+class CommentAuthorActivityAccess(Protocol):
+    """Comments-owned boolean boundary used to preserve required attribution."""
+
+    async def has_visible_entries(self, session: AsyncSession, *, account_id: UUID) -> bool: ...
+
+
+class ProfileAttributionConflictError(ProfileConflictError):
+    """Visible public speech requires the author's name and validated photo."""
+
+
+class _NoCommentActivity:
+    async def has_visible_entries(self, session: AsyncSession, *, account_id: UUID) -> bool:
+        return False
+
+
 @dataclass(frozen=True, slots=True)
 class ProfileResult:
     """Profile data returned by domain operations."""
@@ -80,6 +95,7 @@ class ProfileService:
         outbox_repository: Any,
         payload_codec: Any,
         mail_web_origin: str,
+        comment_activity: CommentAuthorActivityAccess | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.repository = repository or ProfileRepository()
@@ -87,6 +103,7 @@ class ProfileService:
         self.outbox_repository = outbox_repository
         self.payload_codec = payload_codec
         self.mail_web_origin = mail_web_origin.rstrip("/")
+        self.comment_activity = comment_activity or _NoCommentActivity()
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def get_owner(self, session: Any, *, actor_id: UUID, account_id: UUID) -> ProfileResult:
@@ -146,6 +163,12 @@ class ProfileService:
             links=links_value,
         )
         await self._require_validated_photo(session, actor_id, photo_key_value)
+        if (
+            display_name_value is None or not display_name_value.strip() or photo_key_value is None
+        ) and await self.comment_activity.has_visible_entries(session, account_id=actor_id):
+            raise ProfileAttributionConflictError(
+                "profile attribution is required while discussion entries are visible"
+            )
         was_public = profile.visibility == "public"
         candidate = _candidate(profile, values)
         became_private = was_public and not is_complete(candidate, links_value)
@@ -371,6 +394,7 @@ __all__ = [
     "MemberAccess",
     "MemberIdentity",
     "ProfileBootstrap",
+    "ProfileAttributionConflictError",
     "ProfileConflictError",
     "ProfileError",
     "ProfileForbiddenError",

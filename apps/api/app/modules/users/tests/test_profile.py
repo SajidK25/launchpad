@@ -7,9 +7,11 @@ import pytest
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.dml import Insert
 
+from app.modules.users.comment_attribution import CommentAttributionService
 from app.modules.users.repository import ProfileRepository
 from app.modules.users.service import (
     MemberIdentity,
+    ProfileAttributionConflictError,
     ProfileConflictError,
     ProfileForbiddenError,
     ProfileInfrastructureError,
@@ -50,6 +52,16 @@ class FakeRepository:
         self, session: Any, account_id: object, photo_key: str, *, lock: bool = False
     ) -> bool:
         return bool(account_id == self.profile.account_id and photo_key == self.profile.photo_key)
+
+
+class FakeCommentActivity:
+    def __init__(self, visible: bool = False) -> None:
+        self.visible = visible
+        self.queries: list[object] = []
+
+    async def has_visible_entries(self, session: Any, *, account_id: object) -> bool:
+        self.queries.append(account_id)
+        return self.visible
 
 
 @pytest.mark.anyio
@@ -320,6 +332,7 @@ def _service(
     verified: bool = False,
     links: list[str] | None = None,
     outbox: FakeOutbox | None = None,
+    comment_activity: FakeCommentActivity | None = None,
 ) -> tuple[ProfileService, FakeRepository, FakeOutbox]:
     repository = FakeRepository(profile, links)
     events = outbox or FakeOutbox()
@@ -331,6 +344,7 @@ def _service(
         outbox_repository=events,
         payload_codec=FakeCodec(),
         mail_web_origin="https://launchpad.example",
+        comment_activity=comment_activity,
         clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
     )
     return service, repository, events
@@ -473,3 +487,114 @@ async def test_manual_unpublish_then_republish_rechecks_requirements() -> None:
     repository.profile.bio = ""
     with pytest.raises(ProfileValidationError):
         await service.publish(None, actor_id=account_id)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("field", ["display_name", "photo_key"])
+async def test_visible_discussion_prevents_clearing_required_attribution(field: str) -> None:
+    account_id = uuid4()
+    activity = FakeCommentActivity(visible=True)
+    service, repository, _ = _service(_profile(account_id), comment_activity=activity)
+
+    with pytest.raises(ProfileAttributionConflictError):
+        await service.update_profile(None, actor_id=account_id, **{field: None})
+
+    assert repository.saved == []
+    assert activity.queries == [account_id]
+
+
+@pytest.mark.anyio
+async def test_profile_without_discussion_can_clear_attribution_and_author_can_stay_private() -> (
+    None
+):
+    account_id = uuid4()
+    activity = FakeCommentActivity(visible=False)
+    service, repository, _ = _service(
+        _profile(account_id, visibility="public"),
+        verified=True,
+        links=["https://example.com"],
+        comment_activity=activity,
+    )
+
+    result = await service.update_profile(None, actor_id=account_id, display_name=None)
+    assert result.profile.display_name is None
+    assert result.profile.visibility == "private"
+    assert activity.queries == [account_id]
+
+    repository.profile.display_name = "Ada Renamed"
+    repository.profile.photo_key = f"profile-clean/{uuid4().hex}/{uuid4().hex}"
+    await service.unpublish(None, actor_id=account_id)
+    assert repository.profile.visibility == "private"
+
+
+@pytest.mark.anyio
+async def test_comment_attribution_batches_public_and_private_profiles_without_private_fields() -> (
+    None
+):
+    public_id, private_id = uuid4(), uuid4()
+
+    class Repository:
+        async def comment_attribution_rows(
+            self, session: Any, account_ids: tuple[object, ...]
+        ) -> list[Any]:
+            assert account_ids == (public_id, private_id)
+            return [
+                SimpleNamespace(
+                    account_id=public_id,
+                    display_name="Public Ada",
+                    visibility="public",
+                    has_validated_photo=True,
+                ),
+                SimpleNamespace(
+                    account_id=private_id,
+                    display_name="Private Grace",
+                    visibility="private",
+                    has_validated_photo=True,
+                ),
+            ]
+
+    service = CommentAttributionService(
+        repository=cast(Any, Repository()), storage=SimpleNamespace()
+    )
+    values = await service.batch(cast(Any, None), (public_id, private_id, public_id))
+
+    assert values[public_id].public_profile_url == f"/public/{public_id}"
+    assert values[private_id].public_profile_url is None
+    assert values[private_id].display_name == "Private Grace"
+    assert values[private_id].has_photo is True
+    assert not hasattr(values[public_id], "email")
+    assert not hasattr(values[public_id], "photo_key")
+
+
+@pytest.mark.anyio
+async def test_comment_attribution_reads_only_the_current_validated_photo() -> None:
+    account_id = uuid4()
+
+    class Repository:
+        photo: Any = SimpleNamespace(
+            object_key=f"profile-clean/{account_id.hex}/{uuid4().hex}",
+            media_type="image/png",
+        )
+
+        async def current_validated_comment_photo(self, session: Any, requested_id: object) -> Any:
+            return self.photo if requested_id == account_id else None
+
+    class Storage:
+        keys: list[str]
+
+        def __init__(self) -> None:
+            self.keys = []
+
+        async def get_private(self, *, object_key: str) -> tuple[bytes, str | None]:
+            self.keys.append(object_key)
+            return b"image", "image/png"
+
+    repository, storage = Repository(), Storage()
+    service = CommentAttributionService(repository=cast(Any, repository), storage=storage)
+    photo = await service.read_photo(cast(Any, None), account_id)
+    assert photo is not None and photo.body == b"image" and photo.media_type == "image/png"
+    assert not hasattr(photo, "object_key")
+    assert storage.keys == [repository.photo.object_key]
+
+    repository.photo = None
+    assert await service.read_photo(cast(Any, None), account_id) is None

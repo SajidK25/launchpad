@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from redis import Redis
 
-from app.modules.users.routes import router
+from app.modules.users.routes import _BoundMemberAccess, _map_profile_error, router
 from app.modules.users.schemas import PhotoUploadResponse
+from app.modules.users.service import ProfileAttributionConflictError
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
 from app.shared.storage.objects import PrivateObjectStore
@@ -90,6 +93,50 @@ def test_profile_mutation_rejects_untrusted_origin_with_generic_body() -> None:
     )
     assert response.status_code == 403
     assert response.json() == {"detail": "request rejected"}
+
+
+def test_attribution_clear_conflict_maps_to_stable_safe_response() -> None:
+    mapped = _map_profile_error(
+        ProfileAttributionConflictError(
+            "profile attribution is required while discussion entries are visible"
+        )
+    )
+    assert mapped.status_code == 409
+    assert mapped.detail == "profile attribution is required while discussion entries are visible"
+
+
+@pytest.mark.anyio
+async def test_bound_member_access_takes_the_authoritative_account_lock() -> None:
+    account_id = uuid4()
+
+    class AccountAccess:
+        calls: list[tuple[object, bool]]
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        async def current_account(
+            self, session: object, requested: object, *, lock: bool = False
+        ) -> object:
+            self.calls.append((requested, lock))
+            return SimpleNamespace(verified=False)
+
+    live = AccountAccess()
+    access = _BoundMemberAccess(
+        cast(
+            Any,
+            SimpleNamespace(
+                account_id=account_id,
+                email_display="member@example.test",
+                verified=True,
+            ),
+        ),
+        account_access=cast(Any, live),
+    )
+    identity = await access.get_member(cast(Any, SimpleNamespace()), account_id, lock=True)
+    assert identity is not None
+    assert identity.verified is False
+    assert live.calls == [(account_id, True)]
 
 
 def test_profile_mutation_accepts_each_configured_origin_before_authentication() -> None:

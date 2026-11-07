@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import boto3
 import pytest
 from app.modules.auth.repository import AuthRepository
+from app.modules.users.comment_attribution import CommentAttributionService
 from app.modules.users.models import PhotoUpload, Profile
 from app.modules.users.repository import ProfileRepository
 from app.modules.users.service import MemberIdentity, ProfileService
@@ -258,6 +259,12 @@ def test_published_profile_edit_is_private_and_notified_atomically(
             async with sessions() as session:
                 profile = await session.get(Profile, owner_id)
                 assert profile is not None and profile.visibility == "private"
+                attribution = await CommentAttributionService(
+                    repository=ProfileRepository(), storage=object()
+                ).batch(session, (owner_id,))
+                assert attribution[owner_id].display_name == "Member"
+                assert attribution[owner_id].has_photo is True
+                assert attribution[owner_id].public_profile_url is None
                 assert (
                     await session.scalar(
                         select(func.count(OutboxMessage.id)).where(

@@ -16,6 +16,7 @@ from uuid6 import uuid7
 
 from app.graphql import build_router, context_getter
 from app.modules.auth.sessions import MemberContext, SessionService, UnauthenticatedError
+from app.modules.auth.staff import AuthAccessService
 from app.modules.users.policies import (
     ProfileConflictError,
     ProfileForbiddenError,
@@ -29,7 +30,13 @@ from app.modules.users.schemas import (
     ProfilePatchRequest,
     ProfileResponse,
 )
-from app.modules.users.service import MemberIdentity, ProfileResult, ProfileService
+from app.modules.users.service import (
+    CommentAuthorActivityAccess,
+    MemberIdentity,
+    ProfileAttributionConflictError,
+    ProfileResult,
+    ProfileService,
+)
 from app.modules.votes.service import RankingRedis
 from app.shared.config.settings import Settings
 from app.shared.db.database import Database
@@ -54,15 +61,42 @@ from app.shared.storage.uploads import (
 
 
 class _BoundMemberAccess:
-    def __init__(self, member: MemberContext | None) -> None:
+    def __init__(
+        self,
+        member: MemberContext | None,
+        account_access: AuthAccessService | None = None,
+    ) -> None:
         self.member = member
+        self.account_access = account_access or AuthAccessService()
 
     async def get_member(
         self, session: AsyncSession, account_id: UUID, *, lock: bool = False
     ) -> MemberIdentity | None:
         if self.member is None or self.member.account_id != account_id:
             return None
-        return MemberIdentity(account_id, self.member.email_display, self.member.verified)
+        current = await self.account_access.current_account(session, account_id, lock=lock)
+        if current is None:
+            return None
+        return MemberIdentity(account_id, self.member.email_display, current.verified)
+
+
+def _map_profile_error(error: Exception) -> HTTPException:
+    if isinstance(error, ProfileForbiddenError):
+        return HTTPException(status_code=403, detail="profile access is forbidden")
+    if isinstance(error, ProfileAttributionConflictError):
+        return HTTPException(
+            status_code=409,
+            detail="profile attribution is required while discussion entries are visible",
+        )
+    if isinstance(error, ProfileConflictError):
+        return HTTPException(status_code=409, detail="profile changed; reload and retry")
+    if isinstance(error, ProfileValidationError):
+        return HTTPException(status_code=422, detail="invalid profile")
+    if isinstance(error, ProfileInfrastructureError):
+        return HTTPException(status_code=503, detail="service unavailable")
+    if isinstance(error, SQLAlchemyError | RedisError):
+        return HTTPException(status_code=503, detail="service unavailable")
+    return HTTPException(status_code=400, detail="request could not be completed")
 
 
 def router(
@@ -72,6 +106,7 @@ def router(
     redis: Redis,
     storage: PrivateObjectStore,
     ranking_redis: RankingRedis | None = None,
+    comment_activity: CommentAuthorActivityAccess | None = None,
 ) -> tuple[APIRouter, APIRouter]:
     if settings.outbox_key is None or settings.outbox_key_id is None:
         raise RuntimeError("Outbox encryption configuration is required.")
@@ -107,6 +142,7 @@ def router(
             outbox_repository=OutboxRepository(),
             payload_codec=codec,
             mail_web_origin=str(settings.mail_web_origin),
+            comment_activity=comment_activity,
         )
 
     def check_origin(request: Request) -> None:
@@ -137,19 +173,6 @@ def router(
             raise HTTPException(status_code=429, detail="try again later") from error
         except RateLimitUnavailable as error:
             raise HTTPException(status_code=503, detail="service unavailable") from error
-
-    def map_profile_error(error: Exception) -> HTTPException:
-        if isinstance(error, ProfileForbiddenError):
-            return HTTPException(status_code=403, detail="profile access is forbidden")
-        if isinstance(error, ProfileConflictError):
-            return HTTPException(status_code=409, detail="profile changed; reload and retry")
-        if isinstance(error, ProfileValidationError):
-            return HTTPException(status_code=422, detail="invalid profile")
-        if isinstance(error, ProfileInfrastructureError):
-            return HTTPException(status_code=503, detail="service unavailable")
-        if isinstance(error, SQLAlchemyError | RedisError):
-            return HTTPException(status_code=503, detail="service unavailable")
-        return HTTPException(status_code=400, detail="request could not be completed")
 
     @routes.patch("/me/profile", response_model=ProfileResponse)
     async def update_profile(
@@ -186,7 +209,7 @@ def router(
                 SQLAlchemyError,
                 RedisError,
             ) as error:
-                raise map_profile_error(error) from error
+                raise _map_profile_error(error) from error
         response.headers["Cache-Control"] = "no-store"
         return _response(result, became_private=result.became_private)
 
@@ -214,7 +237,7 @@ def router(
                 SQLAlchemyError,
                 RedisError,
             ) as error:
-                raise map_profile_error(error) from error
+                raise _map_profile_error(error) from error
         response.headers["Cache-Control"] = "no-store"
         return _response(result)
 
@@ -242,7 +265,7 @@ def router(
                 SQLAlchemyError,
                 RedisError,
             ) as error:
-                raise map_profile_error(error) from error
+                raise _map_profile_error(error) from error
         response.headers["Cache-Control"] = "no-store"
         return _response(result)
 
@@ -371,7 +394,7 @@ def router(
                 SQLAlchemyError,
                 RedisError,
             ) as error:
-                raise map_profile_error(error) from error
+                raise _map_profile_error(error) from error
         return Response(status_code=204)
 
     @routes.post(
