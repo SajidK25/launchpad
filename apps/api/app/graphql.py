@@ -19,6 +19,9 @@ from strawberry.types.execution import ExecutionResult
 
 from app.modules.auth.sessions import MemberContext, SessionService, UnauthenticatedError
 from app.modules.auth.staff import AuthAccessService
+from app.modules.comments.graphql import CommentQuery
+from app.modules.comments.policies import CommentNotFoundError, CommentValidationError
+from app.modules.comments.service import CommentService
 from app.modules.launches.graphql import LaunchQuery
 from app.modules.launches.service import LaunchBookingService
 from app.modules.notifications.graphql import LaunchPreferenceQuery, NotificationQuery
@@ -59,6 +62,8 @@ _ALLOWED_ROOT_FIELDS = frozenset(
         "publicCatalogTopics",
         "dailyProductRanking",
         "pendingVoteReviews",
+        "productDiscussion",
+        "commentReplies",
     }
 )
 _MAX_QUERY_LENGTH = 8192
@@ -76,6 +81,7 @@ class Query(
     LaunchQuery,
     LaunchPreferenceQuery,
     VoteQuery,
+    CommentQuery,
 ):
     """The application's single read root; no mutation or subscription exists."""
 
@@ -93,6 +99,7 @@ class LaunchesWithoutProductsQuery(
     LaunchQuery,
     LaunchPreferenceQuery,
     VoteQuery,
+    CommentQuery,
 ):
     """Composed launch read root without private product reads."""
 
@@ -123,6 +130,10 @@ class PrivateReadRouter(GraphQLRouter):
                 encoded["message"] = "vote review access is forbidden"
             elif isinstance(error.original_error, VoteReadValidationError):
                 encoded["message"] = "invalid vote query"
+            elif isinstance(error.original_error, CommentNotFoundError):
+                encoded["message"] = "discussion unavailable"
+            elif isinstance(error.original_error, CommentValidationError):
+                encoded["message"] = "invalid discussion query"
             else:
                 encoded["message"] = "request could not be completed"
         return response
@@ -167,6 +178,7 @@ def context_getter(
     profile_service_factory: Callable[[MemberContext | None], ProfileService],
     payload_codec: EmailPayloadCodec,
     ranking_redis: RankingRedis | None = None,
+    comment_service_factory: Callable[[], CommentService] | None = None,
 ) -> Callable[..., Any]:
     """Validate the request before resolving a fresh session-bound read context."""
 
@@ -233,7 +245,7 @@ def context_getter(
                 projection=projection,
             )
 
-        return {
+        read_context: dict[str, Any] = {
             "member": member,
             "request_id": request_id,
             "session_secret": secret,
@@ -246,6 +258,9 @@ def context_getter(
                 member_access=AuthAccessService(), payload_codec=payload_codec
             ),
         }
+        if comment_service_factory is not None:
+            read_context["comment_service_factory"] = comment_service_factory
+        return read_context
 
     return context
 

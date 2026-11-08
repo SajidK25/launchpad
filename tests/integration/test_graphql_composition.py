@@ -8,6 +8,14 @@ from math import ceil
 from time import perf_counter
 from uuid import UUID, uuid4
 
+import strawberry
+from app.graphql import (
+    LaunchesWithoutProductsQuery,
+    ProductsWithoutLaunchesQuery,
+    ProfileOnlyQuery,
+    Query,
+    validate_read_query,
+)
 from app.modules.auth.models import Account, Session
 from app.modules.auth.sessions import SessionService, SignInResult
 from app.modules.auth.staff import AuthAccessService
@@ -32,6 +40,43 @@ from fastapi.testclient import TestClient
 from redis import Redis
 from sqlalchemy import delete, insert, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
+
+def test_composed_schema_variants_scope_discussion_roots_and_keep_query_limits() -> None:
+    full = strawberry.Schema(query=Query).as_str()
+    launches_only = strawberry.Schema(query=LaunchesWithoutProductsQuery).as_str()
+    products_only = strawberry.Schema(query=ProductsWithoutLaunchesQuery).as_str()
+    profile_only = strawberry.Schema(query=ProfileOnlyQuery).as_str()
+
+    for schema in (full, launches_only):
+        assert "productDiscussion(" in schema
+        assert "commentReplies(" in schema
+        assert "publicProduct(" in schema
+    for schema in (products_only, profile_only):
+        assert "productDiscussion(" not in schema
+        assert "commentReplies(" not in schema
+    assert "viewerProducts(" in full and "dailyProductRanking(" in full
+    assert "viewerProducts(" in products_only and "viewerProfile" in profile_only
+
+    validate_read_query(
+        "query { productDiscussion(productId: "
+        '"00000000-0000-0000-0000-000000000001") { items { id } } }'
+    )
+    for unsafe in (
+        "query { renamed: productDiscussion(productId: "
+        '"00000000-0000-0000-0000-000000000001") { items { id } } }',
+        "query { productDiscussion(productId: "
+        '"00000000-0000-0000-0000-000000000001") { items { replies { author '
+        "{ accountId { value { id } } } } } } }",
+        "query { productDiscussion(productId: "
+        '"00000000-0000-0000-0000-000000000001") { items { id } } } ' + " " * 8192,
+    ):
+        try:
+            validate_read_query(unsafe)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unsafe discussion query was accepted")
 
 
 def test_composed_graphql_keeps_private_products_topics_and_media_scoped(

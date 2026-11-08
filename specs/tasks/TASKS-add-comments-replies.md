@@ -230,7 +230,7 @@ Provide the users-owned boundary for batched current attribution and validated p
 
 ## Task T4: Compose Bounded Public Discussion Reads in GraphQL
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
