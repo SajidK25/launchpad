@@ -305,7 +305,7 @@ Expose public discussion and earlier-reply pages through independent bounded Str
 
 ## Task T5: Build Product-Scoped Live Discussion Delivery
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high
