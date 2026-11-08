@@ -181,7 +181,9 @@ def vote_live_router(
         except RedisError:
             await websocket.close(code=1013)
         except asyncio.CancelledError:
-            raise
+            # Client disconnect and application shutdown may cancel the ASGI task
+            # before Starlette surfaces a websocket.disconnect frame.
+            return
         except Exception:
             await websocket.close(code=1013)
         finally:
