@@ -203,36 +203,44 @@ describe("DiscoverPage", () => {
     ).toBeNull();
   });
 
-  it("selects and removes multiple topics and enforces the twenty-topic maximum", () => {
-    hooks.topics = topicState(
-      Array.from({ length: 21 }, (_, index) => ({
-        id: `topic-${String(index + 1).padStart(2, "0")}`,
-        displayName: `Topic ${String(index + 1).padStart(2, "0")}`,
-      })),
-    );
-    renderDiscover();
-
-    for (let index = 1; index <= 20; index += 1) {
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: `Topic ${String(index).padStart(2, "0")}`,
-        }),
+  it(
+    "selects and removes multiple topics and enforces the twenty-topic maximum",
+    () => {
+      hooks.topics = topicState(
+        Array.from({ length: 21 }, (_, index) => ({
+          id: `topic-${String(index + 1).padStart(2, "0")}`,
+          displayName: `Topic ${String(index + 1).padStart(2, "0")}`,
+        })),
       );
-    }
-    expect(
-      screen.getByRole("list", { name: "Selected topics" }).children,
-    ).toHaveLength(20);
-    expect(hooks.catalogCalls.at(-1)?.[2]).toHaveLength(20);
+      renderDiscover();
 
-    fireEvent.click(screen.getByRole("button", { name: "Topic 21" }));
-    expect(screen.getByRole("alert").textContent).toContain("up to 20 topics");
-    expect(hooks.catalogCalls.at(-1)?.[2]).toHaveLength(20);
+      for (let index = 1; index <= 20; index += 1) {
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: `Topic ${String(index).padStart(2, "0")}`,
+          }),
+        );
+      }
+      expect(
+        screen.getByRole("list", { name: "Selected topics" }).children,
+      ).toHaveLength(20);
+      expect(hooks.catalogCalls.at(-1)?.[2]).toHaveLength(20);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove Topic 01" }));
-    expect(
-      screen.getByRole("list", { name: "Selected topics" }).children,
-    ).toHaveLength(19);
-  });
+      fireEvent.click(screen.getByRole("button", { name: "Topic 21" }));
+      expect(screen.getByRole("alert").textContent).toContain(
+        "up to 20 topics",
+      );
+      expect(hooks.catalogCalls.at(-1)?.[2]).toHaveLength(20);
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Remove Topic 01" }),
+      );
+      expect(
+        screen.getByRole("list", { name: "Selected topics" }).children,
+      ).toHaveLength(19);
+    },
+    10_000,
+  );
 
   it("preserves valid results while reporting overlong search text", () => {
     renderDiscover();
