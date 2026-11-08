@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -10,6 +11,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
+from app.modules.comments.events import CommentCreatedPublisher
 from app.modules.comments.live import (
     CommentLiveTicketService,
     comment_created_message,
@@ -18,6 +20,10 @@ from app.modules.comments.live import (
 )
 from app.modules.comments.service import ProductDiscussionContext
 from app.shared.config.settings import Settings
+from app.shared.email.codec import EmailPayloadCodec
+from app.shared.events.dispatcher import dispatch_claimed
+from app.shared.events.models import OutboxMessage
+from app.shared.events.outbox import OutboxRepository
 from conftest import IntegrationSettings
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -115,6 +121,93 @@ def test_real_redis_socket_forwards_one_product_and_releases_bounded_leases(
     finally:
         sync_redis.flushdb()
         sync_redis.close()
+
+
+def test_durable_comment_event_dispatches_identifier_only_real_redis_invalidation(
+    integration_settings_fixture: IntegrationSettings,
+) -> None:
+    async def verify() -> None:
+        product_id, comment_id = uuid4(), uuid4()
+        codec = EmailPayloadCodec({"test": b"x" * 32}, "test")
+        key_id, ciphertext = codec.encode(
+            {
+                "product_id": str(product_id),
+                "comment_id": str(comment_id),
+                "parent_id": None,
+            }
+        )
+        event = SimpleNamespace(
+            id=uuid4(),
+            event_type="comment.created.v1",
+            aggregate_id=product_id,
+            key_id=key_id,
+            encrypted_payload=ciphertext,
+        )
+        completed: list[UUID] = []
+
+        class _Repository:
+            async def complete_non_email(
+                self,
+                _session: AsyncSession,
+                event_id: UUID,
+                *,
+                completed_at: object,
+            ) -> None:
+                del completed_at
+                completed.append(event_id)
+
+            async def retry(self, _session: AsyncSession, event_id: UUID, *, now: object) -> bool:
+                del event_id, now
+                raise AssertionError("visible event must not retry")
+
+        class _Comments:
+            async def comment_by_id(
+                self, _session: AsyncSession, *, comment_id: UUID
+            ) -> SimpleNamespace:
+                return SimpleNamespace(
+                    id=comment_id,
+                    product_id=product_id,
+                    parent_id=None,
+                    moderation_status="visible",
+                )
+
+        class _Sender:
+            async def send(self, _payload: dict[str, object], *, message_id: str) -> None:
+                del message_id
+                raise AssertionError("comment event must not use email")
+
+        redis = AsyncRedis.from_url(integration_settings_fixture.redis_url, decode_responses=True)
+        pubsub = redis.pubsub()
+        channel = comment_product_channel(product_id)
+        try:
+            await pubsub.subscribe(channel)
+            await pubsub.get_message(ignore_subscribe_messages=False, timeout=1)
+            count = await dispatch_claimed(
+                cast(AsyncSession, object()),
+                events=[cast(OutboxMessage, event)],
+                repository=cast(OutboxRepository, _Repository()),
+                codec=codec,
+                sender=_Sender(),
+                comment_handler=CommentCreatedPublisher(
+                    comments=cast(object, _Comments()),
+                    products=_Products(product_id),
+                    redis=cast(object, redis),
+                ),
+            )
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
+
+            assert count == 1
+            assert completed == [event.id]
+            assert message is not None
+            assert message["channel"] == channel
+            assert message["data"] == comment_created_message(
+                product_id=product_id, comment_id=comment_id, parent_id=None
+            )
+        finally:
+            await pubsub.aclose()
+            await redis.aclose()
+
+    asyncio.run(verify())
 
 
 def test_redis_subscribe_outage_closes_retryably_without_changing_visibility() -> None:

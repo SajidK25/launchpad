@@ -1,4 +1,4 @@
-"""Typed worker-side dispatch for transactional email and product events."""
+"""Typed worker-side dispatch for durable application events."""
 
 from __future__ import annotations
 
@@ -46,6 +46,7 @@ VOTE_RANKING_EVENT_TYPES = frozenset(
         "vote.snapshot_due.v1",
     }
 )
+COMMENT_EVENT_TYPES = frozenset({"comment.created.v1"})
 
 
 class EmailSender(Protocol):
@@ -115,6 +116,17 @@ class LaunchEventHandler(Protocol):
     ) -> None: ...
 
 
+class CommentEventHandler(Protocol):
+    async def handle_outbox_event(
+        self,
+        session: AsyncSession,
+        *,
+        event_type: str,
+        aggregate_id: UUID,
+        payload: dict[str, object],
+    ) -> None: ...
+
+
 async def dispatch_due(
     session: AsyncSession,
     *,
@@ -127,6 +139,7 @@ async def dispatch_due(
     launch_event_handler: LaunchEventHandler | None = None,
     notification_handler: NotificationChangedHandler | None = None,
     vote_ranking_handler: VoteRankingEventHandler | None = None,
+    comment_handler: CommentEventHandler | None = None,
     now: datetime | None = None,
     limit: int = 20,
 ) -> int:
@@ -146,6 +159,7 @@ async def dispatch_due(
         launch_event_handler=launch_event_handler,
         notification_handler=notification_handler,
         vote_ranking_handler=vote_ranking_handler,
+        comment_handler=comment_handler,
         now=current,
     )
 
@@ -163,6 +177,7 @@ async def dispatch_claimed(
     launch_event_handler: LaunchEventHandler | None = None,
     notification_handler: NotificationChangedHandler | None = None,
     vote_ranking_handler: VoteRankingEventHandler | None = None,
+    comment_handler: CommentEventHandler | None = None,
     now: datetime | None = None,
 ) -> int:
     """Dispatch previously claimed events without acquiring claim locks again."""
@@ -178,6 +193,7 @@ async def dispatch_claimed(
             | NOTIFICATION_EVENT_TYPES
             | PRODUCT_EVENT_TYPES
             | VOTE_RANKING_EVENT_TYPES
+            | COMMENT_EVENT_TYPES
         ):
             await repository.dead_letter(session, event.id)
             logger.error(
@@ -240,6 +256,16 @@ async def dispatch_claimed(
                 if vote_ranking_handler is None:
                     raise RuntimeError("vote ranking handler is not configured")
                 await vote_ranking_handler.handle_outbox_event(
+                    session,
+                    event_type=event.event_type,
+                    aggregate_id=event.aggregate_id,
+                    payload=payload,
+                )
+                await repository.complete_non_email(session, event.id, completed_at=current)
+            elif event.event_type in COMMENT_EVENT_TYPES:
+                if comment_handler is None:
+                    raise RuntimeError("comment event handler is not configured")
+                await comment_handler.handle_outbox_event(
                     session,
                     event_type=event.event_type,
                     aggregate_id=event.aggregate_id,

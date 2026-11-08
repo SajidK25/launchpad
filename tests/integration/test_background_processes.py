@@ -76,3 +76,11 @@ def test_worker_wires_product_handler_with_private_storage_only() -> None:
     assert "ProductService(" in worker
     assert "event_storage=product_storage" in worker
     assert "product_handler=product_service" in worker
+
+
+def test_worker_wires_comment_invalidations_through_durable_dispatch() -> None:
+    worker = Path("apps/worker/worker.py").read_text()
+
+    assert "CommentCreatedPublisher(" in worker
+    assert "CommentRepository()" in worker
+    assert "comment_handler=comment_handler" in worker

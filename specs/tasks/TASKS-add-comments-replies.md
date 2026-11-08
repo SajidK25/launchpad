@@ -449,7 +449,7 @@ Add thin FastAPI routes for comment/reply commands, public live-ticket issuance,
 
 ## Task T7: Publish Comment Invalidations Through the Transactional Outbox
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** high

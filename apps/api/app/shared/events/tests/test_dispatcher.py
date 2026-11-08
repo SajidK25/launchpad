@@ -166,6 +166,10 @@ class _VoteRankingHandler:
         self.calls.append((event_type, aggregate_id, payload))
 
 
+class _CommentHandler(_ProductHandler):
+    pass
+
+
 def _outbox_event(
     codec: EmailPayloadCodec, event_type: str, payload: dict[str, object]
 ) -> SimpleNamespace:
@@ -271,6 +275,75 @@ def test_projection_failure_is_retried_without_acknowledging_event() -> None:
             sender=_Sender(),
             vote_ranking_handler=handler,
         )
+        assert completed == 0
+        assert repository.retries == [event.id]
+        assert repository.non_email_completions == []
+
+    asyncio.run(verify())
+
+
+def test_comment_events_use_their_handler_and_complete_as_non_email() -> None:
+    async def verify() -> None:
+        codec = EmailPayloadCodec({"test": b"x" * 32}, "test")
+        product_id, comment_id = uuid4(), uuid4()
+        event = _outbox_event(
+            codec,
+            "comment.created.v1",
+            {
+                "product_id": str(product_id),
+                "comment_id": str(comment_id),
+                "parent_id": None,
+            },
+        )
+        event.aggregate_id = product_id
+        repository = _DispatcherRepository(event)
+        handler = _CommentHandler()
+
+        completed = await dispatch_due(
+            cast(AsyncSession, object()),
+            repository=cast(OutboxRepository, repository),
+            codec=codec,
+            sender=_Sender(),
+            comment_handler=handler,
+        )
+
+        assert completed == 1
+        assert handler.calls == [
+            (
+                "comment.created.v1",
+                product_id,
+                {
+                    "product_id": str(product_id),
+                    "comment_id": str(comment_id),
+                    "parent_id": None,
+                },
+            )
+        ]
+        assert repository.non_email_completions == [event.id]
+        assert repository.email_completions == []
+
+    asyncio.run(verify())
+
+
+def test_comment_publication_failure_retries_without_acknowledging_event() -> None:
+    async def verify() -> None:
+        codec = EmailPayloadCodec({"test": b"x" * 32}, "test")
+        event = _outbox_event(
+            codec,
+            "comment.created.v1",
+            {"product_id": str(uuid4()), "comment_id": str(uuid4()), "parent_id": None},
+        )
+        repository = _DispatcherRepository(event)
+        handler = _CommentHandler(error=OSError("redis unavailable"))
+
+        completed = await dispatch_due(
+            cast(AsyncSession, object()),
+            repository=cast(OutboxRepository, repository),
+            codec=codec,
+            sender=_Sender(),
+            comment_handler=handler,
+        )
+
         assert completed == 0
         assert repository.retries == [event.id]
         assert repository.non_email_completions == []

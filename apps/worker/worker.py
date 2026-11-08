@@ -14,6 +14,12 @@ from typing import Literal, Protocol, cast
 from uuid import UUID
 
 from app.modules.auth.staff import AuthAccessService
+from app.modules.comments.events import (
+    CommentCreatedPublisher,
+    CommentEventProductAccess,
+    CommentEventRedis,
+)
+from app.modules.comments.repository import CommentRepository
 from app.modules.launches.repository import LaunchBookingRepository
 from app.modules.launches.service import LaunchBookingService
 from app.modules.notifications.live import notification_channel
@@ -480,6 +486,11 @@ async def run_worker(health: ProgressHealth) -> None:
         redis=cast(RankingRedis, redis),
         snapshots=vote_snapshot_service,
     )
+    comment_handler = CommentCreatedPublisher(
+        comments=CommentRepository(),
+        products=cast(CommentEventProductAccess, product_service),
+        redis=cast(CommentEventRedis, redis),
+    )
     launch_email_handler = LaunchNoticeEmailHandler(
         bookings=launch_bookings,
         member_access=member_access,
@@ -506,6 +517,7 @@ async def run_worker(health: ProgressHealth) -> None:
                 notifications=notification_repository,
             ),
             vote_ranking_handler=vote_ranking_handler,
+            comment_handler=comment_handler,
         )
 
     def record_worker_progress() -> None:
