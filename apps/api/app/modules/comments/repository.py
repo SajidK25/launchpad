@@ -279,6 +279,20 @@ class CommentRepository:
         )
         return value is not None
 
+    async def has_visible_entry_on_product(
+        self, session: AsyncSession, *, product_id: UUID, author_id: UUID
+    ) -> bool:
+        value = await session.scalar(
+            select(Comment.id)
+            .where(
+                Comment.product_id == product_id,
+                Comment.author_account_id == author_id,
+                Comment.moderation_status == "visible",
+            )
+            .limit(1)
+        )
+        return value is not None
+
 
 def _older_than(created_at: datetime, comment_id: UUID) -> ColumnElement[bool]:
     return or_(

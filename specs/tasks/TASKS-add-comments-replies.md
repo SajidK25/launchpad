@@ -372,7 +372,7 @@ Implement short-lived product-scoped HMAC tickets and an origin-checked WebSocke
 
 ## Task T6: Expose Safe Comment Commands, Tickets, and Avatars
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** m
 > **Priority:** critical

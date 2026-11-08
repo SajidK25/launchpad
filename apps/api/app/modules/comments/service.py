@@ -337,6 +337,15 @@ class CommentService:
     async def has_visible_entries(self, session: AsyncSession, *, account_id: UUID) -> bool:
         return await self.repository.has_visible_entries(session, author_id=account_id)
 
+    async def has_visible_entry_on_product(
+        self, session: AsyncSession, *, product_id: UUID, account_id: UUID
+    ) -> bool:
+        """Authorize contextual attribution without exposing entry content."""
+
+        return await self.repository.has_visible_entry_on_product(
+            session, product_id=product_id, author_id=account_id
+        )
+
 
 def _require_within_limits(activity: tuple[datetime, ...], *, now: datetime) -> None:
     recent = tuple(value for value in activity if value > now - CommentService.SHORT_WINDOW)

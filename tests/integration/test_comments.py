@@ -12,17 +12,25 @@ from uuid import UUID, uuid4
 
 import strawberry
 from alembic import command
+from app.modules.auth.sessions import MemberContext
 from app.modules.auth.staff import AuthAccessService
 from app.modules.comments.graphql import CommentQuery
+from app.modules.comments.live import CommentLiveTicketService
 from app.modules.comments.models import Comment
 from app.modules.comments.repository import CommentRepository
+from app.modules.comments.routes import router as comments_router
 from app.modules.comments.service import CommentService
 from app.modules.products.models import Product
 from app.modules.products.service import ProductService
 from app.modules.users.comment_attribution import CommentAttributionService
 from app.modules.users.models import PhotoUpload, Profile
+from app.shared.config.settings import Settings
 from app.shared.db.database import Database, _alembic_config
+from app.shared.security.tokens import digest_token
 from conftest import IntegrationSettings
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from redis import Redis
 from sqlalchemy import Connection, insert, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from uuid6 import uuid7
@@ -36,6 +44,11 @@ class _Codec:
 class _Storage:
     async def get_private(self, *, object_key: str) -> tuple[bytes, str | None]:
         raise AssertionError(f"read projection must not fetch image bytes: {object_key}")
+
+
+class _PhotoStorage:
+    async def get_private(self, *, object_key: str) -> tuple[bytes, str | None]:
+        return b"validated-comment-photo", "image/png"
 
 
 def _upgrade(sync_connection: Connection) -> None:
@@ -298,3 +311,177 @@ def test_public_discussion_pages_are_bounded_stable_and_hide_private_context(
             await database.close()
 
     asyncio.run(verify())
+
+
+def test_comment_commands_replay_replies_and_contextual_media_use_real_persistence(
+    integration_settings_fixture: IntegrationSettings,
+    reset_database: None,
+) -> None:
+    now = datetime(2026, 10, 25, 16, tzinfo=UTC)
+    author_id, owner_id, product_id = uuid4(), uuid4(), uuid4()
+    csrf = "integration-comments-csrf"
+
+    async def seed() -> Database:
+        database = Database.connect(integration_settings_fixture.database_url)
+        async with database.engine.begin() as connection:
+            await connection.run_sync(_upgrade)
+            for account_id, email in (
+                (author_id, "comment-command-author@example.test"),
+                (owner_id, "comment-command-owner@example.test"),
+            ):
+                await connection.execute(
+                    text(
+                        "INSERT INTO accounts "
+                        "(id,email_display,email_key,password_hash,verified_at,role,"
+                        "created_at,updated_at) VALUES "
+                        "(:id,:email,:email,'hash',:now,'member',:now,:now)"
+                    ),
+                    {"id": account_id, "email": email, "now": now},
+                )
+            await connection.execute(
+                insert(Product).values(
+                    id=product_id,
+                    founder_id=owner_id,
+                    status="launched",
+                    version=1,
+                    name="Command target",
+                    pitch="Pitch",
+                    description="Description",
+                    website_url="https://command-comments.test",
+                    website_key="command-comments.test",
+                    launched_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            photo_key = f"profile-clean/{author_id}/photo"
+            await connection.execute(
+                insert(Profile).values(
+                    account_id=author_id,
+                    display_name="Command Author",
+                    bio="Builder",
+                    photo_key=photo_key,
+                    visibility="private",
+                    version=1,
+                )
+            )
+            await connection.execute(
+                insert(PhotoUpload).values(
+                    id=uuid4(),
+                    account_id=author_id,
+                    staging_key=f"profile-staging/{author_id}/photo",
+                    clean_key=photo_key,
+                    expires_at=now + timedelta(days=1),
+                    state="cleaned",
+                    byte_count=128,
+                    media_type="image/png",
+                )
+            )
+        await database.engine.dispose()
+        return database
+
+    database = asyncio.run(seed())
+    session_factory = async_sessionmaker(database.engine, expire_on_commit=False)
+    products = ProductService(member_access=AuthAccessService(), payload_codec=cast(Any, _Codec()))
+    attribution = CommentAttributionService(storage=cast(Any, _PhotoStorage()))
+    comments = CommentService(
+        account_access=AuthAccessService(),
+        attribution_access=attribution,
+        product_access=products,
+        repository=CommentRepository(),
+        codec=cast(Any, _Codec()),
+        writes_enabled=lambda: True,
+        clock=lambda: now,
+    )
+
+    class _Resolver:
+        async def resolve(self, _session: AsyncSession, *, session_secret: str) -> MemberContext:
+            return MemberContext(
+                author_id,
+                True,
+                uuid4(),
+                csrf_digest=digest_token(csrf),
+                email_display="comment-command-author@example.test",
+                role="member",
+            )
+
+    settings = Settings(trusted_web_origins=("https://launchpad.example",))
+    redis = Redis.from_url(integration_settings_fixture.redis_url)
+    redis.flushdb()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        yield
+        await database.close()
+
+    app = FastAPI(lifespan=lifespan)
+    app.include_router(
+        comments_router(
+            settings=settings,
+            session_factory=session_factory,
+            redis=redis,
+            comment_service_factory=lambda: comments,
+            ticket_service=CommentLiveTicketService(
+                signing_key=b"integration-comment-route-key" * 2,
+                clock=lambda: now,
+            ),
+            photo_access=attribution,
+            product_access=products,
+            session_service=_Resolver(),
+        )
+    )
+    headers = {
+        "Origin": "https://launchpad.example",
+        "X-CSRF-Token": csrf,
+        "Idempotency-Key": "integration-root-key",
+    }
+    try:
+        with TestClient(app) as client:
+            client.cookies.set(settings.session_cookie_name, "session")
+            root = client.post(
+                f"/api/v1/products/{product_id}/comments",
+                json={"body": "  Persistent root  "},
+                headers=headers,
+            )
+            replay = client.post(
+                f"/api/v1/products/{product_id}/comments",
+                json={"body": "Persistent root"},
+                headers=headers,
+            )
+            assert root.status_code == 201, root.text
+            assert replay.status_code == 200, replay.text
+            root_id = UUID(root.json()["id"])
+            reply = client.post(
+                f"/api/v1/products/{product_id}/comments/{root_id}/replies",
+                json={"body": "Persistent reply"},
+                headers={**headers, "Idempotency-Key": "integration-reply-key"},
+            )
+            photo = client.get(f"/api/v1/products/{product_id}/comment-authors/{author_id}/photo")
+            ticket = client.post(
+                f"/api/v1/products/{product_id}/comments/live-ticket",
+                headers={"Origin": "https://launchpad.example"},
+            )
+
+        assert root.status_code == 201 and root.json()["body"] == "Persistent root"
+        assert replay.status_code == 200 and replay.json()["id"] == root.json()["id"]
+        assert replay.json()["replayed"] is True
+        assert reply.status_code == 201 and reply.json()["parent_id"] == str(root_id)
+        assert photo.status_code == 200 and photo.content == b"validated-comment-photo"
+        assert photo.headers["cache-control"] == "no-store"
+        assert photo.headers["x-content-type-options"] == "nosniff"
+        assert ticket.status_code == 200
+
+        async def count_comments() -> int:
+            count_database = Database.connect(integration_settings_fixture.database_url)
+            try:
+                count_sessions = async_sessionmaker(count_database.engine, expire_on_commit=False)
+                async with count_sessions() as session:
+                    value = await session.scalar(text("SELECT count(*) FROM comments"))
+                    return int(value or 0)
+            finally:
+                await count_database.close()
+
+        assert asyncio.run(count_comments()) == 2
+    finally:
+        redis.flushdb()
+        redis.close()
