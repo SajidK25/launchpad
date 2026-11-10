@@ -83,7 +83,10 @@ async def _safe_read(info: strawberry.Info, *, operation: str) -> AsyncIterator[
 
 
 def _service(info: strawberry.Info) -> CommentService:
-    return cast(CommentService, info.context["comment_service_factory"]())
+    factory = info.context.get("comment_service_factory")
+    if not callable(factory):
+        raise CommentNotFoundError("discussion is unavailable")
+    return cast(CommentService, factory())
 
 
 def _author_ids(entries: Iterable[CommentEntryResult]) -> tuple[UUID, ...]:

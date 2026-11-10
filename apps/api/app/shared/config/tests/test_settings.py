@@ -21,6 +21,8 @@ def test_documented_local_defaults_need_no_external_credentials() -> None:
     assert settings.storage_region == "us-east-1"
     assert settings.review_writes_enabled is True
     assert settings.vote_writes_enabled is False
+    assert settings.comments_enabled is False
+    assert settings.comment_writes_enabled is False
     assert settings.vote_score_half_life_seconds == 21600
 
 
@@ -60,6 +62,30 @@ def test_local_review_writes_can_be_disabled_independently() -> None:
 
     assert settings.review_writes_enabled is False
     assert settings.products_enabled is True
+
+
+def test_comment_reads_can_be_enabled_before_writes() -> None:
+    settings = load_settings(
+        {
+            "LAUNCHPAD_COMMENTS_ENABLED": "true",
+            "LAUNCHPAD_COMMENT_WRITES_ENABLED": "false",
+            "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "http://localhost:8080",
+        }
+    )
+
+    assert settings.comments_enabled is True
+    assert settings.comment_writes_enabled is False
+
+
+def test_comment_writes_require_the_feature() -> None:
+    with pytest.raises(ConfigurationError, match="LAUNCHPAD_COMMENT_WRITES_ENABLED"):
+        load_settings(
+            {
+                "LAUNCHPAD_COMMENTS_ENABLED": "false",
+                "LAUNCHPAD_COMMENT_WRITES_ENABLED": "true",
+                "LAUNCHPAD_TRUSTED_WEB_ORIGINS": "http://localhost:8080",
+            }
+        )
 
 
 def test_trusted_web_origins_parse_into_canonical_values() -> None:

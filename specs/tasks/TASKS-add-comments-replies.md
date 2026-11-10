@@ -526,7 +526,7 @@ Register `comment.created.v1` in the existing encrypted transactional outbox and
 
 ## Task T8: Wire Comment Runtime Dependencies and Rollout Flags
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** test-after
 > **Effort:** s
 > **Priority:** high

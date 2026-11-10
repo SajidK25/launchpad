@@ -486,10 +486,14 @@ async def run_worker(health: ProgressHealth) -> None:
         redis=cast(RankingRedis, redis),
         snapshots=vote_snapshot_service,
     )
-    comment_handler = CommentCreatedPublisher(
-        comments=CommentRepository(),
-        products=cast(CommentEventProductAccess, product_service),
-        redis=cast(CommentEventRedis, redis),
+    comment_handler = (
+        CommentCreatedPublisher(
+            comments=CommentRepository(),
+            products=cast(CommentEventProductAccess, product_service),
+            redis=cast(CommentEventRedis, redis),
+        )
+        if settings.comments_enabled
+        else None
     )
     launch_email_handler = LaunchNoticeEmailHandler(
         bookings=launch_bookings,

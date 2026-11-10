@@ -84,3 +84,13 @@ def test_worker_wires_comment_invalidations_through_durable_dispatch() -> None:
     assert "CommentCreatedPublisher(" in worker
     assert "CommentRepository()" in worker
     assert "comment_handler=comment_handler" in worker
+    assert "if settings.comments_enabled" in worker
+
+
+def test_api_wires_comments_only_behind_the_feature_flag() -> None:
+    api = Path("apps/api/app/main.py").read_text()
+
+    assert "if settings.comments_enabled:" in api
+    assert "comments_router(" in api
+    assert "comment_live_router(" in api
+    assert "comment_service_factory=comment_service_factory" in api

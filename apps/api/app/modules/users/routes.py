@@ -1,7 +1,7 @@
 """Thin REST transport for private profile actions and gated photos."""
 
 import base64
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -17,6 +17,7 @@ from uuid6 import uuid7
 from app.graphql import build_router, context_getter
 from app.modules.auth.sessions import MemberContext, SessionService, UnauthenticatedError
 from app.modules.auth.staff import AuthAccessService
+from app.modules.comments.service import CommentService
 from app.modules.users.policies import (
     ProfileConflictError,
     ProfileForbiddenError,
@@ -107,6 +108,7 @@ def router(
     storage: PrivateObjectStore,
     ranking_redis: RankingRedis | None = None,
     comment_activity: CommentAuthorActivityAccess | None = None,
+    comment_service_factory: Callable[[], CommentService] | None = None,
 ) -> tuple[APIRouter, APIRouter]:
     if settings.outbox_key is None or settings.outbox_key_id is None:
         raise RuntimeError("Outbox encryption configuration is required.")
@@ -506,6 +508,7 @@ def router(
             profile_service_factory=service_for,
             payload_codec=codec,
             ranking_redis=ranking_redis,
+            comment_service_factory=comment_service_factory,
         ),
         include_products=settings.products_enabled,
         include_launches=settings.launches_enabled,

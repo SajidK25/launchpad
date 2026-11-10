@@ -1,3 +1,4 @@
+import base64
 import logging
 from typing import cast
 
@@ -5,8 +6,23 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.modules.auth.routes import router as auth_router
+from app.modules.auth.staff import AuthAccessService
+from app.modules.comments.live import (
+    CommentLiveRedis,
+    comment_live_router,
+)
+from app.modules.comments.live import (
+    ticket_service_for_settings as comment_ticket_service_for_settings,
+)
+from app.modules.comments.routes import router as comments_router
+from app.modules.comments.service import (
+    CommentAttributionAccess,
+    CommentService,
+    ProductDiscussionAccess,
+)
 from app.modules.health.probes import database_probe, redis_probe, storage_probe
 from app.modules.health.routes import router
 from app.modules.health.service import HealthService
@@ -14,12 +30,21 @@ from app.modules.launches.routes import router as launches_router
 from app.modules.notifications.live import NotificationRedis
 from app.modules.notifications.routes import router as notifications_router
 from app.modules.products.routes import router as products_router
+from app.modules.products.service import ProductService
+from app.modules.users.comment_attribution import CommentAttributionService
 from app.modules.users.routes import router as users_router
-from app.modules.votes.live import VoteLiveRedis, ticket_service_for_settings, vote_live_router
+from app.modules.votes.live import (
+    VoteLiveRedis,
+    vote_live_router,
+)
+from app.modules.votes.live import (
+    ticket_service_for_settings as vote_ticket_service_for_settings,
+)
 from app.modules.votes.routes import router as votes_router
 from app.modules.votes.service import RankingRedis
 from app.shared.config.settings import load_settings
 from app.shared.db.database import Database
+from app.shared.email.codec import EmailPayloadCodec
 from app.shared.storage.client import StorageClient
 from app.shared.storage.objects import PrivateObjectStore
 
@@ -84,12 +109,42 @@ def create_app(service: HealthService | None = None) -> FastAPI:
             client_factory=storage._client,
         )
         live_redis = cast(NotificationRedis, AsyncRedis.from_url(str(settings.redis_url)))
+        if settings.outbox_key is None or settings.outbox_key_id is None:
+            raise RuntimeError("Outbox encryption configuration is required.")
+        codec = EmailPayloadCodec(
+            {
+                settings.outbox_key_id: base64.b64decode(
+                    settings.outbox_key.get_secret_value(), validate=True
+                )
+            },
+            settings.outbox_key_id,
+        )
+        comment_session_factory = async_sessionmaker(database.engine, expire_on_commit=False)
+        comment_product_access = cast(
+            ProductDiscussionAccess,
+            ProductService(member_access=AuthAccessService(), payload_codec=codec),
+        )
+        comment_attribution = CommentAttributionService(storage=private_store)
+
+        def comment_service_factory() -> CommentService:
+            return CommentService(
+                account_access=AuthAccessService(),
+                attribution_access=cast(CommentAttributionAccess, comment_attribution),
+                product_access=comment_product_access,
+                codec=codec,
+                writes_enabled=lambda: settings.comment_writes_enabled,
+            )
+
         profile_routes, profile_graphql = users_router(
             settings=settings,
             database=database,
             redis=Redis.from_url(str(settings.redis_url)),
             storage=private_store,
             ranking_redis=cast(RankingRedis, live_redis),
+            comment_activity=(comment_service_factory() if settings.comments_enabled else None),
+            comment_service_factory=(
+                comment_service_factory if settings.comments_enabled else None
+            ),
         )
         app.include_router(profile_routes)
         app.include_router(profile_graphql, prefix="/api/v1")
@@ -130,7 +185,30 @@ def create_app(service: HealthService | None = None) -> FastAPI:
                 vote_live_router(
                     settings=settings,
                     redis=cast(VoteLiveRedis, AsyncRedis.from_url(str(settings.redis_url))),
-                    tickets=ticket_service_for_settings(settings),
+                    tickets=vote_ticket_service_for_settings(settings),
+                )
+            )
+        if settings.comments_enabled:
+            comment_sync_redis = Redis.from_url(str(settings.redis_url))
+            comment_tickets = comment_ticket_service_for_settings(settings)
+            app.include_router(
+                comments_router(
+                    settings=settings,
+                    session_factory=comment_session_factory,
+                    redis=comment_sync_redis,
+                    comment_service_factory=comment_service_factory,
+                    ticket_service=comment_tickets,
+                    photo_access=comment_attribution,
+                    product_access=comment_product_access,
+                )
+            )
+            app.include_router(
+                comment_live_router(
+                    settings=settings,
+                    redis=cast(CommentLiveRedis, AsyncRedis.from_url(str(settings.redis_url))),
+                    tickets=comment_tickets,
+                    session_factory=comment_session_factory,
+                    product_access=comment_product_access,
                 )
             )
     return app

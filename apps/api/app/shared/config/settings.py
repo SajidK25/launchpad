@@ -42,6 +42,8 @@ class Settings(BaseModel):
     launches_enabled: bool = False
     review_writes_enabled: bool = False
     vote_writes_enabled: bool = False
+    comments_enabled: bool = False
+    comment_writes_enabled: bool = False
     vote_score_half_life_seconds: int = Field(default=DEFAULT_VOTE_SCORE_HALF_LIFE_SECONDS, ge=1)
     turnstile_secret_key: SecretStr | None = None
     turnstile_site_verify_url: AnyHttpUrl = AnyHttpUrl(
@@ -235,6 +237,11 @@ def _validate_identity_settings(
     provided_fields: set[str],
 ) -> None:
     """Fail closed on missing/unsafe mail and encryption configuration without echoing values."""
+
+    if settings.comment_writes_enabled and not settings.comments_enabled:
+        raise ConfigurationError(
+            "Invalid configuration: LAUNCHPAD_COMMENT_WRITES_ENABLED, LAUNCHPAD_COMMENTS_ENABLED"
+        )
 
     missing_storage = []
     if settings.environment == "production":
