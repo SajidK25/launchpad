@@ -598,7 +598,7 @@ Add safe-off comment feature settings and construct the comments routes, GraphQL
 
 ## Task T9: Generate and Lock the Discussion API Contracts
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** high

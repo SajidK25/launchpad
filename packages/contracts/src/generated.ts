@@ -501,6 +501,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/products/{product_id}/comment-authors/{account_id}/photo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Comment Author Photo */
+    get: operations["comment_author_photo_api_v1_products__product_id__comment_authors__account_id__photo_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/products/{product_id}/comments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Comment */
+    post: operations["create_comment_api_v1_products__product_id__comments_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/products/{product_id}/comments/live-ticket": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Issue Live Ticket */
+    post: operations["issue_live_ticket_api_v1_products__product_id__comments_live_ticket_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/products/{product_id}/comments/{parent_id}/replies": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Reply */
+    post: operations["create_reply_api_v1_products__product_id__comments__parent_id__replies_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/profiles/{account_id}/photo": {
     parameters: {
       query?: never;
@@ -614,6 +682,54 @@ export interface components {
        * @default true
        */
       accepted: boolean;
+    };
+    /**
+     * CommentCreateInput
+     * @description Plain-text member input; domain normalization remains authoritative.
+     */
+    CommentCreateInput: {
+      /** Body */
+      body: string;
+    };
+    /**
+     * CommentLiveTicketResponse
+     * @description Short-lived public ticket scoped to one current product.
+     */
+    CommentLiveTicketResponse: {
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /** Ticket */
+      ticket: string;
+    };
+    /**
+     * CommentResponse
+     * @description One server-confirmed immutable entry.
+     */
+    CommentResponse: {
+      /** Body */
+      body: string;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Parent Id */
+      parent_id: string | null;
+      /**
+       * Product Id
+       * Format: uuid
+       */
+      product_id: string;
+      /** Replayed */
+      replayed: boolean;
     };
     /** EmailPasswordRequest */
     EmailPasswordRequest: {
@@ -2309,6 +2425,146 @@ export interface operations {
         };
         content: {
           "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  comment_author_photo_api_v1_products__product_id__comment_authors__account_id__photo_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        product_id: string;
+        account_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_comment_api_v1_products__product_id__comments_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        "Idempotency-Key"?: string | null;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CommentCreateInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommentResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  issue_live_ticket_api_v1_products__product_id__comments_live_ticket_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        product_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommentLiveTicketResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_reply_api_v1_products__product_id__comments__parent_id__replies_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        "Idempotency-Key"?: string | null;
+        "x-csrf-token"?: string | null;
+      };
+      path: {
+        product_id: string;
+        parent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CommentCreateInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommentResponse"];
         };
       };
       /** @description Validation Error */

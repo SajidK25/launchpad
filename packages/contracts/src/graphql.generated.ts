@@ -770,3 +770,127 @@ export const PUBLIC_CATALOG_TOPICS_QUERY =
     }
   }
 }` as const;
+
+export type ProductDiscussionQueryVariables = {
+  productId: string;
+  first?: number;
+  after?: string | null;
+};
+
+export type ProductDiscussionQuery = {
+  productDiscussion: {
+    items: Array<{
+      id: string;
+      productId: string;
+      parentId: string | null;
+      body: string;
+      createdAt: string;
+      author: {
+        accountId: string;
+        displayName: string;
+        avatarUrl: string;
+        publicProfileUrl: string | null;
+      };
+      replyCount: number;
+      replies: Array<{
+        id: string;
+        productId: string;
+        parentId: string | null;
+        body: string;
+        createdAt: string;
+        author: {
+          accountId: string;
+          displayName: string;
+          avatarUrl: string;
+          publicProfileUrl: string | null;
+        };
+      }>;
+    }>;
+    nextCursor: string | null;
+  };
+};
+
+export const PRODUCT_DISCUSSION_QUERY =
+  `query ProductDiscussion($productId: UUID!, $first: Int! = 20, $after: String) {
+  productDiscussion(productId: $productId, first: $first, after: $after) {
+    items {
+      id
+      productId
+      parentId
+      body
+      createdAt
+      author {
+        accountId
+        displayName
+        avatarUrl
+        publicProfileUrl
+      }
+      replyCount
+      replies {
+        id
+        productId
+        parentId
+        body
+        createdAt
+        author {
+          accountId
+          displayName
+          avatarUrl
+          publicProfileUrl
+        }
+      }
+    }
+    nextCursor
+  }
+}` as const;
+
+export type CommentRepliesQueryVariables = {
+  productId: string;
+  parentId: string;
+  first?: number;
+  before?: string | null;
+};
+
+export type CommentRepliesQuery = {
+  commentReplies: {
+    items: Array<{
+      id: string;
+      productId: string;
+      parentId: string | null;
+      body: string;
+      createdAt: string;
+      author: {
+        accountId: string;
+        displayName: string;
+        avatarUrl: string;
+        publicProfileUrl: string | null;
+      };
+    }>;
+    earlierCursor: string | null;
+  };
+};
+
+export const COMMENT_REPLIES_QUERY =
+  `query CommentReplies($productId: UUID!, $parentId: UUID!, $first: Int! = 20, $before: String) {
+  commentReplies(
+    productId: $productId
+    parentId: $parentId
+    first: $first
+    before: $before
+  ) {
+    items {
+      id
+      productId
+      parentId
+      body
+      createdAt
+      author {
+        accountId
+        displayName
+        avatarUrl
+        publicProfileUrl
+      }
+    }
+    earlierCursor
+  }
+}` as const;

@@ -341,3 +341,65 @@ query PublicCatalogTopics(
     }
   }
 }
+
+query ProductDiscussion($productId: UUID!, $first: Int! = 20, $after: String) {
+  productDiscussion(productId: $productId, first: $first, after: $after) {
+    items {
+      id
+      productId
+      parentId
+      body
+      createdAt
+      author {
+        accountId
+        displayName
+        avatarUrl
+        publicProfileUrl
+      }
+      replyCount
+      replies {
+        id
+        productId
+        parentId
+        body
+        createdAt
+        author {
+          accountId
+          displayName
+          avatarUrl
+          publicProfileUrl
+        }
+      }
+    }
+    nextCursor
+  }
+}
+
+query CommentReplies(
+  $productId: UUID!
+  $parentId: UUID!
+  $first: Int! = 20
+  $before: String
+) {
+  commentReplies(
+    productId: $productId
+    parentId: $parentId
+    first: $first
+    before: $before
+  ) {
+    items {
+      id
+      productId
+      parentId
+      body
+      createdAt
+      author {
+        accountId
+        displayName
+        avatarUrl
+        publicProfileUrl
+      }
+    }
+    earlierCursor
+  }
+}

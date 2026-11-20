@@ -26,9 +26,18 @@ verify_launch_disabled_graphql_schema() {
 }
 
 generate_openapi() {
-    compose run --rm --no-deps -e LAUNCHPAD_PRODUCTS_ENABLED=true -e LAUNCHPAD_LAUNCHES_ENABLED=true -e LAUNCHPAD_REVIEW_WRITES_ENABLED=false python-checks \
+    compose run --rm --no-deps -e LAUNCHPAD_PRODUCTS_ENABLED=true -e LAUNCHPAD_LAUNCHES_ENABLED=true -e LAUNCHPAD_COMMENTS_ENABLED=true -e LAUNCHPAD_COMMENT_WRITES_ENABLED=true -e LAUNCHPAD_REVIEW_WRITES_ENABLED=false python-checks \
         python -c 'import json; from app.main import app; print(json.dumps(app.openapi(), indent=2, sort_keys=True))' \
         > packages/contracts/openapi.json
+}
+
+verify_comment_contracts() {
+    grep -q '"/api/v1/products/{product_id}/comments"' packages/contracts/openapi.json
+    grep -q '"/api/v1/products/{product_id}/comments/{parent_id}/replies"' packages/contracts/openapi.json
+    grep -q '"/api/v1/products/{product_id}/comments/live-ticket"' packages/contracts/openapi.json
+    grep -q '"/api/v1/products/{product_id}/comment-authors/{account_id}/photo"' packages/contracts/openapi.json
+    grep -q 'productDiscussion(productId: UUID!, first: Int! = 20, after: String)' "$graphql_operations"
+    grep -q 'commentReplies(' "$graphql_operations"
 }
 
 if [ "${1:-}" = "--check" ]; then
@@ -57,6 +66,7 @@ if [ "${1:-}" = "--check" ]; then
     generate_graphql_schema
     generate_graphql_types
     verify_launch_disabled_graphql_schema
+    verify_comment_contracts
     compose run --rm --no-deps web-checks npm run contracts:generate
     cmp -s "$saved_openapi" packages/contracts/openapi.json && cmp -s "$saved_file" "$generated_file" && cmp -s "$saved_schema" "$graphql_schema" && cmp -s "$saved_graphql_types" "$graphql_types"
     exit $?
@@ -66,4 +76,5 @@ generate_openapi
 generate_graphql_schema
 generate_graphql_types
 verify_launch_disabled_graphql_schema
+verify_comment_contracts
 compose run --rm --no-deps web-checks npm run contracts:generate
