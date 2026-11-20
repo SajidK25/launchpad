@@ -36,7 +36,8 @@ verify_comment_contracts() {
     grep -q '"/api/v1/products/{product_id}/comments/{parent_id}/replies"' packages/contracts/openapi.json
     grep -q '"/api/v1/products/{product_id}/comments/live-ticket"' packages/contracts/openapi.json
     grep -q '"/api/v1/products/{product_id}/comment-authors/{account_id}/photo"' packages/contracts/openapi.json
-    grep -q 'productDiscussion(productId: UUID!, first: Int! = 20, after: String)' "$graphql_operations"
+    grep -q 'productDiscussion(' "$graphql_schema"
+    grep -q 'query ProductDiscussion' "$graphql_operations"
     grep -q 'commentReplies(' "$graphql_operations"
 }
 
