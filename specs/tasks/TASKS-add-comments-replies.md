@@ -801,7 +801,7 @@ Mount an original Launchpad discussion section on the existing public product de
 
 ## Task T12: Configure Safe Comment Rollout Across Environments
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** high
