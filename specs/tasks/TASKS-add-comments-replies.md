@@ -857,7 +857,7 @@ Expose explicit safe-off feature and write flags plus required live configuratio
 
 ## Task T13: Document Discussion Architecture and Operations
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** checklist
 > **Effort:** s
 > **Priority:** medium

@@ -322,6 +322,93 @@ PostgreSQL stores votes, receipts, audit decisions, and immutable daily snapshot
 Redis is only a rebuildable live projection/pub-sub layer. Do not treat cache state
 as vote or archive evidence.
 
+### Comments and one-level replies
+
+Public discussion is available only on a currently public launched product, including an archived
+launch day. PostgreSQL stores immutable roots, one-level replies, idempotency receipts, and encrypted
+outbox work. Redis carries only rate limits, connection leases, and identifier-only invalidation
+hints. See [ADR 0010](adr/0010-comments-replies-live.md) for the ownership and failure decisions.
+
+Migration `0017_comments_replies` is additive and is applied by the ordinary `prepare` service. To
+exercise discussion on a disposable local stack, enable reads/live first, then writes. The settings
+validator rejects writes when the feature is disabled:
+
+```sh
+LAUNCHPAD_COMMENTS_ENABLED=true LAUNCHPAD_COMMENT_WRITES_ENABLED=false \
+  docker compose -p launchpad-dev up -d --build api worker web
+docker compose -p launchpad-dev exec api python -c 'from app.shared.config.settings import load_settings; s=load_settings(); print(f"comments_enabled={s.comments_enabled} comment_writes_enabled={s.comment_writes_enabled}")'
+
+LAUNCHPAD_COMMENTS_ENABLED=true LAUNCHPAD_COMMENT_WRITES_ENABLED=true \
+  docker compose -p launchpad-dev up -d api worker
+```
+
+Use only disposable local accounts and products launched through the normal product, review,
+booking, and publication flow. Reading is public. Posting requires a verified, unsuspended member
+with a non-empty display name and validated profile photo; reviewer and admin accounts are read-only.
+The profile may remain private, but an author with a visible entry cannot clear their current display
+name or validated photo. Submitted markup is plain text. Roots are newest-first, replies are
+chronological, and no reply may target another reply.
+
+Regenerate and verify the OpenAPI schema, GraphQL schema/operations, and generated TypeScript types
+with the repository command:
+
+```sh
+COMPOSE_PROJECT_NAME=launchpad-comments-contracts sh scripts/quality/contracts.sh --check
+```
+
+Run the focused backend, web, and browser checks with isolated Compose projects:
+
+```sh
+docker compose -p launchpad-comments-test -f compose.checks.yaml run --rm integration \
+  python -m pytest apps/api/app/modules/comments apps/worker/tests/test_comment_worker.py
+docker compose -p launchpad-comments-web -f compose.checks.yaml run --rm --no-deps web-checks \
+  npm test -- --run src/comments
+docker compose -p launchpad-comments-browser -f compose.checks.yaml run --rm browser \
+  npx playwright test -c tests/browser/playwright.config.ts tests/browser/comments.spec.ts
+```
+
+In browser developer tools, inspect the request to
+`/api/v1/products/{productId}/comments/live-ticket` and the subsequent
+`/api/v1/comments/live?ticket=…` WebSocket. Do not copy the ticket or frames into logs or tickets.
+Valid frames contain only `product_id`, `comment_id`, and nullable `parent_id`, or the product ID for
+`discussion.closed`. Check safe service metadata without dumping payloads:
+
+```sh
+docker compose -p launchpad-dev ps
+docker compose -p launchpad-dev logs --since=30m --no-color api worker
+```
+
+To verify degraded live delivery in a disposable local project, start with an unsent browser draft,
+stop only Redis, and confirm already loaded discussion remains readable and ordinary GraphQL/REST
+requests continue to use PostgreSQL. Live admission/reconnection may report unavailable, and the
+readiness probe is expected to fail while Redis is stopped. Restart Redis and confirm the socket
+reconnects, loaded root/reply queries refetch, missed entries appear, and the unsent draft remains:
+
+```sh
+docker compose -p launchpad-dev stop redis
+docker compose -p launchpad-dev start redis
+docker compose -p launchpad-dev logs --since=10m --no-color api worker redis
+```
+
+For production, apply migration 0017 before deploying the compatible API and worker. Start both with
+`LAUNCHPAD_COMMENTS_ENABLED=false` and `LAUNCHPAD_COMMENT_WRITES_ENABLED=false`. After readiness,
+worker health, outbox dispatch, trusted HTTPS origins, and Redis recovery are verified, enable
+comments on both API and worker to expose reads/live. Enable writes on both only after those reads
+and live invalidations are healthy. To roll back, disable writes first and then comments while
+keeping compatible binaries and schema. Do not downgrade migration 0017, delete entries or receipts,
+discard pending outbox work, or restore an older worker that cannot recognize comment events.
+
+Operational logs, metrics, traces, events, live frames, and incident notes must exclude comment
+bodies, body fingerprints, live tickets, raw IP addresses, email addresses, object-storage keys,
+signed URLs, encrypted payloads, and all facts about private or removed products. Use event type and
+ID, failure class, attempt/dead-letter state, aggregate limit/duplicate rejection counts, and
+connection/reconnect counts. Never infer publication from a socket frame; REST confirmation and
+PostgreSQL refetch are authoritative.
+
+This release has no comment editing, deletion, reactions, notifications, reporting, moderation,
+anonymous posting, staff posting, or nesting beyond one reply level. Do not bypass those exclusions
+with database edits or ad hoc operator commands.
+
 #### Health and metadata checks
 
 From the VM, check service health and the local readiness endpoint. The production web container
