@@ -34,6 +34,7 @@ import {
   useUpdateLaunchPreferences,
 } from "./useLaunches";
 import { LaunchDiscovery } from "./LaunchDiscovery";
+import { CommentsSection } from "../comments/CommentsSection";
 
 const preferenceFields = [
   ["reminderEmail", "Email reminders"],
@@ -336,6 +337,10 @@ function PublicLaunchDetails({
             </section>
           ) : null}
         </article>
+        <CommentsSection
+          identityClient={identityClient}
+          productId={product.id}
+        />
       </div>
     </div>
   );

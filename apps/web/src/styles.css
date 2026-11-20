@@ -8,6 +8,7 @@
 @import "./products/products.css";
 @import "./launches/launches.css";
 @import "./notifications/notifications.css";
+@import "./comments/comments.css";
 
 .page-shell {
   align-items: center;

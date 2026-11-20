@@ -735,7 +735,7 @@ Build the generated-contract client and TanStack Query state layer for root/repl
 
 ## Task T11: Mount an Accessible Responsive Discussion Surface
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** ui
 > **Effort:** l
 > **Priority:** high

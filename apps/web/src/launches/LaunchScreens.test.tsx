@@ -29,12 +29,21 @@ const mocks = vi.hoisted(() => ({
   cancelMutation: { isPending: false, mutateAsync: vi.fn() },
   preferenceMutation: { isPending: false, mutateAsync: vi.fn() },
   navigate: vi.fn(),
+  comments: vi.fn(),
 }));
 
 vi.mock("../routing", () => ({ navigate: mocks.navigate }));
 
 vi.mock("../votes/useRankingLive", () => ({ useRankingLive: vi.fn() }));
 vi.mock("../votes/VoteControl", () => ({ VoteControl: () => null }));
+vi.mock("../comments/CommentsSection", () => ({
+  CommentsSection: ({ productId }: { productId: string }) => {
+    mocks.comments(productId);
+    return (
+      <section aria-label="Product discussion">Discussion fixture</section>
+    );
+  },
+}));
 
 vi.mock("../identity/useIdentity", () => ({
   useCurrentSession: () => mocks.session,
@@ -182,6 +191,7 @@ function publicProduct(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   mocks.session = { data: memberSession(), isPending: false, isError: false };
   mocks.navigate.mockReset();
+  mocks.comments.mockReset();
   mocks.products = {
     data: { items: [] },
     isPending: false,
@@ -541,6 +551,10 @@ describe("anonymous public launch page", () => {
         .getAttribute("href"),
     ).toBe("https://example.com");
     expect(screen.queryByText(/review|founder|booking|account/i)).toBeNull();
+    expect(
+      screen.getByRole("region", { name: "Product discussion" }),
+    ).toBeTruthy();
+    expect(mocks.comments).toHaveBeenCalledWith("product-1");
   });
 
   it("shows a generic safe state for unpublished, missing, and unavailable products", () => {
@@ -553,6 +567,9 @@ describe("anonymous public launch page", () => {
       "This launch is private or unavailable.",
     );
     expect(screen.queryByText("Launchpad demo")).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Product discussion" }),
+    ).toBeNull();
 
     mocks.publicProduct = {
       data: undefined,
