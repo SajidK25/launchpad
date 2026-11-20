@@ -656,7 +656,7 @@ Define the bounded frontend GraphQL operations, regenerate REST and GraphQL cont
 
 ## Task T10: Reconcile Discussion State in the Web Client
 
-> **Status:** not started
+> **Status:** done
 > **Verification:** tdd
 > **Effort:** l
 > **Priority:** high
